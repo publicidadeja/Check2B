@@ -11,13 +11,14 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from '@/components/ui/badge';
-import { Check, X, FileWarning, UserCheck, Loader2, UserSearch } from 'lucide-react';
+import { Check, X, FileWarning, UserCheck, Loader2, UserSearch, Award } from 'lucide-react'; // Adicionado Award
 import type { Employee } from '@/services/employee';
 import type { Task } from '@/services/task';
 import { getAllEmployees } from '@/services/employee';
 import { getTasksForDepartmentEvaluation } from '@/services/task'; // Use the correct function
 import { submitEvaluation, type EvaluationScore } from '@/services/evaluation'; // Assuming API function exists
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils"; // Adicionado cn
 
 
 interface EvaluationItem extends EvaluationScore {
@@ -185,7 +186,8 @@ export default function EvaluationsPage() {
                 justification: ev.score === 0 ? ev.justification.trim() : '',
             };
             // Pass justification separately only if needed by API, otherwise it's in scoreData
-           return submitEvaluation(ev.taskId, selectedEmployeeId, scoreData, scoreData.justification);
+           // A função submitEvaluation espera 3 args, o 4º (justification) não é necessário aqui pois já está em scoreData
+           return submitEvaluation(ev.taskId, selectedEmployeeId, scoreData);
       });
 
       await Promise.all(submissionPromises);
@@ -381,3 +383,4 @@ export default function EvaluationsPage() {
     </div>
   );
 }
+

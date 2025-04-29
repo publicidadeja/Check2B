@@ -16,7 +16,7 @@ export interface EvaluationScore {
 }
 
 // Mock storage for evaluations (replace with actual database)
-// Key: employeeId, Value: { taskId: EvaluationScore }
+// Key: employeeId, Value: { taskId: EvaluationScore & { timestamp: string } }
 const mockEvaluations: Record<string, Record<string, EvaluationScore & { timestamp: string }>> = {};
 
 /**
@@ -31,7 +31,7 @@ const mockEvaluations: Record<string, Record<string, EvaluationScore & { timesta
 export async function submitEvaluation(
   taskId: string,
   employeeId: string,
-  scoreData: EvaluationScore,
+  scoreData: EvaluationScore // Remover quarto argumento não utilizado
 ): Promise<void> {
   console.log(`Submitting evaluation (mock) for task ${taskId}, employee ${employeeId}:`, scoreData);
   await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 200)); // Simulate variable delay
@@ -93,3 +93,4 @@ export async function getEvaluationsForEmployeeByDate(employeeId: string, date: 
 
      return evaluationsForDate;
 }
+
