@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -10,38 +11,55 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Edit, Trash2 } from 'lucide-react';
-import type { Employee } from '@/services/employee'; // Assuming types are defined here
-import { getAllEmployees } from '@/services/employee'; // Assuming API functions are here
+import { PlusCircle, Edit, Trash2, Loader2, Mail, CalendarDays } from 'lucide-react';
+import { useToast } from "@/hooks/use-toast";
+import type { Employee } from '@/services/employee';
+import {
+    getAllEmployees,
+    addEmployee,
+    updateEmployee,
+    deleteEmployee
+} from '@/services/employee';
+import type { Department } from '@/services/department';
+import { getAllDepartments } from '@/services/department'; // To populate dropdown
 
-// Mock departments for the select dropdown
-const departments = ["Engenharia", "Vendas", "Marketing", "RH"];
-const roles = ["Engenheiro de Software", "Gerente de Vendas", "Especialista em Marketing", "Analista de RH", "Designer UX"];
-
+// Mock roles - In a real app, these might come from an API or config
+const roles = ["Engenheiro de Software Júnior", "Engenheiro de Software Pleno", "Engenheiro de Software Sênior", "Gerente de Vendas", "Executivo de Contas", "Especialista em Marketing", "Analista de RH", "Analista de Recrutamento", "Designer UX/UI"];
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); // For form submissions
+  const { toast } = useToast();
+
+  const loadInitialData = React.useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [fetchedEmployees, fetchedDepartments] = await Promise.all([
+        getAllEmployees(),
+        getAllDepartments()
+      ]);
+      setEmployees(fetchedEmployees);
+      setDepartments(fetchedDepartments);
+    } catch (error) {
+      console.error("Failed to fetch initial data:", error);
+      toast({ title: "Erro", description: "Falha ao carregar colaboradores ou departamentos.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
 
   useEffect(() => {
-    // Fetch employees when the component mounts
-    async function loadEmployees() {
-      try {
-        const fetchedEmployees = await getAllEmployees(); // Replace with your actual API call
-        setEmployees(fetchedEmployees);
-      } catch (error) {
-        console.error("Failed to fetch employees:", error);
-        // Handle error appropriately, e.g., show a toast notification
-      }
-    }
-    loadEmployees();
-  }, []);
+    loadInitialData();
+  }, [loadInitialData]);
 
   const handleEdit = (employee: Employee) => {
-    setSelectedEmployee(employee);
+    setSelectedEmployee({ ...employee }); // Clone for safe editing
     setIsEditDialogOpen(true);
   };
 
@@ -50,52 +68,114 @@ export default function EmployeesPage() {
     setIsDeleteDialogOpen(true);
   };
 
-  const handleConfirmDelete = () => {
-    // TODO: Implement employee deletion logic (call API)
-    console.log("Deleting employee:", selectedEmployee?.id);
-    if (selectedEmployee) {
-      setEmployees(employees.filter(emp => emp.id !== selectedEmployee.id)); // Optimistic UI update
+  const handleConfirmDelete = async () => {
+    if (!selectedEmployee) return;
+    setIsSubmitting(true);
+    try {
+      await deleteEmployee(selectedEmployee.id);
+      setEmployees(employees.filter(emp => emp.id !== selectedEmployee.id));
+      toast({ title: "Sucesso", description: `Colaborador "${selectedEmployee.name}" excluído.` });
+      setIsDeleteDialogOpen(false);
+      setSelectedEmployee(null);
+    } catch (error: any) {
+      console.error("Failed to delete employee:", error);
+      toast({ title: "Erro", description: error.message || "Falha ao excluir colaborador.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsDeleteDialogOpen(false);
-    setSelectedEmployee(null);
   };
 
-   const handleAddEmployee = (event: React.FormEvent<HTMLFormElement>) => {
+   const handleAddEmployee = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
-    const newEmployee: Omit<Employee, 'id'> = {
+    const newEmployeeData: Omit<Employee, 'id'> = {
         name: formData.get('name') as string,
         department: formData.get('department') as string,
         role: formData.get('role') as string,
-        // Add other fields as needed
+        email: formData.get('email') as string || undefined, // Handle optional field
+        admissionDate: formData.get('admissionDate') as string || undefined, // Handle optional field
     };
 
-    // TODO: Implement API call to add employee
-    const addedEmployee: Employee = { ...newEmployee, id: String(Date.now()) }; // Mock ID generation
-    console.log("Adding employee:", addedEmployee);
-    setEmployees([...employees, addedEmployee]);
-    setIsAddDialogOpen(false); // Close the dialog
+    // Basic Frontend Validation (service has more robust validation)
+    if (!newEmployeeData.name || !newEmployeeData.department || !newEmployeeData.role) {
+       toast({ title: "Erro de Validação", description: "Nome, Departamento e Função são obrigatórios.", variant: "destructive" });
+       return;
+    }
+    if (newEmployeeData.email && !/\S+@\S+\.\S+/.test(newEmployeeData.email)) {
+        toast({ title: "Erro de Validação", description: "Formato de email inválido.", variant: "destructive" });
+        return;
+    }
+     // Optional: Basic date format check if needed client-side
+
+    setIsSubmitting(true);
+    try {
+        const addedEmployee = await addEmployee(newEmployeeData);
+        setEmployees([...employees, addedEmployee]); // Add to local state
+        toast({ title: "Sucesso", description: `Colaborador "${addedEmployee.name}" adicionado.` });
+        setIsAddDialogOpen(false);
+        event.currentTarget.reset(); // Reset form
+    } catch (error: any) {
+        console.error("Failed to add employee:", error);
+        toast({ title: "Erro", description: error.message || "Falha ao adicionar colaborador.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-   const handleUpdateEmployee = (event: React.FormEvent<HTMLFormElement>) => {
+   const handleUpdateEmployee = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
      if (!selectedEmployee) return;
 
     const formData = new FormData(event.currentTarget);
-    const updatedEmployeeData: Partial<Employee> = {
-        name: formData.get('name') as string,
-        department: formData.get('department') as string,
-        role: formData.get('role') as string,
-        // Add other fields as needed
+    const updatedData: Partial<Omit<Employee, 'id'>> = {
+        name: formData.get('edit-name') as string,
+        department: formData.get('edit-department') as string,
+        role: formData.get('edit-role') as string,
+        email: formData.get('edit-email') as string || undefined,
+        admissionDate: formData.get('edit-admissionDate') as string || undefined,
     };
 
-    // TODO: Implement API call to update employee
-    console.log("Updating employee:", selectedEmployee.id, updatedEmployeeData);
-     setEmployees(employees.map(emp =>
-       emp.id === selectedEmployee.id ? { ...emp, ...updatedEmployeeData } : emp
-     )); // Optimistic UI update
-    setIsEditDialogOpen(false); // Close the dialog
-     setSelectedEmployee(null);
+     // Basic Frontend Validation
+    if (!updatedData.name || !updatedData.department || !updatedData.role) {
+       toast({ title: "Erro de Validação", description: "Nome, Departamento e Função são obrigatórios.", variant: "destructive" });
+       return;
+    }
+    if (updatedData.email && !/\S+@\S+\.\S+/.test(updatedData.email)) {
+        toast({ title: "Erro de Validação", description: "Formato de email inválido.", variant: "destructive" });
+        return;
+    }
+
+     // Create object with only changed fields to send to API
+    const changes: Partial<Omit<Employee, 'id'>> = {};
+    (Object.keys(updatedData) as Array<keyof typeof updatedData>).forEach(key => {
+        if (updatedData[key] !== selectedEmployee[key] && !(updatedData[key] === undefined && selectedEmployee[key] == null)) { // check for actual changes, handling undefined/null
+             changes[key] = updatedData[key] as any; // Type assertion needed here
+        }
+    });
+
+
+    if (Object.keys(changes).length === 0) {
+        setIsEditDialogOpen(false); // No changes, just close
+         setSelectedEmployee(null);
+        return;
+    }
+
+
+    setIsSubmitting(true);
+    try {
+        const updatedEmployee = await updateEmployee(selectedEmployee.id, changes);
+        setEmployees(employees.map(emp =>
+           emp.id === updatedEmployee.id ? updatedEmployee : emp // Update local state
+        ));
+        toast({ title: "Sucesso", description: `Dados de "${updatedEmployee.name}" atualizados.` });
+        setIsEditDialogOpen(false);
+        setSelectedEmployee(null);
+     } catch (error: any) {
+        console.error("Failed to update employee:", error);
+        toast({ title: "Erro", description: error.message || "Falha ao atualizar colaborador.", variant: "destructive" });
+     } finally {
+       setIsSubmitting(false);
+     }
   };
 
 
@@ -108,12 +188,12 @@ export default function EmployeesPage() {
         </div>
          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
            <DialogTrigger asChild>
-            <Button size="sm" className="gap-1">
+            <Button size="sm" className="gap-1" disabled={isLoading || isSubmitting}>
               <PlusCircle className="h-4 w-4" />
               Adicionar Colaborador
             </Button>
           </DialogTrigger>
-           <DialogContent className="sm:max-w-[425px]">
+           <DialogContent className="sm:max-w-lg"> {/* Increased width */}
              <DialogHeader>
                <DialogTitle>Adicionar Novo Colaborador</DialogTitle>
                <DialogDescription>
@@ -121,168 +201,202 @@ export default function EmployeesPage() {
                </DialogDescription>
              </DialogHeader>
               <form onSubmit={handleAddEmployee}>
-                <div className="grid gap-4 py-4">
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="name" className="text-right">
-                      Nome
-                    </Label>
-                    <Input id="name" name="name" required className="col-span-3" />
+                <fieldset disabled={isSubmitting} className="grid gap-4 py-4 sm:grid-cols-2 sm:gap-x-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Nome Completo</Label>
+                    <Input id="name" name="name" required placeholder="Ex: Ana Silva"/>
                   </div>
-                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="department" className="text-right">
-                       Departamento
+                   <div className="space-y-2">
+                    <Label htmlFor="email" className="flex items-center gap-1">
+                        <Mail className="h-3 w-3 text-muted-foreground"/> Email (Opcional)
                     </Label>
+                    <Input id="email" name="email" type="email" placeholder="Ex: ana.silva@empresa.com"/>
+                  </div>
+                   <div className="space-y-2">
+                    <Label htmlFor="department">Departamento</Label>
                     <Select name="department" required>
-                      <SelectTrigger className="col-span-3">
+                      <SelectTrigger>
                         <SelectValue placeholder="Selecione o departamento" />
                       </SelectTrigger>
                       <SelectContent>
                         {departments.map((dept) => (
-                          <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                          <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="role" className="text-right">
-                       Função
-                    </Label>
+                   <div className="space-y-2">
+                    <Label htmlFor="role">Função</Label>
                     <Select name="role" required>
-                       <SelectTrigger className="col-span-3">
+                       <SelectTrigger>
                          <SelectValue placeholder="Selecione a função" />
                        </SelectTrigger>
                        <SelectContent>
+                         {/* Consider using datalist or allowing free text + selection */}
                          {roles.map((role) => (
                            <SelectItem key={role} value={role}>{role}</SelectItem>
                          ))}
                        </SelectContent>
                     </Select>
                   </div>
-                  {/* Add other fields like email, phone, admission date, etc. */}
-                </div>
-                <DialogFooter>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="admissionDate" className="flex items-center gap-1">
+                         <CalendarDays className="h-3 w-3 text-muted-foreground"/> Data de Admissão (Opcional)
+                    </Label>
+                    <Input id="admissionDate" name="admissionDate" type="date" />
+                  </div>
+                </fieldset>
+                <DialogFooter className="mt-4">
                    <DialogClose asChild>
-                        <Button type="button" variant="outline">Cancelar</Button>
+                        <Button type="button" variant="outline" disabled={isSubmitting}>Cancelar</Button>
                    </DialogClose>
-                  <Button type="submit">Salvar Colaborador</Button>
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {isSubmitting ? 'Salvando...' : 'Salvar Colaborador'}
+                  </Button>
                 </DialogFooter>
               </form>
            </DialogContent>
          </Dialog>
       </CardHeader>
       <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[80px]">Avatar</TableHead>
-              <TableHead>Nome</TableHead>
-              <TableHead>Departamento</TableHead>
-              <TableHead>Função</TableHead>
-              <TableHead className="text-right w-[100px]">Ações</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {employees.map((employee) => (
-              <TableRow key={employee.id}>
-                <TableCell>
-                  <Avatar>
-                    <AvatarImage src={`https://picsum.photos/seed/${employee.id}/40/40`} alt={employee.name} />
-                    <AvatarFallback>{employee.name.substring(0, 2).toUpperCase()}</AvatarFallback>
-                  </Avatar>
-                </TableCell>
-                <TableCell className="font-medium">{employee.name}</TableCell>
-                <TableCell>{employee.department}</TableCell>
-                <TableCell>{employee.role}</TableCell>
-                <TableCell className="text-right">
-                    <Dialog open={isEditDialogOpen && selectedEmployee?.id === employee.id} onOpenChange={(open) => { if (!open) setSelectedEmployee(null); setIsEditDialogOpen(open); }}>
-                       <DialogTrigger asChild>
-                         <Button variant="ghost" size="icon" onClick={() => handleEdit(employee)}>
-                           <Edit className="h-4 w-4" />
-                         </Button>
-                       </DialogTrigger>
-                       <DialogContent className="sm:max-w-[425px]">
-                         <DialogHeader>
-                           <DialogTitle>Editar Colaborador</DialogTitle>
-                           <DialogDescription>
-                             Atualize os dados do colaborador. Clique em salvar quando terminar.
-                           </DialogDescription>
-                         </DialogHeader>
-                          <form onSubmit={handleUpdateEmployee}>
-                            <div className="grid gap-4 py-4">
-                              <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="edit-name" className="text-right">
-                                  Nome
-                                </Label>
-                                <Input id="edit-name" name="name" defaultValue={selectedEmployee?.name} required className="col-span-3" />
-                              </div>
-                               <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="edit-department" className="text-right">
-                                   Departamento
-                                </Label>
-                                <Select name="department" defaultValue={selectedEmployee?.department} required>
-                                  <SelectTrigger className="col-span-3">
-                                    <SelectValue placeholder="Selecione o departamento" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {departments.map((dept) => (
-                                      <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                               <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="edit-role" className="text-right">
-                                   Função
-                                </Label>
-                                 <Select name="role" defaultValue={selectedEmployee?.role} required>
-                                   <SelectTrigger className="col-span-3">
-                                     <SelectValue placeholder="Selecione a função" />
-                                   </SelectTrigger>
-                                   <SelectContent>
-                                     {roles.map((role) => (
-                                       <SelectItem key={role} value={role}>{role}</SelectItem>
-                                     ))}
-                                   </SelectContent>
-                                 </Select>
-                              </div>
-                              {/* Add other fields */}
-                            </div>
-                            <DialogFooter>
-                               <DialogClose asChild>
-                                    <Button type="button" variant="outline">Cancelar</Button>
-                               </DialogClose>
-                              <Button type="submit">Salvar Alterações</Button>
-                            </DialogFooter>
-                         </form>
-                       </DialogContent>
-                     </Dialog>
+         {isLoading ? (
+            <div className="flex justify-center items-center p-10">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+         ) : employees.length === 0 ? (
+              <p className="text-center text-muted-foreground p-4">Nenhum colaborador cadastrado.</p>
+         ) : (
+            <Table>
+            <TableHeader>
+                <TableRow>
+                <TableHead className="w-[60px]">Avatar</TableHead>
+                <TableHead>Nome</TableHead>
+                <TableHead className="hidden sm:table-cell">Email</TableHead>
+                <TableHead>Departamento</TableHead>
+                <TableHead>Função</TableHead>
+                <TableHead className="hidden lg:table-cell">Admissão</TableHead>
+                <TableHead className="text-right w-[100px]">Ações</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {employees.map((employee) => (
+                <TableRow key={employee.id}>
+                    <TableCell>
+                    <Avatar className="h-9 w-9">
+                         <AvatarImage src={`https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(employee.name)}`} alt={employee.name} />
+                         <AvatarFallback>{employee.name.substring(0, 1).toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    </TableCell>
+                    <TableCell className="font-medium">{employee.name}</TableCell>
+                    <TableCell className="hidden sm:table-cell text-muted-foreground text-xs">{employee.email || '-'}</TableCell>
+                    <TableCell>{employee.department}</TableCell>
+                    <TableCell>{employee.role}</TableCell>
+                    <TableCell className="hidden lg:table-cell text-muted-foreground text-xs">
+                       {employee.admissionDate ? new Date(employee.admissionDate + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
+                     </TableCell>
+                    <TableCell className="text-right space-x-1">
+                        <Dialog open={isEditDialogOpen && selectedEmployee?.id === employee.id} onOpenChange={(open) => { if (!open) { setSelectedEmployee(null); setIsEditDialogOpen(false); } else { setIsEditDialogOpen(true); }}}>
+                        <DialogTrigger asChild>
+                            <Button variant="ghost" size="icon" onClick={() => handleEdit(employee)} disabled={isSubmitting} title="Editar">
+                            <Edit className="h-4 w-4" />
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-lg">
+                            <DialogHeader>
+                            <DialogTitle>Editar Colaborador</DialogTitle>
+                            <DialogDescription>
+                                Atualize os dados do colaborador. Clique em salvar quando terminar.
+                            </DialogDescription>
+                            </DialogHeader>
+                            <form onSubmit={handleUpdateEmployee}>
+                                <fieldset disabled={isSubmitting} className="grid gap-4 py-4 sm:grid-cols-2 sm:gap-x-6">
+                                   <div className="space-y-2">
+                                    <Label htmlFor="edit-name">Nome Completo</Label>
+                                    <Input id="edit-name" name="edit-name" defaultValue={selectedEmployee?.name} required />
+                                    </div>
+                                    <div className="space-y-2">
+                                    <Label htmlFor="edit-email" className="flex items-center gap-1">
+                                         <Mail className="h-3 w-3 text-muted-foreground"/> Email (Opcional)
+                                    </Label>
+                                    <Input id="edit-email" name="edit-email" type="email" defaultValue={selectedEmployee?.email || ''} />
+                                    </div>
+                                    <div className="space-y-2">
+                                    <Label htmlFor="edit-department">Departamento</Label>
+                                    <Select name="edit-department" defaultValue={selectedEmployee?.department} required>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Selecione o departamento" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {departments.map((dept) => (
+                                        <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                    </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                    <Label htmlFor="edit-role">Função</Label>
+                                    <Select name="edit-role" defaultValue={selectedEmployee?.role} required>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Selecione a função" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {roles.map((role) => (
+                                        <SelectItem key={role} value={role}>{role}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                    </Select>
+                                    </div>
+                                    <div className="space-y-2 sm:col-span-2">
+                                     <Label htmlFor="edit-admissionDate" className="flex items-center gap-1">
+                                        <CalendarDays className="h-3 w-3 text-muted-foreground"/> Data de Admissão (Opcional)
+                                    </Label>
+                                    <Input id="edit-admissionDate" name="edit-admissionDate" type="date" defaultValue={selectedEmployee?.admissionDate || ''} />
+                                    </div>
+                                </fieldset>
+                                <DialogFooter className="mt-4">
+                                <DialogClose asChild>
+                                        <Button type="button" variant="outline" disabled={isSubmitting}>Cancelar</Button>
+                                </DialogClose>
+                                <Button type="submit" disabled={isSubmitting}>
+                                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    {isSubmitting ? 'Salvando...' : 'Salvar Alterações'}
+                                </Button>
+                                </DialogFooter>
+                            </form>
+                        </DialogContent>
+                        </Dialog>
 
-                    <Dialog open={isDeleteDialogOpen && selectedEmployee?.id === employee.id} onOpenChange={(open) => { if (!open) setSelectedEmployee(null); setIsDeleteDialogOpen(open); }}>
-                      <DialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDelete(employee)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Confirmar Exclusão</DialogTitle>
-                          <DialogDescription>
-                            Tem certeza que deseja excluir o colaborador <strong>{selectedEmployee?.name}</strong>? Esta ação não pode ser desfeita.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <DialogFooter>
-                           <DialogClose asChild>
-                                <Button variant="outline">Cancelar</Button>
-                           </DialogClose>
-                          <Button variant="destructive" onClick={handleConfirmDelete}>Confirmar Exclusão</Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                        <Dialog open={isDeleteDialogOpen && selectedEmployee?.id === employee.id} onOpenChange={(open) => { if (!open) { setSelectedEmployee(null); setIsDeleteDialogOpen(false); } else { setIsDeleteDialogOpen(true); }}}>
+                        <DialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDelete(employee)} disabled={isSubmitting} title="Excluir">
+                            <Trash2 className="h-4 w-4" />
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                            <DialogTitle>Confirmar Exclusão</DialogTitle>
+                            <DialogDescription>
+                                Tem certeza que deseja excluir o colaborador <strong>{selectedEmployee?.name}</strong>? Esta ação não pode ser desfeita.
+                            </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter>
+                            <DialogClose asChild>
+                                    <Button variant="outline" disabled={isSubmitting}>Cancelar</Button>
+                            </DialogClose>
+                            <Button variant="destructive" onClick={handleConfirmDelete} disabled={isSubmitting}>
+                                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                {isSubmitting ? 'Excluindo...' : 'Confirmar Exclusão'}
+                            </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                        </Dialog>
+                    </TableCell>
+                </TableRow>
+                ))}
+            </TableBody>
+            </Table>
+         )}
       </CardContent>
     </Card>
   );
