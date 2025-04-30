@@ -24,7 +24,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR"> {/* Set language to Portuguese */}
+    <html lang="pt-BR">{/* Set language to Portuguese */}
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <main>{children}</main>
         <Toaster />
