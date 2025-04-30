@@ -1,4 +1,5 @@
-'use client'; // Add this directive
+
+'use client';
 
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Users, ClipboardList, CheckCircle, AlertCircle, BarChart3 } from "lucide-react";
@@ -37,7 +38,7 @@ export default function DashboardPage() {
   const tickFormatter = (value: string) => value.slice(0, 3);
 
   return (
-    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 md:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"> {/* Responsive grid */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">Total Colaboradores</CardTitle>
@@ -82,7 +83,7 @@ export default function DashboardPage() {
       </Card>
 
       {/* Chart Example */}
-       <Card className="md:col-span-2 lg:col-span-4">
+       <Card className="col-span-1 sm:col-span-2 lg:col-span-4"> {/* Responsive chart span */}
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
              <BarChart3 className="h-5 w-5" />
@@ -90,8 +91,7 @@ export default function DashboardPage() {
           </CardTitle>
           <CardDescription>Total de avaliações realizadas por mês.</CardDescription>
         </CardHeader>
-        <CardContent className="h-[300px] w-full">
-             {/* Use ChartContainer and pass the specific chart type as children */}
+        <CardContent className="h-[250px] sm:h-[300px] w-full"> {/* Adjusted height */}
             <ChartContainer config={chartConfig} className="h-full w-full">
                 <BarChart accessibilityLayer data={chartData}>
                     <XAxis
@@ -111,3 +111,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

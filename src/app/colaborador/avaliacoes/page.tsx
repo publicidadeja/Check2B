@@ -135,7 +135,7 @@ export default function EmployeeEvaluationsPage() {
             setSelectedDayDetails(daySummary);
             setIsModalOpen(true);
         } else {
-             toast({ title: "Sem Avaliação", description: `Nenhuma avaliação registrada para ${format(daySummary.date, 'dd/MM/yyyy')}.`, variant: 'default' });
+             toast({ title: "Sem Avaliação", description: `Nenhuma avaliação registrada para ${format(daySummary.date, 'dd/MM/yyyy', { locale: ptBR })}.` });
         }
     };
 
@@ -196,7 +196,7 @@ export default function EmployeeEvaluationsPage() {
                                                 onClick={() => handleDayClick(daySummary)}
                                                 disabled={daySummary.score === -1}
                                                 className={cn(
-                                                    "relative flex items-center justify-center h-12 w-full rounded-md border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+                                                    "relative flex items-center justify-center h-10 w-full sm:h-12 rounded-md border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2", // Adjusted height for responsiveness
                                                     daySummary.score === 10 && "bg-green-100 dark:bg-green-900/50 border-green-200 dark:border-green-800 hover:bg-green-200 dark:hover:bg-green-800/60",
                                                     daySummary.score === 0 && "bg-red-100 dark:bg-red-900/50 border-red-200 dark:border-red-800 hover:bg-red-200 dark:hover:bg-red-800/60",
                                                     daySummary.score === -1 && "bg-muted/50 border-dashed text-muted-foreground cursor-not-allowed",

@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -30,9 +31,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'; // Added CardFooter
 import { useToast } from '@/hooks/use-toast';
-import { DepartmentForm } from '@/components/department/department-form'; // To be created
+import { DepartmentForm } from '@/components/department/department-form';
+import { DataTable } from '@/components/ui/data-table'; // Import DataTable
+import type { ColumnDef } from '@tanstack/react-table'; // Import ColumnDef
 
 export interface Department {
     id: string;
@@ -98,21 +101,58 @@ const deleteDepartment = async (deptId: string): Promise<void> => {
 
 export default function DepartmentsPage() {
     const [departments, setDepartments] = React.useState<Department[]>([]);
-    const [filteredDepartments, setFilteredDepartments] = React.useState<Department[]>([]);
     const [isLoading, setIsLoading] = React.useState(true);
-    const [searchTerm, setSearchTerm] = React.useState('');
     const [selectedDepartment, setSelectedDepartment] = React.useState<Department | null>(null);
     const [isFormOpen, setIsFormOpen] = React.useState(false);
     const [isDeleting, setIsDeleting] = React.useState(false);
     const [departmentToDelete, setDepartmentToDelete] = React.useState<Department | null>(null);
     const { toast } = useToast();
 
+    // Define columns for DataTable
+    const columns: ColumnDef<Department>[] = [
+        { accessorKey: "name", header: "Nome", cell: ({ row }) => <span className="font-medium">{row.original.name}</span> },
+        { accessorKey: "description", header: "Descrição", cell: ({ row }) => row.original.description || '-' },
+        // { accessorKey: "headId", header: "Responsável", cell: ({ row }) => row.original.headId || '-' }, // Example - Add if needed
+        {
+            id: "actions",
+            cell: ({ row }) => {
+                const dept = row.original;
+                return (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                                <span className="sr-only">Abrir menu</span>
+                                <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                            <DropdownMenuItem onClick={() => openEditForm(dept)}>
+                                <Edit className="mr-2 h-4 w-4" />
+                                Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                                onClick={() => handleDeleteClick(dept)}
+                                className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                                disabled={['Engenharia', 'RH', 'Vendas', 'Marketing', 'Operações'].includes(dept.name) && departments.length <= 5}
+                            >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Remover
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                );
+            },
+            size: 80,
+        },
+    ];
+
     const loadDepartments = React.useCallback(async () => {
         setIsLoading(true);
         try {
             const data = await fetchDepartments();
             setDepartments(data);
-            setFilteredDepartments(data);
         } catch (error) {
             console.error("Falha ao carregar departamentos:", error);
             toast({ title: "Erro", description: "Falha ao carregar departamentos.", variant: "destructive" });
@@ -125,14 +165,6 @@ export default function DepartmentsPage() {
         loadDepartments();
     }, [loadDepartments]);
 
-    React.useEffect(() => {
-        const lowerCaseSearchTerm = searchTerm.toLowerCase();
-        const filtered = departments.filter(dept =>
-            dept.name.toLowerCase().includes(lowerCaseSearchTerm) ||
-            (dept.description && dept.description.toLowerCase().includes(lowerCaseSearchTerm))
-        );
-        setFilteredDepartments(filtered);
-    }, [searchTerm, departments]);
 
     const handleSaveDepartment = async (data: Omit<Department, 'id'>) => {
         const deptDataToSave = selectedDepartment ? { ...selectedDepartment, ...data } : data;
@@ -197,87 +229,25 @@ export default function DepartmentsPage() {
                     <CardDescription>Crie, edite ou remova departamentos na organização.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="relative w-full max-w-sm">
-                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                type="search"
-                                placeholder="Buscar por nome ou descrição..."
-                                className="pl-8"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-                        </div>
-                        <Button onClick={openAddForm}>
-                            <PlusCircle className="mr-2 h-4 w-4" />
-                            Adicionar Departamento
-                        </Button>
-                    </div>
-
-                    <div className="rounded-md border">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Nome</TableHead>
-                                    <TableHead>Descrição</TableHead>
-                                    {/* <TableHead>Responsável</TableHead> */}
-                                    <TableHead className="text-right">Ações</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {isLoading ? (
-                                    <TableRow>
-                                        <TableCell colSpan={3} className="text-center py-10">
-                                            <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
-                                            Carregando departamentos...
-                                        </TableCell>
-                                    </TableRow>
-                                ) : filteredDepartments.length === 0 ? (
-                                    <TableRow>
-                                        <TableCell colSpan={3} className="text-center py-10 text-muted-foreground">
-                                            Nenhum departamento encontrado.
-                                        </TableCell>
-                                    </TableRow>
-                                ) : (
-                                    filteredDepartments.map((dept) => (
-                                        <TableRow key={dept.id}>
-                                            <TableCell className="font-medium">{dept.name}</TableCell>
-                                            <TableCell>{dept.description || '-'}</TableCell>
-                                            {/* <TableCell>{dept.headId || '-'}</TableCell> */}
-                                            <TableCell className="text-right">
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="ghost" className="h-8 w-8 p-0">
-                                                            <span className="sr-only">Abrir menu</span>
-                                                            <MoreHorizontal className="h-4 w-4" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end">
-                                                        <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                                        <DropdownMenuItem onClick={() => openEditForm(dept)}>
-                                                            <Edit className="mr-2 h-4 w-4" />
-                                                            Editar
-                                                        </DropdownMenuItem>
-                                                        <DropdownMenuSeparator />
-                                                        <DropdownMenuItem
-                                                            onClick={() => handleDeleteClick(dept)}
-                                                            className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                                                            // Basic check: prevent deleting core departments for demo
-                                                             disabled={['Engenharia', 'RH', 'Vendas', 'Marketing', 'Operações'].includes(dept.name) && departments.length <= 5}
-                                                        >
-                                                            <Trash2 className="mr-2 h-4 w-4" />
-                                                            Remover
-                                                        </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
-                                )}
-                            </TableBody>
-                        </Table>
-                    </div>
+                    {isLoading ? (
+                         <div className="flex justify-center items-center py-10">
+                            <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+                         </div>
+                    ) : (
+                        <DataTable
+                            columns={columns}
+                            data={departments}
+                            filterColumn="name"
+                            filterPlaceholder="Buscar por nome..."
+                        />
+                    )}
                 </CardContent>
+                 <CardFooter className="flex justify-end">
+                    <Button onClick={openAddForm}>
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Adicionar Departamento
+                    </Button>
+                 </CardFooter>
             </Card>
 
             {/* Department Form Dialog */}
@@ -308,3 +278,4 @@ export default function DepartmentsPage() {
         </div>
     );
 }
+

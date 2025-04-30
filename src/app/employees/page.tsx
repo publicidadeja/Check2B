@@ -1,7 +1,8 @@
+
 'use client';
 
 import * as React from 'react';
-import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Eye, UserX, UserCheck, Loader2, Users } from 'lucide-react'; // Added Users import
+import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Eye, UserX, UserCheck, Loader2, Users } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -35,11 +36,14 @@ import {
 import { EmployeeForm } from '@/components/employee/employee-form';
 import type { Employee } from '@/types/employee';
 import { useToast } from '@/hooks/use-toast';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'; // Import Card components
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog'; // Import Dialog components
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { DataTable } from '@/components/ui/data-table'; // Import DataTable
+import type { ColumnDef } from '@tanstack/react-table'; // Import ColumnDef
+
 
 // Mock data (simulated API response) - Manter nomes em português para consistência
-const mockEmployees: Employee[] = [
+export const mockEmployees: Employee[] = [
   { id: '1', name: 'Alice Silva', email: 'alice.silva@check2b.com', phone: '11987654321', department: 'RH', role: 'Recrutadora', admissionDate: '2023-01-15', isActive: true, photoUrl: 'https://picsum.photos/id/1027/40/40' },
   { id: '2', name: 'Beto Santos', email: 'beto.santos@check2b.com', phone: '21912345678', department: 'Engenharia', role: 'Desenvolvedor Backend', admissionDate: '2022-08-20', isActive: true, photoUrl: 'https://picsum.photos/id/1005/40/40' },
   { id: '3', name: 'Carla Mendes', email: 'carla.mendes@check2b.com', phone: '31999998888', department: 'Marketing', role: 'Analista de Marketing', admissionDate: '2023-05-10', isActive: false }, // Exemplo inativo
@@ -100,6 +104,18 @@ const toggleEmployeeStatus = async (employeeId: string): Promise<Employee | unde
 };
 
 
+// --- Helper Function ---
+const getInitials = (name: string) => {
+    if (!name) return '??';
+    return name
+        .split(' ')
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase();
+};
+
+
 // --- Employee Profile View Component ---
 interface EmployeeProfileViewProps {
     employee: Employee | null;
@@ -109,11 +125,6 @@ interface EmployeeProfileViewProps {
 
 function EmployeeProfileView({ employee, open, onOpenChange }: EmployeeProfileViewProps) {
     if (!employee) return null;
-
-    const getInitials = (name: string) => {
-        if (!name) return '??';
-        return name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase();
-    };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -164,25 +175,87 @@ function EmployeeProfileView({ employee, open, onOpenChange }: EmployeeProfileVi
 // --- Main Page Component ---
 export default function EmployeesPage() {
   const [employees, setEmployees] = React.useState<Employee[]>([]);
-  const [filteredEmployees, setFilteredEmployees] = React.useState<Employee[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [searchTerm, setSearchTerm] = React.useState('');
   const [selectedEmployee, setSelectedEmployee] = React.useState<Employee | null>(null);
   const [isFormOpen, setIsFormOpen] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [employeeToDelete, setEmployeeToDelete] = React.useState<Employee | null>(null);
   const [isProfileViewOpen, setIsProfileViewOpen] = React.useState(false);
   const [employeeToView, setEmployeeToView] = React.useState<Employee | null>(null);
-
-
   const { toast } = useToast();
+
+  // Define columns for DataTable
+  const columns: ColumnDef<Employee>[] = [
+    {
+      accessorKey: "photoUrl",
+      header: "Foto",
+      cell: ({ row }) => (
+        <Avatar className="h-9 w-9">
+          <AvatarImage src={row.original.photoUrl} alt={row.original.name} />
+          <AvatarFallback>{getInitials(row.original.name)}</AvatarFallback>
+        </Avatar>
+      ),
+      size: 80,
+      enableSorting: false,
+    },
+    { accessorKey: "name", header: "Nome", cell: ({ row }) => <span className="font-medium">{row.original.name}</span> },
+    { accessorKey: "email", header: "Email", cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.email}</span> }, // Added email column
+    { accessorKey: "department", header: "Departamento" },
+    { accessorKey: "role", header: "Função" },
+    {
+      accessorKey: "isActive",
+      header: "Status",
+      cell: ({ row }) => (
+        <Badge variant={row.original.isActive ? 'default' : 'secondary'} className={row.original.isActive ? 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/50 dark:text-green-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'}>
+          {row.original.isActive ? 'Ativo' : 'Inativo'}
+        </Badge>
+      ),
+       size: 100,
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => {
+        const employee = row.original;
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Abrir menu</span>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Ações</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => openProfileView(employee)}>
+                <Eye className="mr-2 h-4 w-4" />
+                Visualizar Perfil
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => openEditForm(employee)}>
+                <Edit className="mr-2 h-4 w-4" />
+                Editar
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleToggleStatus(employee)}>
+                {employee.isActive ? <UserX className="mr-2 h-4 w-4" /> : <UserCheck className="mr-2 h-4 w-4" />}
+                {employee.isActive ? 'Desativar' : 'Ativar'}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => handleDeleteClick(employee)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Remover
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
+       size: 80,
+    },
+  ];
 
   const loadEmployees = React.useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await fetchEmployees();
       setEmployees(data);
-      setFilteredEmployees(data);
     } catch (error) {
       console.error("Falha ao carregar colaboradores:", error);
       toast({ title: "Erro", description: "Falha ao carregar colaboradores.", variant: "destructive" });
@@ -194,17 +267,6 @@ export default function EmployeesPage() {
   React.useEffect(() => {
     loadEmployees();
   }, [loadEmployees]);
-
-   React.useEffect(() => {
-    const lowerCaseSearchTerm = searchTerm.toLowerCase();
-    const filtered = employees.filter(emp =>
-      emp.name.toLowerCase().includes(lowerCaseSearchTerm) ||
-      emp.email.toLowerCase().includes(lowerCaseSearchTerm) ||
-      emp.department.toLowerCase().includes(lowerCaseSearchTerm) ||
-      emp.role.toLowerCase().includes(lowerCaseSearchTerm)
-    );
-    setFilteredEmployees(filtered);
-  }, [searchTerm, employees]);
 
  const handleSaveEmployee = async (data: any) => {
      const employeeDataToSave = selectedEmployee
@@ -285,18 +347,8 @@ export default function EmployeesPage() {
         setIsProfileViewOpen(true);
     };
 
-   const getInitials = (name: string) => {
-     if (!name) return '??';
-     return name
-        .split(' ')
-        .map((n) => n[0])
-        .slice(0, 2)
-        .join('')
-        .toUpperCase();
-   };
-
   return (
-    <div className="flex flex-col h-full">
+    <div className="space-y-6"> {/* Added space-y for better spacing */}
         <Card>
             <CardHeader>
                  <CardTitle className="flex items-center gap-2">
@@ -305,105 +357,26 @@ export default function EmployeesPage() {
                 <CardDescription>Adicione, edite, visualize e gerencie os colaboradores da organização.</CardDescription>
              </CardHeader>
              <CardContent>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="relative w-full max-w-sm">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        type="search"
-                        placeholder="Buscar por nome, email, depto..."
-                        className="pl-8"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                 {/* Actions moved into DataTable component */}
+                {isLoading ? (
+                     <div className="flex justify-center items-center py-10">
+                        <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+                     </div>
+                ) : (
+                    <DataTable
+                        columns={columns}
+                        data={employees}
+                        filterColumn="name" // Specify the column to filter
+                        filterPlaceholder="Buscar por nome..." // Custom placeholder
                     />
-                    </div>
-                    <Button onClick={openAddForm}>
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        Adicionar Colaborador
-                    </Button>
-                </div>
-
-                <div className="rounded-md border">
-                    <Table>
-                    <TableHeader>
-                        <TableRow>
-                        <TableHead className="w-[80px]">Foto</TableHead>
-                        <TableHead>Nome</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Departamento</TableHead>
-                        <TableHead>Função</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Ações</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {isLoading ? (
-                        <TableRow>
-                            <TableCell colSpan={7} className="text-center py-10">
-                                <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
-                                Carregando colaboradores...
-                            </TableCell>
-                        </TableRow>
-                        ) : filteredEmployees.length === 0 ? (
-                        <TableRow>
-                            <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
-                                Nenhum colaborador encontrado.
-                            </TableCell>
-                        </TableRow>
-                        ) : (
-                        filteredEmployees.map((employee) => (
-                            <TableRow key={employee.id}>
-                            <TableCell>
-                                <Avatar className="h-9 w-9">
-                                <AvatarImage src={employee.photoUrl} alt={employee.name} />
-                                <AvatarFallback>{getInitials(employee.name)}</AvatarFallback>
-                                </Avatar>
-                            </TableCell>
-                            <TableCell className="font-medium">{employee.name}</TableCell>
-                            <TableCell>{employee.email}</TableCell>
-                            <TableCell>{employee.department}</TableCell>
-                            <TableCell>{employee.role}</TableCell>
-                            <TableCell>
-                                <Badge variant={employee.isActive ? 'default' : 'secondary'} className={employee.isActive ? 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/50 dark:text-green-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'}>
-                                {employee.isActive ? 'Ativo' : 'Inativo'}
-                                </Badge>
-                            </TableCell>
-                            <TableCell className="text-right">
-                                <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" className="h-8 w-8 p-0">
-                                    <span className="sr-only">Abrir menu</span>
-                                    <MoreHorizontal className="h-4 w-4" />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                    <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                    <DropdownMenuItem onClick={() => openProfileView(employee)}>
-                                    <Eye className="mr-2 h-4 w-4" />
-                                    Visualizar Perfil
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => openEditForm(employee)}>
-                                    <Edit className="mr-2 h-4 w-4" />
-                                    Editar
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleToggleStatus(employee)}>
-                                    {employee.isActive ? <UserX className="mr-2 h-4 w-4" /> : <UserCheck className="mr-2 h-4 w-4" />}
-                                    {employee.isActive ? 'Desativar' : 'Ativar'}
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => handleDeleteClick(employee)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    Remover
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                                </DropdownMenu>
-                            </TableCell>
-                            </TableRow>
-                        ))
-                        )}
-                    </TableBody>
-                    </Table>
-                </div>
-            </CardContent>
+                 )}
+             </CardContent>
+            <CardFooter className="flex justify-end">
+                 <Button onClick={openAddForm}>
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    Adicionar Colaborador
+                 </Button>
+            </CardFooter>
         </Card>
 
 

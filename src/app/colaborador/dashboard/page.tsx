@@ -29,6 +29,7 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import Link from 'next/link'; // Import Link
 
 // Import necessary types
 import type { Evaluation } from '@/types/evaluation';
@@ -187,7 +188,7 @@ export default function EmployeeDashboardPage() {
 
     if (isLoading) {
         return (
-            <div className="flex justify-center items-center h-full">
+            <div className="flex justify-center items-center h-full py-20"> {/* Added padding */}
                 <Loader2 className="h-16 w-16 animate-spin text-primary" />
             </div>
         );
@@ -195,7 +196,7 @@ export default function EmployeeDashboardPage() {
 
     if (!data) {
         return (
-            <div className="text-center text-muted-foreground">
+            <div className="text-center text-muted-foreground py-20"> {/* Added padding */}
                 Não foi possível carregar os dados do dashboard. Tente novamente mais tarde.
             </div>
         );
@@ -205,13 +206,13 @@ export default function EmployeeDashboardPage() {
 
     return (
         <TooltipProvider>
-            <div className="grid gap-6 lg:grid-cols-3">
+            <div className="grid gap-4 md:gap-6 lg:grid-cols-3"> {/* Responsive grid */}
                 {/* Left Column */}
-                <div className="lg:col-span-2 space-y-6">
+                <div className="lg:col-span-2 space-y-4 md:space-y-6">
                     {/* Status Card */}
                     <Card>
                         <CardHeader>
-                            <CardTitle className="flex items-center justify-between">
+                            <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                                 <span>Status do Dia ({format(new Date(), 'dd/MM/yyyy', { locale: ptBR })})</span>
                                 <Badge variant={data.todayStatus === 'evaluated' ? 'default' : 'secondary'}>
                                     {data.todayStatus === 'evaluated' ? 'Avaliado' : 'Pendente'}
@@ -296,7 +297,10 @@ export default function EmployeeDashboardPage() {
                                             <p className="text-xs text-muted-foreground mb-2">{challenge.description.substring(0, 80)}...</p>
                                             <div className="flex justify-between items-center text-xs text-muted-foreground">
                                                 <span>Termina em: {format(parseISO(challenge.periodEndDate), 'dd/MM/yyyy')}</span>
-                                                 <Button variant="link" size="sm" className="p-0 h-auto text-accent">Ver Detalhes</Button> {/* Link to challenge details page */}
+                                                {/* Link to challenge details page */}
+                                                <Link href="/colaborador/desafios" passHref>
+                                                   <Button variant="link" size="sm" className="p-0 h-auto text-accent">Ver Detalhes</Button>
+                                                </Link>
                                             </div>
                                         </li>
                                     ))}
@@ -306,13 +310,16 @@ export default function EmployeeDashboardPage() {
                             )}
                         </CardContent>
                          <CardFooter>
-                             <Button variant="secondary" size="sm">Ver Todos Desafios</Button> {/* Link to challenges page */}
+                             {/* Link to challenges page */}
+                             <Link href="/colaborador/desafios" passHref>
+                                <Button variant="secondary" size="sm">Ver Todos Desafios</Button>
+                             </Link>
                         </CardFooter>
                     </Card>
                 </div>
 
                 {/* Right Column */}
-                <div className="lg:col-span-1 space-y-6">
+                <div className="lg:col-span-1 space-y-4 md:space-y-6">
                     {/* Notifications Card */}
                     <Card className="max-h-[400px] flex flex-col"> {/* Limit height */}
                         <CardHeader>
@@ -342,7 +349,8 @@ export default function EmployeeDashboardPage() {
                             )}
                         </CardContent>
                          <CardFooter className="border-t pt-4">
-                            <Button variant="ghost" size="sm" className="w-full">Ver Todas Notificações</Button>
+                            {/* TODO: Implement link/modal to see all notifications */}
+                            <Button variant="ghost" size="sm" className="w-full" disabled>Ver Todas Notificações</Button>
                         </CardFooter>
                     </Card>
 
@@ -352,8 +360,14 @@ export default function EmployeeDashboardPage() {
                             <CardTitle>Ações Rápidas</CardTitle>
                          </CardHeader>
                         <CardContent className="grid gap-2">
-                            <Button variant="outline">Ver Meu Histórico Completo</Button>
-                            <Button variant="outline">Consultar Ranking Atual</Button>
+                             {/* Link to history page */}
+                            <Link href="/colaborador/avaliacoes" passHref>
+                                <Button variant="outline" className="w-full">Ver Meu Histórico Completo</Button>
+                            </Link>
+                             {/* Link to ranking page */}
+                            <Link href="/colaborador/ranking" passHref>
+                                <Button variant="outline" className="w-full">Consultar Meu Ranking</Button>
+                            </Link>
                             {/* Add more relevant actions */}
                         </CardContent>
                     </Card>

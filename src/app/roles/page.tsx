@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -30,9 +31,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'; // Added CardFooter
 import { useToast } from '@/hooks/use-toast';
-import { RoleForm } from '@/components/role/role-form'; // To be created
+import { RoleForm } from '@/components/role/role-form';
+import { DataTable } from '@/components/ui/data-table'; // Import DataTable
+import type { ColumnDef } from '@tanstack/react-table'; // Import ColumnDef
 
 export interface Role {
     id: string;
@@ -97,21 +100,57 @@ const deleteRole = async (roleId: string): Promise<void> => {
 
 export default function RolesPage() {
     const [roles, setRoles] = React.useState<Role[]>([]);
-    const [filteredRoles, setFilteredRoles] = React.useState<Role[]>([]);
     const [isLoading, setIsLoading] = React.useState(true);
-    const [searchTerm, setSearchTerm] = React.useState('');
     const [selectedRole, setSelectedRole] = React.useState<Role | null>(null);
     const [isFormOpen, setIsFormOpen] = React.useState(false);
     const [isDeleting, setIsDeleting] = React.useState(false);
     const [roleToDelete, setRoleToDelete] = React.useState<Role | null>(null);
     const { toast } = useToast();
 
+    // Define columns for DataTable
+    const columns: ColumnDef<Role>[] = [
+        { accessorKey: "name", header: "Nome da Função", cell: ({ row }) => <span className="font-medium">{row.original.name}</span> },
+        { accessorKey: "description", header: "Descrição", cell: ({ row }) => row.original.description || '-' },
+        {
+            id: "actions",
+            cell: ({ row }) => {
+                const role = row.original;
+                return (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                                <span className="sr-only">Abrir menu</span>
+                                <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                            <DropdownMenuItem onClick={() => openEditForm(role)}>
+                                <Edit className="mr-2 h-4 w-4" />
+                                Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                                onClick={() => handleDeleteClick(role)}
+                                className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                                disabled={['Recrutadora', 'Desenvolvedor Backend', 'Analista de Marketing', 'Executivo de Contas', 'Desenvolvedora Frontend'].includes(role.name) && roles.length <= 5}
+                            >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Remover
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                );
+            },
+            size: 80,
+        },
+    ];
+
     const loadRoles = React.useCallback(async () => {
         setIsLoading(true);
         try {
             const data = await fetchRoles();
             setRoles(data);
-            setFilteredRoles(data);
         } catch (error) {
             console.error("Falha ao carregar funções:", error);
             toast({ title: "Erro", description: "Falha ao carregar funções.", variant: "destructive" });
@@ -123,15 +162,6 @@ export default function RolesPage() {
     React.useEffect(() => {
         loadRoles();
     }, [loadRoles]);
-
-    React.useEffect(() => {
-        const lowerCaseSearchTerm = searchTerm.toLowerCase();
-        const filtered = roles.filter(role =>
-            role.name.toLowerCase().includes(lowerCaseSearchTerm) ||
-            (role.description && role.description.toLowerCase().includes(lowerCaseSearchTerm))
-        );
-        setFilteredRoles(filtered);
-    }, [searchTerm, roles]);
 
     const handleSaveRole = async (data: Omit<Role, 'id'>) => {
         const roleDataToSave = selectedRole ? { ...selectedRole, ...data } : data;
@@ -196,85 +226,25 @@ export default function RolesPage() {
                     <CardDescription>Crie, edite ou remova funções (cargos) na organização.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="relative w-full max-w-sm">
-                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                type="search"
-                                placeholder="Buscar por nome ou descrição..."
-                                className="pl-8"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
+                     {isLoading ? (
+                        <div className="flex justify-center items-center py-10">
+                            <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
                         </div>
-                        <Button onClick={openAddForm}>
-                            <PlusCircle className="mr-2 h-4 w-4" />
-                            Adicionar Função
-                        </Button>
-                    </div>
-
-                    <div className="rounded-md border">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Nome da Função</TableHead>
-                                    <TableHead>Descrição</TableHead>
-                                    <TableHead className="text-right">Ações</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {isLoading ? (
-                                    <TableRow>
-                                        <TableCell colSpan={3} className="text-center py-10">
-                                            <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
-                                            Carregando funções...
-                                        </TableCell>
-                                    </TableRow>
-                                ) : filteredRoles.length === 0 ? (
-                                    <TableRow>
-                                        <TableCell colSpan={3} className="text-center py-10 text-muted-foreground">
-                                            Nenhuma função encontrada.
-                                        </TableCell>
-                                    </TableRow>
-                                ) : (
-                                    filteredRoles.map((role) => (
-                                        <TableRow key={role.id}>
-                                            <TableCell className="font-medium">{role.name}</TableCell>
-                                            <TableCell>{role.description || '-'}</TableCell>
-                                            <TableCell className="text-right">
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="ghost" className="h-8 w-8 p-0">
-                                                            <span className="sr-only">Abrir menu</span>
-                                                            <MoreHorizontal className="h-4 w-4" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end">
-                                                        <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                                        <DropdownMenuItem onClick={() => openEditForm(role)}>
-                                                            <Edit className="mr-2 h-4 w-4" />
-                                                            Editar
-                                                        </DropdownMenuItem>
-                                                        <DropdownMenuSeparator />
-                                                        <DropdownMenuItem
-                                                            onClick={() => handleDeleteClick(role)}
-                                                            className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                                                            // Basic check: prevent deleting core roles for demo
-                                                            disabled={['Recrutadora', 'Desenvolvedor Backend', 'Analista de Marketing', 'Executivo de Contas', 'Desenvolvedora Frontend'].includes(role.name) && roles.length <= 5}
-                                                        >
-                                                            <Trash2 className="mr-2 h-4 w-4" />
-                                                            Remover
-                                                        </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
-                                )}
-                            </TableBody>
-                        </Table>
-                    </div>
+                     ) : (
+                        <DataTable
+                            columns={columns}
+                            data={roles}
+                            filterColumn="name"
+                            filterPlaceholder="Buscar por nome..."
+                        />
+                     )}
                 </CardContent>
+                <CardFooter className="flex justify-end">
+                    <Button onClick={openAddForm}>
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Adicionar Função
+                    </Button>
+                </CardFooter>
             </Card>
 
             {/* Role Form Dialog */}
@@ -305,3 +275,4 @@ export default function RolesPage() {
         </div>
     );
 }
+

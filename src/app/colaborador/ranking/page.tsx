@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { format, parseISO, subMonths, addMonths, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Trophy, Crown, Medal, ChevronLeft, ChevronRight, HelpCircle, Loader2, BarChartHorizontal, Info } from 'lucide-react';
+import { Trophy, Crown, Medal, ChevronLeft, ChevronRight, HelpCircle, Loader2, BarChartHorizontal, Info, Award } from 'lucide-react'; // Added Award
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,7 +17,7 @@ import { Separator } from '@/components/ui/separator';
 
 // Import Types
 import type { RankingEntry } from '@/app/ranking/page'; // Reuse admin type if suitable
-import type { Award } from '@/app/ranking/page'; // Reuse admin award type
+import type { Award as AdminAward } from '@/app/ranking/page'; // Reuse admin award type, rename to avoid clash
 
 // Mock Employee ID
 const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
@@ -27,7 +27,7 @@ import { mockRanking as allAdminRanking } from '@/app/ranking/page'; // Reuse ad
 import { mockAwards as allAdminAwards } from '@/app/ranking/page';
 
 // Mock function to fetch ranking data for a specific month, adapted for employee view
-const fetchEmployeeRankingData = async (employeeId: string, period: Date): Promise<{ ranking: RankingEntry[], userEntry?: RankingEntry, award?: Award }> => {
+const fetchEmployeeRankingData = async (employeeId: string, period: Date): Promise<{ ranking: RankingEntry[], userEntry?: RankingEntry, award?: AdminAward }> => {
     await new Promise(resolve => setTimeout(resolve, 800));
 
     // Simulate fetching data for the period
@@ -77,11 +77,13 @@ const rankingColumns: ColumnDef<RankingEntry>[] = [
                     <AvatarImage src={row.original.employeePhotoUrl} alt={row.original.employeeName} />
                     <AvatarFallback className="text-xs">{getInitials(row.original.employeeName)}</AvatarFallback>
                 </Avatar>
-                <span className="font-medium text-sm">{row.original.employeeName} {row.original.employeeId === CURRENT_EMPLOYEE_ID ? '(Você)' : ''}</span>
+                <span className={`font-medium text-sm ${row.original.employeeId === CURRENT_EMPLOYEE_ID ? 'text-primary' : ''}`}> {/* Highlight user */}
+                    {row.original.employeeName} {row.original.employeeId === CURRENT_EMPLOYEE_ID ? '(Você)' : ''}
+                </span>
             </div>
         ),
     },
-    { accessorKey: "department", header: "Departamento", cell: ({ row }) => <span className="text-xs">{row.getValue("department")}</span> },
+    { accessorKey: "department", header: "Departamento", cell: ({ row }) => <span className="text-xs hidden sm:inline">{row.getValue("department")}</span> }, // Hide on small screens
     {
         accessorKey: "score",
         header: "Pontuação",
@@ -100,7 +102,7 @@ const rankingColumns: ColumnDef<RankingEntry>[] = [
 export default function EmployeeRankingPage() {
     const [rankingData, setRankingData] = React.useState<RankingEntry[]>([]);
     const [currentUserEntry, setCurrentUserEntry] = React.useState<RankingEntry | undefined>(undefined);
-    const [currentAward, setCurrentAward] = React.useState<Award | undefined>(undefined);
+    const [currentAward, setCurrentAward] = React.useState<AdminAward | undefined>(undefined);
     const [currentMonth, setCurrentMonth] = React.useState(new Date());
     const [isLoading, setIsLoading] = React.useState(true);
     const { toast } = useToast();
@@ -141,7 +143,7 @@ export default function EmployeeRankingPage() {
      // For simplicity, we'll show the full table paginated by DataTable
      // const displayedRanking = rankingData; // Use DataTable pagination
 
-    const getPrizeDescription = (award: Award | undefined, rank: number): string => {
+    const getPrizeDescription = (award: AdminAward | undefined, rank: number): string => {
          if (!award) return '-';
          const positionPrize = award.valuesPerPosition?.[rank];
          if (positionPrize) {
@@ -157,16 +159,16 @@ export default function EmployeeRankingPage() {
                  {/* Header and Month Navigation */}
                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
-                        <h1 className="text-3xl font-bold flex items-center gap-2">
-                            <Trophy className="h-7 w-7" /> Meu Ranking
+                        <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2"> {/* Responsive title */}
+                            <Trophy className="h-6 w-6 sm:h-7 sm:w-7" /> Meu Ranking
                         </h1>
-                        <p className="text-muted-foreground">Acompanhe sua posição e o desempenho geral.</p>
+                        <p className="text-muted-foreground text-sm sm:text-base">Acompanhe sua posição e o desempenho geral.</p> {/* Responsive description */}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 self-end sm:self-center"> {/* Align buttons */}
                          <Button variant="outline" size="icon" onClick={handlePreviousMonth} aria-label="Mês anterior">
                              <ChevronLeft className="h-4 w-4" />
                          </Button>
-                         <span className="text-lg font-semibold w-32 text-center">
+                         <span className="text-base sm:text-lg font-semibold w-28 sm:w-32 text-center"> {/* Responsive text */}
                              {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
                          </span>
                          <Button variant="outline" size="icon" onClick={handleNextMonth} disabled={isCurrentDisplayMonth} aria-label="Próximo mês">
@@ -184,7 +186,7 @@ export default function EmployeeRankingPage() {
                     </CardHeader>
                     <CardContent className="flex flex-col sm:flex-row items-center gap-4">
                          <div className="flex flex-col items-center">
-                            <span className="text-6xl font-bold text-primary">
+                            <span className="text-5xl sm:text-6xl font-bold text-primary"> {/* Responsive font size */}
                                 {currentUserEntry?.rank ?? '-'}º
                              </span>
                              <span className="text-muted-foreground text-sm">Lugar</span>
@@ -277,4 +279,3 @@ export default function EmployeeRankingPage() {
         </TooltipProvider>
     );
 }
-

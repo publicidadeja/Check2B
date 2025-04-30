@@ -1,7 +1,8 @@
+
 'use client';
 
 import * as React from 'react';
-import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Copy } from 'lucide-react';
+import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Copy, ClipboardList, Loader2 } from 'lucide-react'; // Added Icons
 import {
   Table,
   TableBody,
@@ -34,14 +35,18 @@ import {
 import { TaskForm } from '@/components/task/task-form';
 import type { Task } from '@/types/task';
 import { useToast } from '@/hooks/use-toast';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'; // Added Card components
+import { DataTable } from '@/components/ui/data-table'; // Import DataTable
+import type { ColumnDef } from '@tanstack/react-table'; // Import ColumnDef
 
 // Mock data (simulated API response) - Manter nomes em português
-const mockTasks: Task[] = [
+export const mockTasks: Task[] = [
   { id: 't1', title: 'Verificar Emails', description: 'Responder a todos os emails pendentes.', criteria: 'Caixa de entrada zerada ou emails urgentes respondidos.', category: 'Comunicação', periodicity: 'daily', assignedTo: 'role', assignedEntityId: 'Recrutadora' },
   { id: 't2', title: 'Reunião Diária', description: 'Participar da reunião da equipe.', criteria: 'Presença e participação ativa.', category: 'Engenharia', periodicity: 'daily', assignedTo: 'department', assignedEntityId: 'Engenharia' },
   { id: 't3', title: 'Atualizar CRM', description: 'Registrar novas interações no CRM.', criteria: 'CRM atualizado com atividades do dia.', category: 'Vendas', periodicity: 'daily', assignedTo: 'role', assignedEntityId: 'Executivo de Contas' },
   { id: 't4', title: 'Postar em Redes Sociais', description: 'Agendar/publicar post planejado.', criteria: 'Post publicado conforme planejado.', category: 'Marketing', periodicity: 'specific_days', assignedTo: 'role', assignedEntityId: 'Analista de Marketing' },
   { id: 't5', title: 'Revisar Código', description: 'Revisar pull requests designados.', criteria: 'PRs revisados com feedback.', category: 'Engenharia', periodicity: 'daily', assignedTo: 'individual', assignedEntityId: '2' /* Beto Santos ID */ },
+  { id: 't6', title: 'Relatório Semanal', description: 'Compilar dados e criar relatório.', criteria: 'Relatório completo e enviado.', category: 'Geral', periodicity: 'specific_days' /* e.g., Sextas */ }, // Added global task
 ];
 
 // Mock API functions
@@ -89,22 +94,96 @@ const deleteTask = async (taskId: string): Promise<void> => {
 
 export default function TasksPage() {
   const [tasks, setTasks] = React.useState<Task[]>([]);
-  const [filteredTasks, setFilteredTasks] = React.useState<Task[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [searchTerm, setSearchTerm] = React.useState('');
   const [selectedTask, setSelectedTask] = React.useState<Task | null>(null);
   const [isFormOpen, setIsFormOpen] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [taskToDelete, setTaskToDelete] = React.useState<Task | null>(null);
-
   const { toast } = useToast();
+
+  // Helper Functions
+  const getAssignmentText = (task: Task): string => {
+      if (!task.assignedTo) return 'Global';
+      let typeText = '';
+      switch (task.assignedTo) {
+          case 'role': typeText = 'Função'; break;
+          case 'department': typeText = 'Depto'; break;
+          case 'individual': typeText = 'Indiv.'; break;
+          default: typeText = task.assignedTo;
+      }
+      // Fetch name for individual if possible, otherwise show ID
+      const entityName = task.assignedTo === 'individual' ? mockEmployees.find(e => e.id === task.assignedEntityId)?.name : task.assignedEntityId;
+      return `${typeText}${entityName ? `: ${entityName}` : ''}`;
+  }
+
+  const getPeriodicityText = (periodicity: Task['periodicity']): string => {
+      switch (periodicity) {
+          case 'daily': return 'Diária';
+          case 'specific_days': return 'Dias Específicos';
+          case 'specific_dates': return 'Datas Específicas';
+          default: return periodicity;
+      }
+  }
+
+
+  // Define columns for DataTable
+  const columns: ColumnDef<Task>[] = [
+    { accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
+    {
+      accessorKey: "category",
+      header: "Categoria",
+      cell: ({ row }) => row.original.category ? <Badge variant="secondary">{row.original.category}</Badge> : '-',
+    },
+    {
+      accessorKey: "periodicity",
+      header: "Periodicidade",
+      cell: ({ row }) => getPeriodicityText(row.original.periodicity),
+    },
+    {
+      accessorKey: "assignedTo",
+      header: "Atribuído a",
+      cell: ({ row }) => getAssignmentText(row.original),
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => {
+        const task = row.original;
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Abrir menu</span>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Ações</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => openEditForm(task)}>
+                <Edit className="mr-2 h-4 w-4" />
+                Editar
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleDuplicateTask(task)}>
+                <Copy className="mr-2 h-4 w-4" />
+                Duplicar
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => handleDeleteClick(task)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Remover
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
+      size: 80,
+    },
+  ];
 
   const loadTasks = React.useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await fetchTasks();
       setTasks(data);
-      setFilteredTasks(data);
     } catch (error) {
       console.error("Falha ao carregar tarefas:", error);
       toast({ title: "Erro", description: "Falha ao carregar tarefas.", variant: "destructive" });
@@ -116,18 +195,6 @@ export default function TasksPage() {
   React.useEffect(() => {
     loadTasks();
   }, [loadTasks]);
-
-   React.useEffect(() => {
-    const lowerCaseSearchTerm = searchTerm.toLowerCase();
-    const filtered = tasks.filter(task =>
-      task.title.toLowerCase().includes(lowerCaseSearchTerm) ||
-      task.description.toLowerCase().includes(lowerCaseSearchTerm) ||
-      (task.category && task.category.toLowerCase().includes(lowerCaseSearchTerm)) ||
-      (task.assignedTo && task.assignedTo.toLowerCase().includes(lowerCaseSearchTerm)) ||
-      (task.assignedEntityId && task.assignedEntityId.toLowerCase().includes(lowerCaseSearchTerm))
-    );
-    setFilteredTasks(filtered);
-  }, [searchTerm, tasks]);
 
   const handleSaveTask = async (data: any) => { // Type any for mock, define properly later
      const taskDataToSave = selectedTask ? { ...selectedTask, ...data } : data;
@@ -202,112 +269,37 @@ export default function TasksPage() {
     setIsFormOpen(true);
   };
 
-  const getAssignmentText = (task: Task): string => {
-    if (!task.assignedTo) return 'Global';
-    let typeText = '';
-    switch (task.assignedTo) {
-        case 'role': typeText = 'Função'; break;
-        case 'department': typeText = 'Depto'; break;
-        case 'individual': typeText = 'Indiv.'; break;
-        default: typeText = task.assignedTo;
-    }
-    return `${typeText}${task.assignedEntityId ? `: ${task.assignedEntityId}` : ''}`;
-  }
-
-  const getPeriodicityText = (periodicity: Task['periodicity']): string => {
-      switch (periodicity) {
-          case 'daily': return 'Diária';
-          case 'specific_days': return 'Dias Específicos';
-          case 'specific_dates': return 'Datas Específicas';
-          default: return periodicity;
-      }
-  }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between mb-4">
-        <div className="relative w-full max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Buscar por título, categoria, atribuição..."
-            className="pl-8"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-         {/* Trigger Adicionar Tarefa */}
-         <Button onClick={openAddForm}>
-           <PlusCircle className="mr-2 h-4 w-4" />
-           Adicionar Tarefa
-         </Button>
-      </div>
-
-      <div className="flex-grow overflow-auto rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Título</TableHead>
-              <TableHead>Categoria</TableHead>
-              <TableHead>Periodicidade</TableHead>
-              <TableHead>Atribuído a</TableHead>
-              <TableHead className="text-right">Ações</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+     <div className="space-y-6"> {/* Added space-y for better spacing */}
+       <Card>
+         <CardHeader>
+             <CardTitle className="flex items-center gap-2">
+                <ClipboardList className="h-5 w-5" /> Gestão de Tarefas do Checklist
+             </CardTitle>
+            <CardDescription>Adicione, edite e atribua tarefas que serão avaliadas diariamente.</CardDescription>
+         </CardHeader>
+         <CardContent>
             {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center py-10">
-                  Carregando tarefas...
-                </TableCell>
-              </TableRow>
-             ) : filteredTasks.length === 0 ? (
-               <TableRow>
-                  <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
-                    Nenhuma tarefa encontrada.
-                  </TableCell>
-              </TableRow>
-             ) : (
-              filteredTasks.map((task) => (
-                <TableRow key={task.id}>
-                  <TableCell className="font-medium">{task.title}</TableCell>
-                  <TableCell>
-                    {task.category ? <Badge variant="secondary">{task.category}</Badge> : '-'}
-                  </TableCell>
-                  <TableCell>{getPeriodicityText(task.periodicity)}</TableCell>
-                  <TableCell>{getAssignmentText(task)}</TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                          <span className="sr-only">Abrir menu</span>
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                         <DropdownMenuItem onClick={() => openEditForm(task)}>
-                            <Edit className="mr-2 h-4 w-4" />
-                            Editar
-                         </DropdownMenuItem>
-                         <DropdownMenuItem onClick={() => handleDuplicateTask(task)}>
-                           <Copy className="mr-2 h-4 w-4" />
-                           Duplicar
-                         </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => handleDeleteClick(task)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Remover
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
+                 <div className="flex justify-center items-center py-10">
+                    <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+                 </div>
+            ) : (
+                <DataTable
+                    columns={columns}
+                    data={tasks}
+                    filterColumn="title" // Specify the column to filter
+                    filterPlaceholder="Buscar por título..." // Custom placeholder
+                />
             )}
-          </TableBody>
-        </Table>
-      </div>
+         </CardContent>
+          <CardFooter className="flex justify-end">
+                <Button onClick={openAddForm}>
+                   <PlusCircle className="mr-2 h-4 w-4" />
+                   Adicionar Tarefa
+                </Button>
+          </CardFooter>
+       </Card>
 
        {/* Formulário de Tarefa (Dialog) */}
        <TaskForm
@@ -337,3 +329,11 @@ export default function TasksPage() {
     </div>
   );
 }
+
+// Need mockEmployees for getAssignmentText
+const mockEmployees: Array<{ id: string; name: string }> = [
+  { id: '1', name: 'Alice Silva' },
+  { id: '2', name: 'Beto Santos' },
+  { id: '4', name: 'Davi Costa' },
+  { id: '5', name: 'Eva Pereira' },
+];

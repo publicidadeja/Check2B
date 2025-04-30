@@ -305,7 +305,7 @@ function ChallengeDetailsModal({ challenge, participation, onAccept, onSubmit, i
                                                 id="evidence-file"
                                                 type="file"
                                                 onChange={handleFileChange}
-                                                className="mt-1"
+                                                className="mt-1 text-xs file:text-xs" // Smaller text for file input
                                                 disabled={isReadOnly}
                                             />
                                              {/* Display existing file URL if read-only and available */}
@@ -335,17 +335,17 @@ function ChallengeDetailsModal({ challenge, participation, onAccept, onSubmit, i
                     </div>
                  </ScrollArea>
 
-                 <DialogFooter className="mt-6 gap-2">
+                 <DialogFooter className="mt-6 gap-2 flex-col sm:flex-row"> {/* Adjusted for responsiveness */}
                     <DialogClose asChild>
-                        <Button type="button" variant="secondary">Fechar</Button>
+                        <Button type="button" variant="secondary" className="w-full sm:w-auto">Fechar</Button>
                     </DialogClose>
                     {canAccept && onAccept && (
-                        <Button onClick={() => { onAccept(challenge.id); onOpenChange(false); }}>
+                        <Button onClick={() => { onAccept(challenge.id); onOpenChange(false); }} className="w-full sm:w-auto">
                             <CheckCircle className="mr-2 h-4 w-4"/> Aceitar Desafio
                         </Button>
                     )}
                     {canSubmit && onSubmit && (
-                         <Button onClick={handleSubmit} disabled={isSubmitting}>
+                         <Button onClick={handleSubmit} disabled={isSubmitting} className="w-full sm:w-auto">
                             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             {isSubmitting ? 'Enviando...' : 'Enviar Conclusão'}
                          </Button>
@@ -436,7 +436,7 @@ export default function EmployeeChallengesPage() {
                         <CardTitle className="text-base">{challenge.title}</CardTitle>
                          {listType !== 'available' && <Badge variant={statusVariant}>{statusText}</Badge>}
                     </div>
-                    <CardDescription className="text-xs pt-1 line-clamp-2">{challenge.description}</CardDescription>
+                    <CardDescription className="text-xs pt-1 line-clamp-2 h-8">{challenge.description}</CardDescription> {/* Fixed height */}
                 </CardHeader>
                 <CardContent className="text-xs space-y-1">
                     <div className="flex justify-between items-center">
@@ -463,18 +463,18 @@ export default function EmployeeChallengesPage() {
 
     return (
         <div className="space-y-6">
-            <h1 className="text-3xl font-bold flex items-center gap-2">
-                 <Target className="h-7 w-7" /> Meus Desafios
+            <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2"> {/* Responsive title */}
+                 <Target className="h-6 w-6 sm:h-7 sm:w-7" /> Meus Desafios
             </h1>
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground text-sm sm:text-base"> {/* Responsive description */}
                 Participe de desafios, ganhe pontos extras e desenvolva suas habilidades.
             </p>
 
             <Tabs defaultValue="available" className="w-full">
                 <TabsList className="grid w-full grid-cols-3 mb-4">
-                    <TabsTrigger value="available"><Target className="mr-2 h-4 w-4"/>Disponíveis ({isLoading ? '...' : availableChallenges.length})</TabsTrigger>
-                    <TabsTrigger value="active"><Clock className="mr-2 h-4 w-4"/>Em Andamento ({isLoading ? '...' : activeChallenges.length})</TabsTrigger>
-                    <TabsTrigger value="completed"><History className="mr-2 h-4 w-4"/>Histórico ({isLoading ? '...' : completedChallenges.length})</TabsTrigger>
+                    <TabsTrigger value="available"><Target className="mr-1 sm:mr-2 h-4 w-4"/>Disponíveis ({isLoading ? '...' : availableChallenges.length})</TabsTrigger>
+                    <TabsTrigger value="active"><Clock className="mr-1 sm:mr-2 h-4 w-4"/>Em Andamento ({isLoading ? '...' : activeChallenges.length})</TabsTrigger>
+                    <TabsTrigger value="completed"><History className="mr-1 sm:mr-2 h-4 w-4"/>Histórico ({isLoading ? '...' : completedChallenges.length})</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="available">
@@ -483,7 +483,7 @@ export default function EmployeeChallengesPage() {
                     ) : availableChallenges.length === 0 ? (
                         <p className="text-center text-muted-foreground py-10">Nenhum novo desafio disponível no momento.</p>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             {availableChallenges.map(ch => renderChallengeCard(ch, 'available'))}
                         </div>
                     )}
@@ -495,7 +495,7 @@ export default function EmployeeChallengesPage() {
                     ) : activeChallenges.length === 0 ? (
                          <p className="text-center text-muted-foreground py-10">Você não está participando de nenhum desafio no momento.</p>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             {activeChallenges.map(ch => renderChallengeCard(ch, 'active'))}
                         </div>
                     )}
@@ -507,7 +507,7 @@ export default function EmployeeChallengesPage() {
                     ) : completedChallenges.length === 0 ? (
                          <p className="text-center text-muted-foreground py-10">Você ainda não completou nenhum desafio.</p>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                              {completedChallenges.map(ch => renderChallengeCard(ch, 'completed'))}
                         </div>
                     )}

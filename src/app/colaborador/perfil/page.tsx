@@ -15,6 +15,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { format, parseISO } from 'date-fns'; // Added parseISO
+import { ptBR } from 'date-fns/locale'; // Added ptBR
 
 // Import types (assuming Employee type exists)
 import type { Employee } from '@/types/employee';
@@ -194,37 +196,49 @@ export default function EmployeeProfilePage() {
     };
 
     if (isLoading) {
-        return <div className="flex justify-center items-center h-full"><Loader2 className="h-16 w-16 animate-spin text-primary" /></div>;
+        return <div className="flex justify-center items-center h-full py-20"><Loader2 className="h-16 w-16 animate-spin text-primary" /></div>;
     }
 
     if (!employee) {
-        return <div className="text-center text-muted-foreground">Erro ao carregar perfil.</div>;
+        return <div className="text-center text-muted-foreground py-20">Erro ao carregar perfil.</div>;
     }
 
     return (
         <div className="space-y-6">
+             <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+                <User className="h-6 w-6 sm:h-7 sm:w-7" /> Meu Perfil
+            </h1>
+
             {/* Profile Info Card */}
             <Card>
                  <Form {...profileForm}>
                     <form onSubmit={profileForm.handleSubmit(onProfileSubmit)}>
-                        <CardHeader className="flex flex-row items-center justify-between">
+                        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                             <div>
-                                <CardTitle className="flex items-center gap-2"><User className="h-5 w-5" /> Informações do Perfil</CardTitle>
-                                <CardDescription>Seus dados pessoais e de contato.</CardDescription>
+                                <CardTitle className="text-xl flex items-center gap-2">Informações Pessoais</CardTitle>
+                                <CardDescription>Seus dados de perfil e contato.</CardDescription>
                             </div>
-                            {!isEditingProfile && (
-                                <Button type="button" variant="outline" size="sm" onClick={() => setIsEditingProfile(true)}>
+                            {!isEditingProfile ? (
+                                <Button type="button" variant="outline" size="sm" onClick={() => setIsEditingProfile(true)} className="self-end sm:self-auto">
                                     <Edit className="mr-2 h-4 w-4" /> Editar
                                 </Button>
+                             ) : (
+                                <div className="flex gap-2 self-end sm:self-auto">
+                                     <Button type="button" variant="ghost" size="sm" onClick={() => { setIsEditingProfile(false); profileForm.reset({ name: employee.name, phone: employee.phone || '', photoUrl: employee.photoUrl || '' }); }}>Cancelar</Button>
+                                     <Button type="submit" size="sm" disabled={isSavingProfile}>
+                                        {isSavingProfile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                        Salvar
+                                    </Button>
+                                </div>
                             )}
                         </CardHeader>
                         <CardContent className="space-y-4">
-                             <div className="flex items-center space-x-4">
-                                <Avatar className="h-24 w-24">
+                             <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4">
+                                <Avatar className="h-20 w-20 sm:h-24 sm:w-24">
                                     <AvatarImage src={profileForm.watch('photoUrl') || employee.photoUrl} alt={employee.name} />
                                     <AvatarFallback className="text-3xl">{getInitials(employee.name)}</AvatarFallback>
                                 </Avatar>
-                                <div className="flex-1 space-y-2">
+                                <div className="w-full sm:flex-1 space-y-2">
                                      <FormField
                                         control={profileForm.control}
                                         name="photoUrl"
@@ -238,18 +252,17 @@ export default function EmployeeProfilePage() {
                                             </FormItem>
                                         )}
                                         />
-                                     {/* Display Name (Read-only for employee) */}
-                                     <div>
-                                        <Label>Nome</Label>
-                                        <Input value={employee.name} readOnly disabled className="bg-muted/50" />
-                                    </div>
                                  </div>
                             </div>
-                            <Separator />
+                             <Separator className="my-4" />
+                             {/* Read Only Fields */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                 {/* Display Email (Read-only) */}
                                 <div>
-                                    <Label htmlFor="email">Email Corporativo</Label>
+                                    <Label>Nome</Label>
+                                    <Input value={employee.name} readOnly disabled className="bg-muted/50"/>
+                                </div>
+                                <div>
+                                    <Label>Email Corporativo</Label>
                                     <Input id="email" value={employee.email} readOnly disabled className="bg-muted/50"/>
                                 </div>
                                 <FormField
@@ -265,7 +278,6 @@ export default function EmployeeProfilePage() {
                                         </FormItem>
                                     )}
                                 />
-                                 {/* Display Department & Role (Read-only) */}
                                 <div>
                                     <Label>Departamento</Label>
                                     <Input value={employee.department} readOnly disabled className="bg-muted/50"/>
@@ -280,15 +292,6 @@ export default function EmployeeProfilePage() {
                                 </div>
                             </div>
                         </CardContent>
-                         {isEditingProfile && (
-                            <CardFooter className="justify-end gap-2">
-                                 <Button type="button" variant="ghost" onClick={() => { setIsEditingProfile(false); profileForm.reset(); /* Reset to original */ }}>Cancelar</Button>
-                                <Button type="submit" disabled={isSavingProfile}>
-                                    {isSavingProfile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    Salvar Alterações
-                                </Button>
-                            </CardFooter>
-                         )}
                     </form>
                  </Form>
             </Card>
@@ -298,7 +301,7 @@ export default function EmployeeProfilePage() {
                  <Form {...passwordForm}>
                     <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}>
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5" /> Alterar Senha</CardTitle>
+                            <CardTitle className="text-xl flex items-center gap-2"><ShieldCheck className="h-5 w-5" /> Alterar Senha</CardTitle>
                             <CardDescription>Mantenha sua conta segura.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -375,7 +378,7 @@ export default function EmployeeProfilePage() {
                  <Form {...notificationForm}>
                      <form onSubmit={notificationForm.handleSubmit(onNotificationSubmit)}>
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" /> Preferências de Notificação</CardTitle>
+                            <CardTitle className="text-xl flex items-center gap-2"><Bell className="h-5 w-5" /> Preferências de Notificação</CardTitle>
                             <CardDescription>Escolha quais notificações push você deseja receber.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
