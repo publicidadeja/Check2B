@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -18,6 +19,11 @@ import {
   CalendarClock, // Icon for history
   Users, // Icon for participants
   Award, // Icon for points
+  Save,
+  Upload,
+  Link as LinkIcon,
+  Archive, // For archiving
+  CheckCircle, // For activating
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -58,9 +64,17 @@ import { ptBR } from 'date-fns/locale';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator'; // Added Separator
+import { Switch } from '@/components/ui/switch'; // Added Switch
 
 // --- Mock Data ---
-// Existing mockChallenges array
+const mockChallenges: Challenge[] = [
+    { id: 'c1', title: 'Engajamento Total', description: 'Participar de todas as reuniões da semana e enviar resumo.', category: 'Comunicação', periodStartDate: '2024-08-05', periodEndDate: '2024-08-09', points: 50, difficulty: 'Médio', participationType: 'Opcional', eligibility: { type: 'all' }, evaluationMetrics: 'Presença confirmada e resumo enviado', status: 'completed' },
+    { id: 'c2', title: 'Zero Bugs Críticos', description: 'Entregar a feature X sem nenhum bug crítico reportado na primeira semana.', category: 'Qualidade', periodStartDate: '2024-08-12', periodEndDate: '2024-08-16', points: 150, difficulty: 'Difícil', participationType: 'Obrigatório', eligibility: { type: 'department', entityIds: ['Engenharia'] }, evaluationMetrics: 'Relatório de QA e Jira', status: 'active' },
+    { id: 'c3', title: 'Semana da Documentação', description: 'Documentar todas as APIs desenvolvidas no período.', category: 'Documentação', periodStartDate: '2024-08-19', periodEndDate: '2024-08-23', points: 75, difficulty: 'Médio', participationType: 'Obrigatório', eligibility: { type: 'role', entityIds: ['Desenvolvedor Backend', 'Desenvolvedora Frontend'] }, evaluationMetrics: 'Links para documentação no Confluence', status: 'scheduled' },
+    { id: 'c4', title: 'Feedback 360 Completo', description: 'Enviar feedback para todos os colegas designados.', category: 'Colaboração', periodStartDate: '2024-07-29', periodEndDate: '2024-08-02', points: 30, difficulty: 'Fácil', participationType: 'Obrigatório', eligibility: { type: 'all' }, evaluationMetrics: 'Confirmação no sistema de RH', status: 'evaluating' },
+     { id: 'c5', title: 'Ideia Inovadora (Rascunho)', description: 'Propor uma melhoria significativa em algum processo.', category: 'Inovação', periodStartDate: '2024-09-02', periodEndDate: '2024-09-06', points: 100, difficulty: 'Médio', participationType: 'Opcional', eligibility: { type: 'all' }, evaluationMetrics: 'Apresentação da ideia e avaliação do comitê', status: 'draft' },
+];
 
 // Mock participation data (replace with actual fetching/relation)
 interface ChallengeParticipation {
@@ -79,10 +93,67 @@ const mockParticipants: ChallengeParticipation[] = [
     { id: 'p1', challengeId: 'c3', employeeId: '2', employeeName: 'Beto Santos', status: 'submitted', submission: 'Links dos PRs: ...', submittedAt: new Date(2024, 7, 17) },
     { id: 'p2', challengeId: 'c3', employeeId: '5', employeeName: 'Eva Pereira', status: 'submitted', submission: 'Links: ...', submittedAt: new Date(2024, 7, 18) },
     { id: 'p3', challengeId: 'c1', employeeId: '4', employeeName: 'Davi Costa', status: 'pending' },
+    { id: 'p4', challengeId: 'c4', employeeId: '1', employeeName: 'Alice Silva', status: 'submitted', submission: 'Feedbacks enviados via sistema', submittedAt: new Date(2024, 8, 1) }, // Corrected month (August = 7)
 ];
 
 // --- Mock API Functions ---
-// Existing fetchChallenges, saveChallenge, deleteChallenge
+const fetchChallenges = async (): Promise<Challenge[]> => {
+    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
+    console.log("Fetching challenges...");
+    return [...mockChallenges]; // Return a copy to prevent mutation
+};
+
+const saveChallenge = async (challengeData: Omit<Challenge, 'id' | 'status'> | Challenge): Promise<Challenge> => {
+    await new Promise(resolve => setTimeout(resolve, 600));
+    if ('id' in challengeData && challengeData.id) {
+        // Update existing challenge
+        const index = mockChallenges.findIndex(c => c.id === challengeData.id);
+        if (index !== -1) {
+            mockChallenges[index] = { ...mockChallenges[index], ...challengeData };
+            console.log("Challenge updated:", mockChallenges[index]);
+            return mockChallenges[index];
+        } else {
+            throw new Error("Challenge not found for update.");
+        }
+    } else {
+        // Create new challenge
+        const newChallenge: Challenge = {
+            id: `c${Date.now()}`, // Simple ID generation
+            status: 'draft', // New challenges start as draft
+            ...(challengeData as Omit<Challenge, 'id'>), // Type assertion needed here
+        };
+        mockChallenges.push(newChallenge);
+        console.log("New challenge created:", newChallenge);
+        return newChallenge;
+    }
+};
+
+const deleteChallenge = async (challengeId: string): Promise<void> => {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const index = mockChallenges.findIndex(c => c.id === challengeId);
+    if (index !== -1) {
+         // Prevent deleting active or currently evaluating challenges
+        if (['active', 'evaluating'].includes(mockChallenges[index].status)) {
+            throw new Error("Não é possível remover um desafio ativo ou em avaliação.");
+        }
+        mockChallenges.splice(index, 1);
+        console.log("Challenge deleted:", challengeId);
+    } else {
+        throw new Error("Challenge not found for deletion.");
+    }
+};
+
+const updateChallengeStatus = async (challengeId: string, status: Challenge['status']): Promise<Challenge> => {
+     await new Promise(resolve => setTimeout(resolve, 400));
+     const index = mockChallenges.findIndex(c => c.id === challengeId);
+      if (index !== -1) {
+         mockChallenges[index].status = status;
+         console.log("Challenge status updated:", mockChallenges[index]);
+         return mockChallenges[index];
+     } else {
+         throw new Error("Challenge not found for status update.");
+     }
+}
 
 const fetchParticipantsForChallenge = async (challengeId: string): Promise<ChallengeParticipation[]> => {
     await new Promise(resolve => setTimeout(resolve, 400));
@@ -106,7 +177,7 @@ const evaluateSubmission = async (participationId: string, status: 'approved' | 
 
 // --- Component Sections ---
 
-// ManageChallenges Component (mostly unchanged, minor adjustments possible)
+// ManageChallenges Component
 const ManageChallenges = () => {
     const [challenges, setChallenges] = React.useState<Challenge[]>([]);
     const [filteredChallenges, setFilteredChallenges] = React.useState<Challenge[]>([]);
@@ -148,19 +219,14 @@ const ManageChallenges = () => {
     }, [searchTerm, challenges]);
 
      const handleSaveChallenge = async (data: any) => {
-        const challengeDataToSave = selectedChallenge ? { ...selectedChallenge, ...data } : data;
-        const payload = {
-            ...challengeDataToSave,
-            periodStartDate: challengeDataToSave.periodStartDate instanceof Date
-                ? format(challengeDataToSave.periodStartDate, 'yyyy-MM-dd')
-                : challengeDataToSave.periodStartDate,
-            periodEndDate: challengeDataToSave.periodEndDate instanceof Date
-                ? format(challengeDataToSave.periodEndDate, 'yyyy-MM-dd')
-                : challengeDataToSave.periodEndDate,
-        };
+        // The data received here already includes the 'eligibility' object structure
+        // and dates as strings, as prepared in the ChallengeForm.
+         const challengeDataToSave = selectedChallenge
+            ? { ...selectedChallenge, ...data, id: selectedChallenge.id } // Ensure ID is kept for update
+            : data;
 
         try {
-            await saveChallenge(payload);
+            await saveChallenge(challengeDataToSave);
             setIsFormOpen(false);
             setSelectedChallenge(null);
             await loadChallenges();
@@ -190,9 +256,9 @@ const ManageChallenges = () => {
                 await deleteChallenge(challengeToDelete.id);
                 toast({ title: "Sucesso", description: "Desafio removido com sucesso." });
                 await loadChallenges();
-            } catch (error) {
+            } catch (error: any) {
                 console.error("Falha ao remover desafio:", error);
-                toast({ title: "Erro", description: "Falha ao remover desafio.", variant: "destructive" });
+                toast({ title: "Erro", description: error.message || "Falha ao remover desafio.", variant: "destructive" });
             } finally {
                 setIsDeleting(false);
                 setChallengeToDelete(null);
@@ -202,12 +268,15 @@ const ManageChallenges = () => {
 
     const handleDuplicateChallenge = async (challenge: Challenge) => {
         const { id, title, status, ...challengeData } = challenge;
+        // Ensure eligibility object is duplicated correctly
         const duplicatedChallengeData = {
             ...challengeData,
             title: `${title} (Cópia)`,
-            status: 'draft',
+             // New challenges from duplication start as draft
+             eligibility: { ...challengeData.eligibility }, // Deep copy eligibility if needed
         };
         try {
+            // Save without id and status
             await saveChallenge(duplicatedChallengeData as Omit<Challenge, 'id' | 'status'>);
             toast({ title: "Sucesso", description: "Desafio duplicado com sucesso." });
             await loadChallenges();
@@ -216,6 +285,17 @@ const ManageChallenges = () => {
             toast({ title: "Erro", description: "Falha ao duplicar desafio.", variant: "destructive" });
         }
     };
+
+    const handleStatusChange = async (challenge: Challenge, newStatus: Challenge['status']) => {
+         try {
+            await updateChallengeStatus(challenge.id, newStatus);
+             toast({ title: "Sucesso", description: `Status do desafio "${challenge.title}" alterado para ${getStatusText(newStatus)}.` });
+             await loadChallenges();
+         } catch (error) {
+             console.error("Falha ao alterar status:", error);
+             toast({ title: "Erro", description: "Falha ao alterar status do desafio.", variant: "destructive" });
+         }
+    }
 
 
     const openEditForm = (challenge: Challenge) => {
@@ -228,18 +308,20 @@ const ManageChallenges = () => {
         setIsFormOpen(true);
     };
 
-    const getStatusBadgeVariant = (status: Challenge['status']): "default" | "secondary" | "destructive" | "outline" => {
-        const map: Record<Challenge['status'], "default" | "secondary" | "destructive" | "outline"> = {
-            active: 'default',
-            scheduled: 'secondary',
-            completed: 'secondary', // Completed but maybe not evaluated
-            evaluating: 'outline', // Actively evaluating
-            draft: 'outline',
-            archived: 'destructive',
+     const getStatusBadgeVariant = (status: Challenge['status']): "default" | "secondary" | "destructive" | "outline" | "warning" => {
+        const map: Record<Challenge['status'], "default" | "secondary" | "destructive" | "outline" | "warning"> = {
+            active: 'default',       // Blue/Primary
+            scheduled: 'secondary',  // Grey
+            evaluating: 'warning',   // Yellow/Orange
+            completed: 'success',    // Green (custom or adjust theme)
+            draft: 'outline',        // Outline
+            archived: 'destructive', // Red
         };
-        return map[status] || 'outline';
+        // Add custom styles for success/warning if needed or map to existing variants
+         if (status === 'completed') return 'secondary'; // Using secondary for now
+         if (status === 'evaluating') return 'outline'; // Using outline for now
+         return map[status] || 'outline';
     }
-
 
     const getStatusText = (status: Challenge['status']): string => {
         const map: Record<Challenge['status'], string> = {
@@ -269,7 +351,7 @@ const ManageChallenges = () => {
         <Card>
             <CardHeader>
                 <CardTitle>Gerenciar Desafios</CardTitle>
-                <CardDescription>Crie, edite, duplique e remova desafios semanais.</CardDescription>
+                <CardDescription>Crie, edite, duplique e controle o ciclo de vida dos desafios.</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="flex items-center justify-between mb-4">
@@ -297,6 +379,7 @@ const ManageChallenges = () => {
                         <TableHead>Período</TableHead>
                         <TableHead><Award className="inline-block mr-1 h-4 w-4"/>Pontos</TableHead>
                         <TableHead>Dificuldade</TableHead>
+                         <TableHead>Participação</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
@@ -304,14 +387,14 @@ const ManageChallenges = () => {
                     <TableBody>
                         {isLoading ? (
                             <TableRow>
-                                <TableCell colSpan={6} className="text-center py-10">
+                                <TableCell colSpan={7} className="text-center py-10">
                                 <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
                                 Carregando desafios...
                                 </TableCell>
                             </TableRow>
                         ) : filteredChallenges.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                                <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
                                     Nenhum desafio encontrado.
                                 </TableCell>
                             </TableRow>
@@ -322,6 +405,7 @@ const ManageChallenges = () => {
                             <TableCell>{formatPeriod(challenge.periodStartDate, challenge.periodEndDate)}</TableCell>
                             <TableCell className="text-center">{challenge.points}</TableCell>
                             <TableCell>{challenge.difficulty}</TableCell>
+                            <TableCell>{challenge.participationType}</TableCell>
                             <TableCell>
                                 <Badge variant={getStatusBadgeVariant(challenge.status)}>
                                     {getStatusText(challenge.status)}
@@ -343,17 +427,28 @@ const ManageChallenges = () => {
                                     <DropdownMenuItem onClick={() => handleDuplicateChallenge(challenge)}>
                                         <Copy className="mr-2 h-4 w-4" /> Duplicar
                                     </DropdownMenuItem>
-                                    {/* TODO: Add actions like Archive, Activate based on status */}
+                                     {/* Status change actions */}
                                     {challenge.status === 'draft' && (
-                                        <DropdownMenuItem onClick={() => alert(`Ativar ${challenge.title}`)}>
-                                             <CheckSquare className="mr-2 h-4 w-4" /> Ativar
+                                        <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'scheduled')}>
+                                             <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> Agendar/Ativar
                                         </DropdownMenuItem>
                                     )}
+                                     {challenge.status === 'active' && (
+                                        <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'completed')}>
+                                             <CheckSquare className="mr-2 h-4 w-4 text-blue-600" /> Marcar como Concluído
+                                        </DropdownMenuItem>
+                                     )}
+                                      {(challenge.status === 'completed' || challenge.status === 'active') && (
+                                        <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'archived')}>
+                                             <Archive className="mr-2 h-4 w-4 text-muted-foreground" /> Arquivar
+                                        </DropdownMenuItem>
+                                      )}
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem
                                         onClick={() => handleDeleteClick(challenge)}
                                         className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                                        disabled={challenge.status === 'active' || challenge.status === 'evaluating' || challenge.status === 'completed'}
+                                        // Allow deleting drafts and archived, maybe completed ones too?
+                                        disabled={challenge.status === 'active' || challenge.status === 'evaluating'}
                                     >
                                         <Trash2 className="mr-2 h-4 w-4" /> Remover
                                     </DropdownMenuItem>
@@ -380,7 +475,7 @@ const ManageChallenges = () => {
                     <AlertDialogHeader>
                     <AlertDialogTitle>Confirmar Remoção</AlertDialogTitle>
                     <AlertDialogDescription>
-                        Tem certeza que deseja remover o desafio "{challengeToDelete?.title}"? Esta ação não pode ser desfeita (a menos que seja um rascunho). Desafios ativos ou concluídos não podem ser removidos diretamente.
+                        Tem certeza que deseja remover o desafio "{challengeToDelete?.title}"? Esta ação não pode ser desfeita. Desafios ativos ou em avaliação não podem ser removidos.
                     </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -396,6 +491,7 @@ const ManageChallenges = () => {
 };
 
 
+// Placeholder component - Replace with actual implementation
 const ChallengeDashboard = () => (
   <Card>
     <CardHeader>
@@ -403,7 +499,6 @@ const ChallengeDashboard = () => (
       <CardDescription>Visão geral do programa de desafios.</CardDescription>
     </CardHeader>
     <CardContent>
-      {/* TODO: Implement Dashboard UI - Use Stats Cards, maybe a small chart */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card>
                 <CardHeader className="pb-2">
@@ -422,16 +517,25 @@ const ChallengeDashboard = () => (
              <Card>
                 <CardHeader className="pb-2">
                     <CardDescription>Taxa de Conclusão Média</CardDescription>
-                     {/* Calculation is mock */}
-                    <CardTitle className="text-3xl">75%</CardTitle>
+                    {/* Calculation is mock */}
+                    <CardTitle className="text-3xl">
+                        {(() => {
+                            const completed = mockParticipants.filter(p => p.status === 'approved').length;
+                            const total = mockParticipants.filter(p => ['approved', 'rejected'].includes(p.status)).length;
+                            return total > 0 ? `${((completed / total) * 100).toFixed(0)}%` : 'N/A';
+                        })()}
+                    </CardTitle>
                 </CardHeader>
-                 <CardContent><p className="text-xs text-muted-foreground">Média de sucesso dos últimos desafios.</p></CardContent>
+                 <CardContent><p className="text-xs text-muted-foreground">Média de sucesso dos últimos desafios avaliados.</p></CardContent>
             </Card>
       </div>
-       {/* Add Chart placeholder here */}
+       {/* TODO: Add Chart placeholder here */}
+       <div className="mt-6 text-center text-muted-foreground">
+            (Gráficos e relatórios detalhados serão implementados aqui)
+        </div>
     </CardContent>
     <CardFooter>
-        <Button variant="outline" disabled>Ver Relatórios Detalhados</Button>
+        <Button variant="outline" onClick={() => alert("Relatórios Detalhados não implementados.")}>Ver Relatórios Detalhados</Button>
     </CardFooter>
   </Card>
 );
@@ -442,7 +546,7 @@ const ChallengeEvaluation = () => {
     const [participants, setParticipants] = React.useState<ChallengeParticipation[]>([]);
     const [isLoadingChallenges, setIsLoadingChallenges] = React.useState(true);
     const [isLoadingParticipants, setIsLoadingParticipants] = React.useState(false);
-    const [currentEvaluation, setCurrentEvaluation] = React.useState<{ [key: string]: { status: 'approved' | 'rejected' | 'pending', feedback: string, score?: number } }>({});
+    const [currentEvaluation, setCurrentEvaluation] = React.useState<{ [key: string]: { status: 'approved' | 'rejected' | 'pending', feedback: string, score?: number, isSaving: boolean } }>({}); // Added isSaving
     const { toast } = useToast();
 
     React.useEffect(() => {
@@ -450,8 +554,8 @@ const ChallengeEvaluation = () => {
             setIsLoadingChallenges(true);
             try {
                 const allChallenges = await fetchChallenges();
-                // Filter challenges that might need evaluation (e.g., completed, evaluating)
-                setChallengesToEvaluate(allChallenges.filter(c => ['evaluating', 'completed'].includes(c.status)));
+                // Consider 'completed' and 'evaluating' states for evaluation
+                 setChallengesToEvaluate(allChallenges.filter(c => ['evaluating', 'completed'].includes(c.status)));
             } catch {
                  toast({ title: "Erro", description: "Falha ao carregar desafios para avaliação.", variant: "destructive" });
             } finally {
@@ -468,11 +572,12 @@ const ChallengeEvaluation = () => {
                 setCurrentEvaluation({}); // Reset evaluation state when changing challenge
                 try {
                     const participantsData = await fetchParticipantsForChallenge(selectedChallengeId);
-                    setParticipants(participantsData.filter(p => p.status === 'submitted')); // Only show submitted
-                     // Initialize evaluation state
+                    const submittedParticipants = participantsData.filter(p => p.status === 'submitted');
+                    setParticipants(submittedParticipants);
+                     // Initialize evaluation state for submitted participants
                      const initialEvalState: typeof currentEvaluation = {};
-                     participantsData.filter(p => p.status === 'submitted').forEach(p => {
-                         initialEvalState[p.id] = { status: 'pending', feedback: '' };
+                     submittedParticipants.forEach(p => {
+                         initialEvalState[p.id] = { status: 'pending', feedback: '', isSaving: false }; // Initialize isSaving
                      });
                      setCurrentEvaluation(initialEvalState);
                 } catch {
@@ -491,19 +596,24 @@ const ChallengeEvaluation = () => {
         setCurrentEvaluation(prev => ({
             ...prev,
             [participantId]: {
-                ...prev[participantId],
+                ...(prev[participantId] || { status: 'pending', feedback: '', isSaving: false }), // Ensure state exists
                 [field]: value,
                  // Reset score if rejected
                 ...(field === 'status' && value === 'rejected' && { score: undefined }),
                 // Use default challenge points if approved and score not set
-                ...(field === 'status' && value === 'approved' && prev[participantId]?.score === undefined && { score: challengesToEvaluate.find(c => c.id === selectedChallengeId)?.points || 0 })
+                 ...(field === 'status' && value === 'approved' && prev[participantId]?.score === undefined && { score: challengesToEvaluate.find(c => c.id === selectedChallengeId)?.points || 0 })
             }
         }));
     };
 
     const handleSaveEvaluation = async (participantId: string) => {
         const evaluationData = currentEvaluation[participantId];
-        if (!evaluationData || evaluationData.status === 'pending') {
+        const participant = participants.find(p => p.id === participantId);
+        const challenge = challengesToEvaluate.find(c => c.id === selectedChallengeId);
+
+        if (!evaluationData || !participant || !challenge) return;
+
+         if (evaluationData.status === 'pending') {
             toast({ title: "Atenção", description: "Selecione 'Aprovado' ou 'Rejeitado' antes de salvar.", variant: "destructive" });
             return;
         }
@@ -512,20 +622,28 @@ const ChallengeEvaluation = () => {
             return;
          }
 
-         // Mark as saving (visual feedback)
-         handleEvaluationChange(participantId, 'status', evaluationData.status); // Keep status but show loading maybe?
-
+         // Mark as saving
+         setCurrentEvaluation(prev => ({ ...prev, [participantId]: { ...evaluationData, isSaving: true } }));
 
         try {
-            await evaluateSubmission(participantId, evaluationData.status, evaluationData.score, evaluationData.feedback);
-             toast({ title: "Sucesso", description: "Avaliação salva." });
-             // Remove evaluated participant from the list or update its state visually
+             const finalScore = evaluationData.status === 'approved' ? (evaluationData.score ?? challenge.points) : 0;
+             await evaluateSubmission(participantId, evaluationData.status, finalScore, evaluationData.feedback);
+             toast({ title: "Sucesso", description: `Avaliação para ${participant.employeeName} salva.` });
+
+             // Remove evaluated participant from the list
              setParticipants(prev => prev.filter(p => p.id !== participantId));
-             delete currentEvaluation[participantId]; // Clean up state
+             // Clean up evaluation state for the saved participant
+             setCurrentEvaluation(prev => {
+                 const newState = { ...prev };
+                 delete newState[participantId];
+                 return newState;
+             });
+
         } catch (error) {
              console.error("Falha ao salvar avaliação:", error);
              toast({ title: "Erro", description: "Falha ao salvar avaliação.", variant: "destructive" });
-             // Revert visual state if needed
+             // Revert saving state on error
+             setCurrentEvaluation(prev => ({ ...prev, [participantId]: { ...evaluationData, isSaving: false } }));
         }
     };
 
@@ -536,7 +654,7 @@ const ChallengeEvaluation = () => {
         <Card>
             <CardHeader>
             <CardTitle className="flex items-center gap-2"><CheckSquare className="h-5 w-5"/> Avaliação de Desafios</CardTitle>
-            <CardDescription>Avalie as submissões dos desafios concluídos.</CardDescription>
+            <CardDescription>Avalie as submissões dos desafios concluídos ou em avaliação.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
                 <div className="flex items-center gap-4">
@@ -557,7 +675,7 @@ const ChallengeEvaluation = () => {
                              ) : (
                                 challengesToEvaluate.map(challenge => (
                                     <SelectItem key={challenge.id} value={challenge.id}>
-                                        {challenge.title} ({format(parseISO(challenge.periodEndDate), 'dd/MM/yy')})
+                                        {challenge.title} ({format(parseISO(challenge.periodEndDate), 'dd/MM/yy')}) - {getStatusText(challenge.status)}
                                     </SelectItem>
                                 ))
                              )}
@@ -567,9 +685,12 @@ const ChallengeEvaluation = () => {
 
                 {selectedChallengeId && (
                     <div className="mt-4 border rounded-md p-4">
-                         <h3 className="font-semibold mb-2">Avaliar Participantes de: {selectedChallenge?.title}</h3>
+                         <h3 className="font-semibold mb-3">Avaliar Participantes de: "{selectedChallenge?.title}"</h3>
+                         <p className="text-sm text-muted-foreground mb-4">Critérios: {selectedChallenge?.evaluationMetrics}</p>
+                         <Separator className="mb-4" />
+
                         {isLoadingParticipants ? (
-                            <div className="text-center py-6"><Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" /></div>
+                            <div className="text-center py-6"><Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" /> Carregando participantes...</div>
                         ) : participants.length === 0 ? (
                             <p className="text-muted-foreground text-center py-4">Nenhuma submissão pendente para este desafio.</p>
                         ) : (
@@ -580,13 +701,20 @@ const ChallengeEvaluation = () => {
                                             <CardTitle className="text-base flex justify-between items-center">
                                                 {participant.employeeName}
                                                  <span className="text-xs text-muted-foreground font-normal">
-                                                    Enviado em: {participant.submittedAt ? format(participant.submittedAt, 'dd/MM/yy HH:mm') : '-'}
+                                                    Enviado em: {participant.submittedAt ? format(participant.submittedAt, 'dd/MM/yy HH:mm', { locale: ptBR }) : '-'}
                                                 </span>
                                             </CardTitle>
                                             {/* Display submission details */}
                                             <CardDescription className="text-sm pt-1">
-                                                <strong>Submissão:</strong> {participant.submission || <span className="italic text-muted-foreground">Nenhuma descrição fornecida.</span>}
-                                                 {/* TODO: Add link if submission is a URL */}
+                                                <strong>Submissão:</strong>{' '}
+                                                {participant.submission?.startsWith('http') ? (
+                                                     <a href={participant.submission} target="_blank" rel="noopener noreferrer" className="text-accent underline hover:text-accent/80">
+                                                        <LinkIcon className="inline-block h-3 w-3 mr-1" /> Abrir Link
+                                                    </a>
+                                                ) : (
+                                                    participant.submission || <span className="italic text-muted-foreground">Nenhuma descrição fornecida.</span>
+                                                )}
+                                                 {/* TODO: Handle file uploads if needed */}
                                             </CardDescription>
                                         </CardHeader>
                                         <CardContent className="px-4 pb-3 space-y-2">
@@ -596,6 +724,7 @@ const ChallengeEvaluation = () => {
                                                      <Select
                                                         value={currentEvaluation[participant.id]?.status || 'pending'}
                                                         onValueChange={(value: 'approved' | 'rejected') => handleEvaluationChange(participant.id, 'status', value)}
+                                                        disabled={currentEvaluation[participant.id]?.isSaving}
                                                     >
                                                         <SelectTrigger className="h-9 w-full md:w-[120px]">
                                                             <SelectValue placeholder="Avaliar..." />
@@ -618,6 +747,7 @@ const ChallengeEvaluation = () => {
                                                             placeholder={selectedChallenge?.points.toString()}
                                                             min="0"
                                                             max={selectedChallenge?.points} // Set max based on challenge points
+                                                            disabled={currentEvaluation[participant.id]?.isSaving}
                                                         />
                                                     </div>
                                                 )}
@@ -630,6 +760,7 @@ const ChallengeEvaluation = () => {
                                                         value={currentEvaluation[participant.id]?.feedback || ''}
                                                         onChange={(e) => handleEvaluationChange(participant.id, 'feedback', e.target.value)}
                                                         required={currentEvaluation[participant.id]?.status === 'rejected'}
+                                                        disabled={currentEvaluation[participant.id]?.isSaving}
                                                     />
                                                 </div>
 
@@ -637,9 +768,14 @@ const ChallengeEvaluation = () => {
                                                     size="sm"
                                                     className="mt-4 md:mt-5 self-end md:self-center"
                                                      onClick={() => handleSaveEvaluation(participant.id)}
-                                                     disabled={!currentEvaluation[participant.id] || currentEvaluation[participant.id].status === 'pending'}
+                                                     disabled={!currentEvaluation[participant.id] || currentEvaluation[participant.id].status === 'pending' || currentEvaluation[participant.id].isSaving}
                                                 >
-                                                    Salvar Avaliação
+                                                     {currentEvaluation[participant.id]?.isSaving ? (
+                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                     ) : (
+                                                        <Save className="mr-2 h-4 w-4" />
+                                                     )}
+                                                    {currentEvaluation[participant.id]?.isSaving ? 'Salvando...' : 'Salvar Avaliação'}
                                                 </Button>
                                              </div>
                                         </CardContent>
@@ -665,16 +801,46 @@ const ChallengeHistory = () => {
             try {
                 const allChallenges = await fetchChallenges();
                 // Filter only completed/archived challenges for history
-                setHistoryChallenges(allChallenges.filter(c => ['completed', 'archived'].includes(c.status)));
+                setHistoryChallenges(allChallenges.filter(c => ['completed', 'archived', 'evaluating'].includes(c.status)) // Include evaluating for potential results view
+                                            .sort((a, b) => parseISO(b.periodEndDate).getTime() - parseISO(a.periodEndDate).getTime()) // Sort by end date desc
+                                            );
             } catch (error) {
                  console.error("Failed to load challenge history:", error);
-                 // Add toast error if needed
+                 toast({ title: "Erro", description: "Falha ao carregar histórico de desafios.", variant: "destructive" });
             } finally {
                 setIsLoading(false);
             }
         };
         fetchHistory();
     }, []);
+
+     // Helper to get status text (reuse from ManageChallenges)
+    const getStatusText = (status: Challenge['status']): string => {
+        const map: Record<Challenge['status'], string> = {
+            active: 'Ativo', scheduled: 'Agendado', evaluating: 'Em Avaliação',
+            completed: 'Concluído', draft: 'Rascunho', archived: 'Arquivado'
+        };
+        return map[status] || status;
+    }
+
+    // Helper to get status badge variant (reuse from ManageChallenges)
+     const getStatusBadgeVariant = (status: Challenge['status']): "default" | "secondary" | "destructive" | "outline" | "warning" => {
+        const map: Record<Challenge['status'], "default" | "secondary" | "destructive" | "outline" | "warning"> = {
+            active: 'default', scheduled: 'secondary', evaluating: 'warning',
+            completed: 'success', draft: 'outline', archived: 'destructive',
+        };
+         if (status === 'completed') return 'secondary'; // Use secondary for completed
+         if (status === 'evaluating') return 'outline'; // Use outline for evaluating
+         return map[status] || 'outline';
+    }
+
+    const getParticipantSummary = (challengeId: string) => {
+        const totalParticipants = mockParticipants.filter(p => p.challengeId === challengeId).length;
+        const evaluated = mockParticipants.filter(p => p.challengeId === challengeId && ['approved', 'rejected'].includes(p.status)).length;
+        const approved = mockParticipants.filter(p => p.challengeId === challengeId && p.status === 'approved').length;
+         if (totalParticipants === 0) return "N/A";
+        return `${approved}/${evaluated} Aprovados (${totalParticipants} Total)`;
+    }
 
 
     return (
@@ -697,8 +863,8 @@ const ChallengeHistory = () => {
                                     <TableHead>Período</TableHead>
                                     <TableHead>Pontos</TableHead>
                                     <TableHead>Status</TableHead>
-                                    <TableHead className="text-center"><Users className="inline-block mr-1 h-4 w-4"/>Participantes</TableHead> {/* Mocked */}
-                                    {/* Add more relevant history columns */}
+                                    <TableHead className="text-center"><Users className="inline-block mr-1 h-4 w-4"/>Resultados</TableHead>
+                                     <TableHead className="text-right">Detalhes</TableHead> {/* Action column */}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -706,13 +872,16 @@ const ChallengeHistory = () => {
                                     <TableRow key={challenge.id}>
                                         <TableCell className="font-medium">{challenge.title}</TableCell>
                                          <TableCell>{format(parseISO(challenge.periodStartDate), 'dd/MM/yy')} - {format(parseISO(challenge.periodEndDate), 'dd/MM/yy')}</TableCell>
-                                         <TableCell>{challenge.points}</TableCell>
-                                         <TableCell><Badge variant="secondary">{getStatusText(challenge.status)}</Badge></TableCell>
-                                        <TableCell className="text-center">
-                                             {/* Mock participant count */}
-                                             {mockParticipants.filter(p => p.challengeId === challenge.id && p.status !== 'pending').length} / {mockParticipants.filter(p => p.challengeId === challenge.id).length}
+                                         <TableCell className="text-center">{challenge.points}</TableCell>
+                                         <TableCell><Badge variant={getStatusBadgeVariant(challenge.status)}>{getStatusText(challenge.status)}</Badge></TableCell>
+                                        <TableCell className="text-center text-xs">
+                                            {getParticipantSummary(challenge.id)}
                                         </TableCell>
-                                        {/* Add actions like View Details */}
+                                        <TableCell className="text-right">
+                                            <Button variant="outline" size="sm" onClick={() => alert(`Visualizar detalhes de ${challenge.title} (não implementado).`)}>
+                                                 Ver Detalhes
+                                             </Button>
+                                         </TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>
@@ -721,43 +890,114 @@ const ChallengeHistory = () => {
                 )}
             </CardContent>
             <CardFooter>
-                <Button variant="outline" disabled>Exportar Histórico</Button>
+                <Button variant="outline" onClick={() => alert("Exportar Histórico não implementado.")} disabled={isLoading || historyChallenges.length === 0}>Exportar Histórico</Button>
             </CardFooter>
         </Card>
     );
 };
 
 
-const ChallengeSettings = () => (
-  <Card>
-    <CardHeader>
-      <CardTitle>Configurações dos Desafios</CardTitle>
-      <CardDescription>Ajuste as regras e integração dos desafios com o ranking.</CardDescription>
-    </CardHeader>
-    <CardContent className="space-y-4">
-        <div className="space-y-2">
-            <Label htmlFor="ranking-factor">Fator de Ponderação no Ranking</Label>
-            <Input id="ranking-factor" type="number" defaultValue="1.0" step="0.1" min="0" max="2" className="w-[100px]" />
-            <p className="text-xs text-muted-foreground">Multiplicador para pontos de desafios ao calcular o ranking final. Ex: 1.0 = peso igual; 0.5 = metade do peso.</p>
-        </div>
-        <Separator />
-         <div className="flex items-center space-x-2">
-            <Switch id="enable-gamification" defaultChecked disabled />
-            <Label htmlFor="enable-gamification" className="text-sm font-normal">Habilitar Emblemas e Conquistas (Não implementado)</Label>
-         </div>
-         <Separator />
-        <div className="space-y-2">
-            <Label htmlFor="max-points">Teto Máximo de Pontos de Desafios (Opcional)</Label>
-            <Input id="max-points" type="number" placeholder="Sem limite" min="0" className="w-[120px]" />
-            <p className="text-xs text-muted-foreground">Limite máximo de pontos de desafios que contam para o ranking em um período.</p>
-        </div>
+// Settings Component (Functional)
+const ChallengeSettings = () => {
+    const { toast } = useToast();
+    const [isSaving, setIsSaving] = React.useState(false);
+    // Default values - load from backend in real app
+    const [settings, setSettings] = React.useState({
+        rankingFactor: 1.0,
+        enableGamification: false, // Feature flag
+        maxPointsCap: '', // Empty string for no limit
+        defaultParticipation: 'Opcional', // 'Opcional' or 'Obrigatório'
+    });
 
-    </CardContent>
-    <CardFooter>
-        <Button disabled>Salvar Configurações</Button>
-    </CardFooter>
-  </Card>
-);
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { id, value, type } = e.target;
+        setSettings(prev => ({
+            ...prev,
+            [id]: type === 'number' ? (value === '' ? '' : parseFloat(value)) : value
+        }));
+    };
+
+    const handleSwitchChange = (checked: boolean) => {
+        setSettings(prev => ({ ...prev, enableGamification: checked }));
+    };
+
+     const handleSelectChange = (value: string) => {
+        setSettings(prev => ({ ...prev, defaultParticipation: value }));
+    };
+
+
+    const handleSaveSettings = async () => {
+         setIsSaving(true);
+         // Simulate API call
+         console.log("Saving challenge settings:", settings);
+         await new Promise(resolve => setTimeout(resolve, 800));
+         toast({ title: "Sucesso", description: "Configurações de desafios salvas." });
+         setIsSaving(false);
+         // In real app, might need to refetch or update state based on response
+    };
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Cog className="h-5 w-5" /> Configurações dos Desafios</CardTitle>
+                <CardDescription>Ajuste as regras gerais e integração dos desafios com o sistema.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+                <div className="space-y-2">
+                    <Label htmlFor="ranking-factor">Fator de Ponderação no Ranking</Label>
+                    <Input
+                        id="ranking-factor"
+                        type="number"
+                        value={settings.rankingFactor}
+                        onChange={handleInputChange}
+                        step="0.1" min="0" max="2" className="w-[100px]"
+                    />
+                    <p className="text-xs text-muted-foreground">Multiplicador para pontos de desafios ao calcular o ranking final (Ex: 1.0 = peso igual; 0.5 = metade do peso).</p>
+                </div>
+                <Separator />
+                 <div className="space-y-2">
+                     <Label htmlFor="defaultParticipation">Participação Padrão (ao criar)</Label>
+                     <Select value={settings.defaultParticipation} onValueChange={handleSelectChange}>
+                         <SelectTrigger id="defaultParticipation" className="w-[180px]">
+                             <SelectValue />
+                         </SelectTrigger>
+                         <SelectContent>
+                             <SelectItem value="Opcional">Opcional</SelectItem>
+                             <SelectItem value="Obrigatório">Obrigatório</SelectItem>
+                         </SelectContent>
+                     </Select>
+                    <p className="text-xs text-muted-foreground">Define o tipo de participação selecionado por padrão ao criar um novo desafio.</p>
+                 </div>
+                 <Separator />
+                 <div className="flex items-center space-x-2">
+                    <Switch id="enable-gamification" checked={settings.enableGamification} onCheckedChange={handleSwitchChange} />
+                    <Label htmlFor="enable-gamification" className="text-sm font-normal">Habilitar Emblemas e Conquistas (Gamificação)</Label>
+                 </div>
+                <p className="text-xs text-muted-foreground -mt-4 pl-8">Ativa recursos adicionais de gamificação relacionados a desafios (requer implementação).</p>
+                 <Separator />
+                <div className="space-y-2">
+                    <Label htmlFor="maxPointsCap">Teto Máximo de Pontos de Desafios por Mês (Opcional)</Label>
+                    <Input
+                        id="maxPointsCap"
+                        type="number"
+                        placeholder="Sem limite"
+                        value={settings.maxPointsCap}
+                        onChange={handleInputChange}
+                        min="0" className="w-[120px]"
+                    />
+                    <p className="text-xs text-muted-foreground">Limite máximo de pontos de desafios que podem contar para o ranking em um único mês.</p>
+                </div>
+                 {/* Add more settings as needed */}
+            </CardContent>
+            <CardFooter>
+                <Button onClick={handleSaveSettings} disabled={isSaving}>
+                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {isSaving ? 'Salvando...' : 'Salvar Configurações'}
+                </Button>
+            </CardFooter>
+        </Card>
+    );
+};
 
 
 // Main Page Component
