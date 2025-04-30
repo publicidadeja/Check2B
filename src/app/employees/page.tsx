@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -36,7 +37,7 @@ import {
 import { EmployeeForm } from '@/components/employee/employee-form';
 import type { Employee } from '@/types/employee';
 import { useToast } from '@/hooks/use-toast';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'; // Added CardFooter
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { DataTable } from '@/components/ui/data-table'; // Import DataTable
 import type { ColumnDef } from '@tanstack/react-table'; // Import ColumnDef
