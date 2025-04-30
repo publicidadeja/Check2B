@@ -34,6 +34,23 @@ import {
 } from "@/components/ui/form";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'; // Import AlertDialog
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogClose
+} from '@/components/ui/dialog'; // Import Dialog components
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'; // Import DropdownMenu components
 
 // Mock Data Types
 interface Award {
@@ -452,7 +469,7 @@ const AwardConfiguration = () => {
     });
     const { control, watch, setValue, handleSubmit, reset } = form;
     const isRecurring = watch('isRecurring');
-    const eligibilityType = watch('eligibilityType'); // Assuming you add this field later
+    // const eligibilityType = watch('eligibilityType'); // Assuming you add this field later
 
      // Mock list of departments for the selector
     const mockDepartments = ['RH', 'Engenharia', 'Marketing', 'Vendas', 'Operações'];
@@ -468,7 +485,7 @@ const AwardConfiguration = () => {
         setIsFormOpen(true);
     };
 
-    const openEditForm = (award: Award) => {
+    const openEditForm = React.useCallback((award: Award) => {
         setSelectedAward(award);
         reset({
             title: award.title,
@@ -484,7 +501,7 @@ const AwardConfiguration = () => {
             status: award.status,
         });
         setIsFormOpen(true);
-    };
+    }, [reset]);
 
     const handleSaveAward = async (data: AwardFormData) => {
         setIsSaving(true);
@@ -527,10 +544,10 @@ const AwardConfiguration = () => {
     };
 
 
-     const handleDeleteClick = (award: Award) => {
+     const handleDeleteClick = React.useCallback((award: Award) => {
         setAwardToDelete(award);
         setIsDeleting(true);
-    };
+    }, []);
 
     const confirmDeleteAward = async () => {
         if (awardToDelete) {
@@ -632,7 +649,7 @@ const AwardConfiguration = () => {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                                     <FormField control={control} name="isRecurring" render={({ field }) => (
                                         <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm h-[40px]">
-                                            <FormLabel htmlFor="isRecurringSwitch">É Recorrente Mensal?</FormLabel>
+                                            <Label htmlFor="isRecurringSwitch">É Recorrente Mensal?</Label>
                                             <FormControl><Switch id="isRecurringSwitch" checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                                         </FormItem>
                                     )}/>
@@ -662,7 +679,7 @@ const AwardConfiguration = () => {
                                  <FormField control={control} name="eligibilityCriteria" render={({ field }) => (
                                     <FormItem className="flex flex-row items-center space-x-2 pt-2">
                                         <FormControl><Checkbox id="eligibility" checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                        <FormLabel htmlFor="eligibility" className="text-sm font-normal"> Exigir avaliação de excelência (sem zeros no mês)?</FormLabel>
+                                        <Label htmlFor="eligibility" className="text-sm font-normal"> Exigir avaliação de excelência (sem zeros no mês)?</Label>
                                     </FormItem>
                                 )}/>
                                 {/* Eligible Departments */}
