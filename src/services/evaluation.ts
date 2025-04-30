@@ -1,31 +1,44 @@
 
 'use server';
 
-import { mockEvaluationsData } from './mock-data'; // Import shared store
-import { format, parse, startOfMonth, endOfMonth, isValid } from 'date-fns'; // Import date-fns functions
+import { db } from '@/lib/firebase';
+import {
+    collection,
+    doc,
+    setDoc, // Using setDoc to overwrite/create daily evaluations easily
+    getDocs,
+    query,
+    where,
+    Timestamp,
+    DocumentData,
+    QueryDocumentSnapshot,
+    Query,
+    collectionGroup,
+    orderBy // Import orderBy
+} from 'firebase/firestore';
+import { format, parse, startOfMonth, endOfMonth, isValid, startOfDay, endOfDay } from 'date-fns'; // Import date-fns functions
 import { invalidateRankingCache } from './ranking'; // Import cache invalidation function
 
 /**
- * Represents an evaluation score and its justification.
+ * Represents an evaluation score and its justification for a specific day.
  */
 export interface EvaluationScore {
-  /**
-   * The evaluation score, which is either 0 or 10.
-   */
+  /** The evaluation score, which is either 0 or 10 */
   score: 0 | 10;
-  /**
-   * The justification for the score (required if score is 0, optional/ignored if 10).
-   */
+  /** Justification (required if score is 0) */
   justification: string;
-  /** Optional timestamp for when the evaluation was recorded */
-  timestamp?: string;
+  /** Timestamp for when the evaluation was recorded */
+  timestamp: Timestamp; // Use Firestore Timestamp
 }
 
+// Collection structure: /evaluations/{YYYY-MM-DD}/employees/{employeeId}/tasks/{taskId} -> EvaluationScore
+
 /**
- * Asynchronously submits or updates an evaluation score for a specific task and employee.
+ * Asynchronously submits or updates an evaluation score for a specific task, employee, and date.
  *
  * @param taskId The ID of the task being evaluated.
  * @param employeeId The ID of the employee being evaluated.
+ * @param evaluationDate The date of the evaluation (YYYY-MM-DD string).
  * @param scoreData The evaluation score object { score: 0 | 10, justification: string }.
  * @returns A promise that resolves when the submission is complete.
  * @throws Error if validation fails.
@@ -33,12 +46,15 @@ export interface EvaluationScore {
 export async function submitEvaluation(
   taskId: string,
   employeeId: string,
-  scoreData: EvaluationScore
+  evaluationDate: string, // e.g., '2024-08-15'
+  scoreData: Omit<EvaluationScore, 'timestamp'> // Timestamp will be added server-side
 ): Promise<void> {
-  console.log(`Submitting evaluation (mock) for task ${taskId}, employee ${employeeId}:`, scoreData);
-  await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 100)); // Shorter delay
+  console.log(`Submitting evaluation (Firestore) for task ${taskId}, employee ${employeeId}, date ${evaluationDate}:`, scoreData);
 
   // --- Validation ---
+  if (!isValid(parse(evaluationDate, 'yyyy-MM-dd', new Date()))) {
+       throw new Error("Formato de data inválido. Use AAAA-MM-DD.");
+  }
   if (scoreData.score === null || scoreData.score === undefined) {
       throw new Error(`Score inválido para a tarefa ${taskId}.`);
   }
@@ -49,109 +65,193 @@ export async function submitEvaluation(
       throw new Error(`Score deve ser 0 ou 10 para a tarefa ${taskId}.`);
   }
 
-  // --- Mock Storage Logic ---
-  if (!mockEvaluationsData[employeeId]) {
-    mockEvaluationsData[employeeId] = {};
+  try {
+      const evalDocRef = doc(db, `evaluations/${evaluationDate}/employees/${employeeId}/tasks/${taskId}`);
+
+      const dataToSave: EvaluationScore = {
+          score: scoreData.score,
+          // Ensure justification is empty if score is 10
+          justification: scoreData.score === 10 ? '' : scoreData.justification.trim(),
+          timestamp: Timestamp.now(), // Use server timestamp
+      };
+
+      // Use setDoc with merge: true to create or update the evaluation for that specific day/employee/task
+      await setDoc(evalDocRef, dataToSave, { merge: true });
+
+      console.log("Evaluation stored successfully:", evalDocRef.path);
+
+      // Invalidate ranking cache for the relevant month after submission
+      const yearMonth = format(parse(evaluationDate, 'yyyy-MM-dd', new Date()), 'yyyy-MM');
+      await invalidateRankingCache(yearMonth);
+
+  } catch (error: any) {
+    console.error("Error submitting evaluation to Firestore:", error);
+    throw new Error("Falha ao enviar avaliação.");
   }
-
-  // Store the evaluation with a timestamp (using current date for simplicity in mock)
-  // In a real app, you might pass the evaluation date explicitly.
-  const evaluationDate = format(new Date(), 'yyyy-MM-dd');
-  const timestamp = new Date(`${evaluationDate}T${format(new Date(), 'HH:mm:ss')}`).toISOString(); // Store with time
-
-  mockEvaluationsData[employeeId][taskId] = {
-      score: scoreData.score,
-      // Ensure justification is empty if score is 10, even if passed otherwise
-      justification: scoreData.score === 10 ? '' : scoreData.justification.trim(),
-      timestamp: timestamp,
-  };
-
-  console.log("Mock evaluation stored:", mockEvaluationsData[employeeId][taskId]);
-  // Invalidate ranking cache after submission
-  await invalidateRankingCache();
 }
 
+
 /**
- * Asynchronously retrieves evaluations for a specific employee within a given month.
+ * Asynchronously retrieves evaluations for a specific employee within a given date range (usually a month).
  *
  * @param employeeId The ID of the employee.
- * @param yearMonth The period string 'YYYY-MM'.
- * @returns A promise resolving to a record of taskId to EvaluationScore for the specified month.
+ * @param startDate The start date of the range.
+ * @param endDate The end date of the range.
+ * @returns A promise resolving to a record of taskId to EvaluationScore[] for the specified period.
  */
-export async function getEvaluationsForEmployeeByMonth(employeeId: string, yearMonth: string): Promise<Record<string, EvaluationScore>> {
-     console.log(`Getting evaluations (mock) for employee ${employeeId} in month ${yearMonth}`);
-     await new Promise(resolve => setTimeout(resolve, 150));
-
-     const employeeEvals = mockEvaluationsData[employeeId] || {};
-     const evaluationsForMonth: Record<string, EvaluationScore> = {};
-
+export async function getEvaluationsForEmployeeByPeriod(employeeId: string, startDate: Date, endDate: Date): Promise<Record<string, EvaluationScore[]>> {
+     console.log(`Getting evaluations (Firestore) for employee ${employeeId} from ${format(startDate, 'yyyy-MM-dd')} to ${format(endDate, 'yyyy-MM-dd')}`);
      try {
-        const targetMonthDate = parse(yearMonth, 'yyyy-MM', new Date());
-        if (!isValid(targetMonthDate)) {
-             console.error(`Invalid yearMonth format provided: ${yearMonth}`);
-             return evaluationsForMonth; // Return empty if date is invalid
-        }
-        const monthStart = startOfMonth(targetMonthDate);
-        const monthEnd = endOfMonth(targetMonthDate);
+        const evaluationsResult: Record<string, EvaluationScore[]> = {};
 
-         // Iterate through stored evaluations for the employee
-        for (const taskId in employeeEvals) {
-            const evaluation = employeeEvals[taskId];
-             if (evaluation.timestamp && typeof evaluation.timestamp === 'string') {
-                 const evalDate = parse(evaluation.timestamp, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", new Date());
+        // Query the 'tasks' subcollection across all date documents within the range
+        // This uses a collection group query
+        const tasksGroupRef = collectionGroup(db, 'tasks');
+        const q = query(
+            tasksGroupRef,
+            where('employeeId', '==', employeeId), // Assuming employeeId is stored in the task doc for easier querying
+            where('timestamp', '>=', Timestamp.fromDate(startOfDay(startDate))),
+            where('timestamp', '<=', Timestamp.fromDate(endOfDay(endDate))),
+            orderBy('timestamp', 'desc') // Order by time descending
+        );
 
-                 // Check if the evaluation date falls within the target month
-                 if (isValid(evalDate) && evalDate >= monthStart && evalDate <= monthEnd) {
-                     evaluationsForMonth[taskId] = {
-                         score: evaluation.score,
-                         justification: evaluation.justification,
-                         timestamp: evaluation.timestamp, // Include timestamp
-                     };
-                 }
-            } else {
-                console.warn(`Missing or invalid timestamp for task ${taskId} of employee ${employeeId}`);
+        const snapshot = await getDocs(q);
+
+        snapshot.forEach((doc) => {
+            const data = doc.data() as EvaluationScore; // Cast to EvaluationScore
+            const taskId = doc.id; // The document ID is the taskId
+
+            if (!evaluationsResult[taskId]) {
+                evaluationsResult[taskId] = [];
             }
-        }
-     } catch (e) {
-         console.error(`Error processing evaluations for ${employeeId} in ${yearMonth}:`, e);
-     }
+             // Convert Firestore Timestamp to JS Date if needed by frontend, otherwise keep as Timestamp
+            evaluationsResult[taskId].push({
+                score: data.score,
+                justification: data.justification,
+                timestamp: data.timestamp, // Keep Firestore Timestamp
+            });
+        });
 
-     return evaluationsForMonth;
+        return evaluationsResult;
+
+     } catch (error) {
+         console.error(`Error fetching evaluations for ${employeeId}:`, error);
+         throw new Error("Falha ao buscar avaliações do colaborador.");
+     }
 }
 
 /**
- * Asynchronously retrieves all evaluations for a specific employee across all time.
- * Useful for calculating overall stats or history.
+ * Asynchronously retrieves *all* evaluations for a specific employee across all time.
+ * Warning: Can be inefficient for employees with long history. Use date range queries primarily.
  *
  * @param employeeId The ID of the employee.
  * @returns A promise resolving to a record of taskId to EvaluationScore[].
  */
 export async function getAllEvaluationsForEmployee(employeeId: string): Promise<Record<string, EvaluationScore[]>> {
-     console.log(`Getting all evaluations (mock) for employee ${employeeId}`);
-     await new Promise(resolve => setTimeout(resolve, 200));
+     console.warn(`Getting ALL evaluations (Firestore) for employee ${employeeId}. This might be inefficient.`);
+      try {
+        const evaluationsResult: Record<string, EvaluationScore[]> = {};
+        const tasksGroupRef = collectionGroup(db, 'tasks');
+        // Querying across all time for a specific employee
+        const q = query(
+            tasksGroupRef,
+            where('employeeId', '==', employeeId), // Requires employeeId in the task doc
+            orderBy('timestamp', 'desc')
+        );
 
-     const employeeEvals = mockEvaluationsData[employeeId] || {};
-     const allEvaluations: Record<string, EvaluationScore[]> = {};
+        const snapshot = await getDocs(q);
 
-     for (const taskId in employeeEvals) {
-         if (!allEvaluations[taskId]) {
-             allEvaluations[taskId] = [];
-         }
-         // Include timestamp if needed for historical view
-         allEvaluations[taskId].push({
-             score: employeeEvals[taskId].score,
-             justification: employeeEvals[taskId].justification,
-             timestamp: employeeEvals[taskId].timestamp // Include timestamp
-         });
+        snapshot.forEach((doc) => {
+            const data = doc.data() as EvaluationScore;
+            const taskId = doc.id;
+
+            if (!evaluationsResult[taskId]) {
+                evaluationsResult[taskId] = [];
+            }
+            evaluationsResult[taskId].push({
+                 score: data.score,
+                 justification: data.justification,
+                 timestamp: data.timestamp,
+            });
+        });
+        return evaluationsResult;
+     } catch (error) {
+          console.error(`Error fetching all evaluations for ${employeeId}:`, error);
+          throw new Error("Falha ao buscar histórico completo de avaliações.");
      }
+}
 
-     // Optionally sort evaluations within each task by timestamp descending
-     for (const taskId in allEvaluations) {
-         allEvaluations[taskId].sort((a, b) => {
-             if (!a.timestamp || !b.timestamp) return 0;
-             return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-         });
-     }
 
-     return allEvaluations;
+/**
+ * Helper function to get evaluations for multiple employees within a specific month.
+ * Used by the ranking calculation.
+ *
+ * @param employeeIds Array of employee IDs.
+ * @param yearMonth The period string 'YYYY-MM'.
+ * @returns A promise resolving to a map of employeeId -> { taskId: EvaluationScore[] }.
+ */
+export async function getEvaluationsForMultipleEmployeesByMonth(employeeIds: string[], yearMonth: string): Promise<Record<string, Record<string, EvaluationScore[]>>> {
+    console.log(`Getting evaluations (Firestore) for multiple employees in month ${yearMonth}`);
+
+    const results: Record<string, Record<string, EvaluationScore[]>> = {};
+    if (employeeIds.length === 0) return results;
+
+    try {
+        const targetMonthDate = parse(yearMonth, 'yyyy-MM', new Date());
+        if (!isValid(targetMonthDate)) {
+            console.error(`Invalid yearMonth format provided: ${yearMonth}`);
+            return results; // Return empty if date is invalid
+        }
+        const monthStart = Timestamp.fromDate(startOfMonth(targetMonthDate));
+        const monthEnd = Timestamp.fromDate(endOfMonth(targetMonthDate));
+
+        // Use collectionGroup query - might need index configuration in Firestore
+        const tasksGroupRef = collectionGroup(db, 'tasks');
+
+        // Firestore IN queries are limited to 30 items per query in v9.
+        // Chunk the employeeIds array if it's larger than 30.
+        const MAX_IN_QUERIES = 30;
+        const employeeIdChunks: string[][] = [];
+        for (let i = 0; i < employeeIds.length; i += MAX_IN_QUERIES) {
+            employeeIdChunks.push(employeeIds.slice(i, i + MAX_IN_QUERIES));
+        }
+
+        // Execute queries for each chunk
+        for (const chunk of employeeIdChunks) {
+            const q = query(
+                tasksGroupRef,
+                where('employeeId', 'in', chunk), // Assumes employeeId is stored in the task doc
+                where('timestamp', '>=', monthStart),
+                where('timestamp', '<=', monthEnd)
+            );
+
+            const snapshot = await getDocs(q);
+
+            snapshot.forEach((doc) => {
+                const data = doc.data() as EvaluationScore & { employeeId: string }; // Expect employeeId here
+                const taskId = doc.id;
+                const empId = data.employeeId; // Get employeeId from the document itself
+
+                if (!results[empId]) {
+                    results[empId] = {};
+                }
+                if (!results[empId][taskId]) {
+                    results[empId][taskId] = [];
+                }
+                results[empId][taskId].push({
+                    score: data.score,
+                    justification: data.justification,
+                    timestamp: data.timestamp,
+                });
+                 // Sort individual task evaluations by timestamp if needed (optional)
+                 results[empId][taskId].sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
+            });
+        }
+
+        return results;
+
+    } catch (error) {
+        console.error("Error fetching evaluations for multiple employees:", error);
+        throw new Error("Falha ao buscar avaliações para o ranking.");
+    }
 }

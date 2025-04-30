@@ -1,7 +1,24 @@
 
 'use server';
 
-import { mockChallenges } from './mock-data'; // Import from centralized store
+import { db } from '@/lib/firebase';
+import {
+    collection,
+    getDocs,
+    addDoc,
+    updateDoc,
+    deleteDoc,
+    doc,
+    query,
+    where,
+    orderBy,
+    Timestamp,
+    DocumentData,
+    QueryDocumentSnapshot,
+    Query,
+    collectionGroup,
+    getCountFromServer // Import getCountFromServer
+} from 'firebase/firestore';
 import { getAllDepartments } from './department'; // Keep for validation
 
 /**
@@ -36,10 +53,35 @@ export interface Challenge {
   imageUrl?: string;
   /** Whether the challenge is currently active/visible */
   isActive: boolean;
+  /** Timestamp of creation */
+  createdAt?: Timestamp; // Add timestamp
 }
 
+const challengesCollection = collection(db, 'challenges');
 
-// --- Mock API Functions ---
+// Helper to convert Firestore doc to Challenge
+const docToChallenge = (doc: QueryDocumentSnapshot<DocumentData>): Challenge => {
+    const data = doc.data();
+    return {
+        id: doc.id,
+        title: data.title,
+        description: data.description,
+        category: data.category,
+        startDate: data.startDate, // Assuming stored as 'YYYY-MM-DD' string
+        endDate: data.endDate,     // Assuming stored as 'YYYY-MM-DD' string
+        points: data.points,
+        difficulty: data.difficulty,
+        participationType: data.participationType,
+        eligibleDepartments: data.eligibleDepartments,
+        evaluationMetrics: data.evaluationMetrics,
+        supportMaterial: data.supportMaterial,
+        imageUrl: data.imageUrl,
+        isActive: data.isActive,
+        createdAt: data.createdAt, // Keep timestamp if needed
+    };
+};
+
+// --- Firestore API Functions ---
 
 /**
  * Fetches all challenges, optionally filtering by status or department.
@@ -47,22 +89,34 @@ export interface Challenge {
  * @returns Promise<Challenge[]> - List of challenges.
  */
 export async function getAllChallenges(options?: { isActive?: boolean, department?: string }): Promise<Challenge[]> {
-  console.log("Fetching challenges (mock) with options:", options);
-  await new Promise(resolve => setTimeout(resolve, 150)); // Reduced delay
+  console.log("Fetching challenges from Firestore with options:", options);
+  try {
+    let q: Query = query(challengesCollection, orderBy('startDate', 'desc')); // Base query
 
-  let filteredChallenges = [...mockChallenges]; // Use shared store
+    if (options?.isActive !== undefined) {
+      q = query(q, where("isActive", "==", options.isActive));
+    }
 
-  if (options?.isActive !== undefined) {
-    filteredChallenges = filteredChallenges.filter(c => c.isActive === options.isActive);
+    // Department filtering needs to be done client-side or requires more complex queries/data structure
+    // if Firestore doesn't support 'array-contains-any' combined with other filters easily.
+    // For now, fetch based on isActive and filter department afterwards.
+
+    const snapshot = await getDocs(q);
+    let challenges = snapshot.docs.map(docToChallenge);
+
+    // Client-side filtering for department (if needed)
+    if (options?.department && options.department !== 'Todos') {
+        challenges = challenges.filter(c =>
+          c.eligibleDepartments.includes('Todos') || c.eligibleDepartments.includes(options.department!)
+        );
+    }
+
+    return challenges;
+
+  } catch (error) {
+    console.error("Error fetching challenges:", error);
+    throw new Error("Falha ao buscar desafios.");
   }
-
-  if (options?.department && options.department !== 'Todos') {
-    filteredChallenges = filteredChallenges.filter(c =>
-      c.eligibleDepartments.includes('Todos') || c.eligibleDepartments.includes(options.department!)
-    );
-  }
-
-  return filteredChallenges.map(c => ({ ...c })); // Return copies
 }
 
 /**
@@ -71,153 +125,204 @@ export async function getAllChallenges(options?: { isActive?: boolean, departmen
  * @returns Promise<Challenge | null> - The challenge found or null.
  */
 export async function getChallengeById(id: string): Promise<Challenge | null> {
-  console.log("Fetching challenge by ID (mock):", id);
-  await new Promise(resolve => setTimeout(resolve, 50));
-  const challenge = mockChallenges.find(c => c.id === id);
-  return challenge ? { ...challenge } : null;
+  console.log("Fetching challenge by ID from Firestore:", id);
+  try {
+    const docRef = doc(db, 'challenges', id);
+    const docSnap = await getDoc(docRef);
+    return docSnap.exists() ? docToChallenge(docSnap as QueryDocumentSnapshot<DocumentData>) : null;
+  } catch (error) {
+    console.error("Error fetching challenge by ID:", error);
+    throw new Error("Falha ao buscar o desafio.");
+  }
 }
 
 /**
- * Adds a new challenge.
- * @param challengeData - Data for the new challenge (excluding ID).
+ * Adds a new challenge to Firestore.
+ * @param challengeData - Data for the new challenge (excluding ID and createdAt).
  * @returns Promise<Challenge> - The newly created challenge.
  * @throws Error - If validation fails.
  */
-export async function addChallenge(challengeData: Omit<Challenge, 'id'>): Promise<Challenge> {
-  console.log("Adding challenge (mock):", challengeData);
-  await new Promise(resolve => setTimeout(resolve, 250));
-
-  // --- Basic Validation ---
-  if (!challengeData.title?.trim() || !challengeData.description?.trim() || !challengeData.startDate || !challengeData.endDate) {
-    throw new Error("Título, Descrição, Data de Início e Fim são obrigatórios.");
-  }
-  if (new Date(challengeData.endDate) < new Date(challengeData.startDate)) {
-      throw new Error("Data final não pode ser anterior à data inicial.");
-  }
-  if (challengeData.points <= 0) {
-      throw new Error("Pontuação deve ser positiva.");
-  }
-  if (!challengeData.participationType) {
-      throw new Error("Tipo de participação é obrigatório.");
-  }
-  if (!challengeData.eligibleDepartments || challengeData.eligibleDepartments.length === 0) {
-      throw new Error("Departamentos elegíveis devem ser definidos (ou 'Todos').");
-  }
-  // Validate eligible departments against existing ones (if not 'Todos')
-  if (!challengeData.eligibleDepartments.includes('Todos')) {
-    const validDepartments = await getAllDepartments();
-    const validDeptNames = validDepartments.map(d => d.name);
-    const invalidDepts = challengeData.eligibleDepartments.filter(dept => !validDeptNames.includes(dept));
-    if (invalidDepts.length > 0) {
-      throw new Error(`Departamentos inválidos: ${invalidDepts.join(', ')}`);
+export async function addChallenge(challengeData: Omit<Challenge, 'id' | 'createdAt'>): Promise<Challenge> {
+  console.log("Adding challenge to Firestore:", challengeData);
+  try {
+    // --- Basic Validation --- (Keep frontend validation as well)
+    if (!challengeData.title?.trim() || !challengeData.description?.trim() || !challengeData.startDate || !challengeData.endDate) {
+        throw new Error("Título, Descrição, Data de Início e Fim são obrigatórios.");
     }
+    // ... (keep other validations from previous version)
+    if (!challengeData.eligibleDepartments || challengeData.eligibleDepartments.length === 0) {
+        throw new Error("Departamentos elegíveis devem ser definidos (ou 'Todos').");
+    }
+    // Validate eligible departments against Firestore (if not 'Todos')
+    if (!challengeData.eligibleDepartments.includes('Todos')) {
+        const validDepartments = await getAllDepartments(); // Fetch from Firestore
+        const validDeptNames = validDepartments.map(d => d.name);
+        const invalidDepts = challengeData.eligibleDepartments.filter(dept => !validDeptNames.includes(dept));
+        if (invalidDepts.length > 0) {
+        throw new Error(`Departamentos inválidos: ${invalidDepts.join(', ')}`);
+        }
+    }
+
+    const newChallengeData = {
+        ...challengeData,
+        isActive: challengeData.isActive ?? false, // Default to inactive
+        createdAt: Timestamp.now(),
+    };
+
+    const docRef = await addDoc(challengesCollection, newChallengeData);
+
+    return {
+        id: docRef.id,
+        ...newChallengeData,
+    } as Challenge; // Ensure return type matches
+
+  } catch (error: any) {
+    console.error("Error adding challenge:", error);
+    if (error.message.includes("obrigatórios") || error.message.includes("inválidos") || error.message.includes("positiva") || error.message.includes("Data final")) {
+        throw error; // Rethrow validation errors
+    }
+    throw new Error("Falha ao adicionar desafio.");
   }
-
-  const newChallenge: Challenge = {
-    ...challengeData,
-    id: `challenge_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-    isActive: challengeData.isActive ?? false, // Default to inactive if not set
-  };
-
-  mockChallenges.push(newChallenge); // Modify shared store
-  return { ...newChallenge }; // Return copy
 }
 
 /**
- * Updates an existing challenge.
+ * Updates an existing challenge in Firestore.
  * @param id - ID of the challenge to update.
  * @param challengeData - Partial data containing the fields to update.
  * @returns Promise<Challenge> - The updated challenge.
  * @throws Error - If the challenge is not found or validation fails.
  */
-export async function updateChallenge(id: string, challengeData: Partial<Omit<Challenge, 'id'>>): Promise<Challenge> {
-  console.log("Updating challenge (mock):", id, challengeData);
-  await new Promise(resolve => setTimeout(resolve, 250));
+export async function updateChallenge(id: string, challengeData: Partial<Omit<Challenge, 'id' | 'createdAt'>>): Promise<Challenge> {
+  console.log("Updating challenge in Firestore:", id, challengeData);
+  try {
+    const docRef = doc(db, 'challenges', id);
+    const docSnap = await getDoc(docRef);
 
-  const challengeIndex = mockChallenges.findIndex(c => c.id === id);
-  if (challengeIndex === -1) {
-    throw new Error("Desafio não encontrado.");
-  }
-
-  const currentChallenge = mockChallenges[challengeIndex];
-  const updatedFields = { ...currentChallenge, ...challengeData };
-
-  // --- Validation on updated fields ---
-  if (updatedFields.title !== undefined && !updatedFields.title?.trim()) {
-    throw new Error("Título não pode ser vazio.");
-  }
-  if (updatedFields.description !== undefined && !updatedFields.description?.trim()) {
-    throw new Error("Descrição não pode ser vazia.");
-  }
-  if (updatedFields.startDate !== undefined && updatedFields.endDate !== undefined && new Date(updatedFields.endDate) < new Date(updatedFields.startDate)) {
-      throw new Error("Data final não pode ser anterior à data inicial.");
-  } else if (updatedFields.startDate !== undefined && new Date(currentChallenge.endDate) < new Date(updatedFields.startDate)) {
-       throw new Error("Data final não pode ser anterior à data inicial.");
-  } else if (updatedFields.endDate !== undefined && new Date(updatedFields.endDate) < new Date(currentChallenge.startDate)) {
-      throw new Error("Data final não pode ser anterior à data inicial.");
-  }
-  if (updatedFields.points !== undefined && updatedFields.points <= 0) {
-    throw new Error("Pontuação deve ser positiva.");
-  }
-  if (updatedFields.eligibleDepartments !== undefined) {
-     if (!updatedFields.eligibleDepartments || updatedFields.eligibleDepartments.length === 0) {
-        throw new Error("Departamentos elegíveis devem ser definidos (ou 'Todos').");
+    if (!docSnap.exists()) {
+      throw new Error("Desafio não encontrado.");
     }
-     if (!updatedFields.eligibleDepartments.includes('Todos')) {
-        const validDepartments = await getAllDepartments();
-        const validDeptNames = validDepartments.map(d => d.name);
-        const invalidDepts = updatedFields.eligibleDepartments.filter(dept => !validDeptNames.includes(dept));
-        if (invalidDepts.length > 0) {
-        throw new Error(`Departamentos inválidos: ${invalidDepts.join(', ')}`);
-        }
+
+    // --- Validation on updated fields --- (Keep relevant validations)
+    if (challengeData.title !== undefined && !challengeData.title?.trim()) {
+        throw new Error("Título não pode ser vazio.");
     }
+     // Validate eligible departments if they are being updated
+     if (challengeData.eligibleDepartments && !challengeData.eligibleDepartments.includes('Todos')) {
+         const validDepartments = await getAllDepartments(); // Fetch from Firestore
+         const validDeptNames = validDepartments.map(d => d.name);
+         const invalidDepts = challengeData.eligibleDepartments.filter(dept => !validDeptNames.includes(dept));
+         if (invalidDepts.length > 0) {
+            throw new Error(`Departamentos inválidos: ${invalidDepts.join(', ')}`);
+         }
+     }
+     // ... other validations ...
+
+    const updateData = { ...challengeData, updatedAt: Timestamp.now() }; // Add update timestamp
+
+    // Remove undefined fields before updating
+     Object.keys(updateData).forEach(key => updateData[key as keyof typeof updateData] === undefined && delete updateData[key as keyof typeof updateData]);
+
+
+    await updateDoc(docRef, updateData);
+
+    // Fetch the updated document to return complete data
+    const updatedDoc = await getDoc(docRef);
+    return docToChallenge(updatedDoc as QueryDocumentSnapshot<DocumentData>);
+
+  } catch (error: any) {
+    console.error("Error updating challenge:", error);
+    if (error.message.includes("encontrado") || error.message.includes("inválidos") || error.message.includes("vazio") || error.message.includes("positiva") || error.message.includes("Data final")) {
+        throw error; // Rethrow known errors
+    }
+    throw new Error("Falha ao atualizar desafio.");
   }
-
-
-  mockChallenges[challengeIndex] = updatedFields; // Update shared store
-  return { ...updatedFields }; // Return copy
 }
 
 /**
- * Deletes a challenge.
+ * Deletes a challenge from Firestore.
  * @param id - ID of the challenge to delete.
  * @returns Promise<void>
  * @throws Error - If the challenge is not found.
  */
 export async function deleteChallenge(id: string): Promise<void> {
-  console.log("Deleting challenge (mock):", id);
-  await new Promise(resolve => setTimeout(resolve, 200));
-
-  const initialLength = mockChallenges.length;
-  const challengeIndex = mockChallenges.findIndex(c => c.id === id);
-
-  if (challengeIndex === -1) {
-    throw new Error("Desafio não encontrado para exclusão.");
+  console.log("Deleting challenge from Firestore:", id);
+  try {
+    const docRef = doc(db, 'challenges', id);
+    // Optional: Check if doc exists before deleting
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) {
+        throw new Error("Desafio não encontrado para exclusão.");
+    }
+    await deleteDoc(docRef);
+    console.log(`Challenge ${id} deleted successfully.`);
+     // TODO: Consider deleting related submissions/acceptances if necessary
+  } catch (error: any) {
+    console.error("Error deleting challenge:", error);
+     if (error.message.includes("encontrado")) {
+        throw error;
+     }
+    throw new Error("Falha ao excluir desafio.");
   }
-
-  mockChallenges.splice(challengeIndex, 1); // Remove from shared store
 }
 
 /**
- * Fetches unique categories used in challenges.
+ * Fetches unique categories used in challenges from Firestore.
+ * Note: This can be inefficient for large datasets. Consider storing categories separately or using aggregation.
  * @returns Promise<string[]> - Array of unique category names.
  */
 export async function getUsedChallengeCategories(): Promise<string[]> {
-    await new Promise(resolve => setTimeout(resolve, 20));
-    const categories = new Set(mockChallenges.map(c => c.category).filter(Boolean) as string[]);
-    return Array.from(categories);
+    console.log("Fetching used challenge categories from Firestore...");
+    try {
+        // This fetches all documents just to get categories - potentially inefficient
+        const q = query(challengesCollection, where('category', '!=', null)); // Get docs with a category
+        const snapshot = await getDocs(q);
+        const categories = new Set<string>();
+        snapshot.docs.forEach(doc => {
+            const category = doc.data().category;
+            if (category && typeof category === 'string') {
+                categories.add(category);
+            }
+        });
+        return Array.from(categories).sort(); // Sort alphabetically
+    } catch (error) {
+        console.error("Error fetching challenge categories:", error);
+        // Return empty array or rethrow?
+        return [];
+    }
 }
 
-// --- Placeholder functions for other aspects (remain unchanged) ---
+
+// --- Placeholder functions for other aspects (Need Firestore implementation) ---
+// These require additional collections (e.g., 'challengeAcceptances', 'challengeSubmissions')
+
 export async function acceptChallenge(challengeId: string, employeeId: string): Promise<void> {
-    console.log(`Employee ${employeeId} accepted challenge ${challengeId} (mock).`);
+    console.log(`Employee ${employeeId} accepted challenge ${challengeId} (Firestore TODO).`);
+    // Firestore logic: Add a document to 'challengeAcceptances' collection
+    // e.g., setDoc(doc(db, 'challengeAcceptances', `${employeeId}_${challengeId}`), { employeeId, challengeId, acceptedAt: Timestamp.now() });
     await new Promise(resolve => setTimeout(resolve, 100));
 }
 export async function submitChallengeEvidence(challengeId: string, employeeId: string, evidence: any): Promise<void> {
-     console.log(`Employee ${employeeId} submitted evidence for challenge ${challengeId} (mock):`, evidence);
+     console.log(`Employee ${employeeId} submitted evidence for challenge ${challengeId} (Firestore TODO):`, evidence);
+     // Firestore logic: Add a document to 'challengeSubmissions' collection
+     // e.g., addDoc(collection(db, 'challengeSubmissions'), { employeeId, challengeId, evidence, submittedAt: Timestamp.now(), status: 'pending' });
      await new Promise(resolve => setTimeout(resolve, 200));
 }
 export async function evaluateChallengeSubmission(challengeId: string, employeeId: string, score: number, feedback?: string): Promise<void> {
-    console.log(`Admin evaluated challenge ${challengeId} for employee ${employeeId} (mock). Score: ${score}, Feedback: ${feedback || 'N/A'}`);
+    console.log(`Admin evaluated challenge ${challengeId} for employee ${employeeId} (Firestore TODO). Score: ${score}, Feedback: ${feedback || 'N/A'}`);
+    // Firestore logic: Update the corresponding 'challengeSubmissions' document
+    // e.g., updateDoc(submissionDocRef, { status: 'evaluated', score, feedback, evaluatedAt: Timestamp.now() });
+    // Also, potentially update employee's challenge points record.
     await new Promise(resolve => setTimeout(resolve, 150));
+}
+
+// Helper to get document snapshot
+async function getDoc(ref: any): Promise<DocumentData> {
+    const docSnap = await getDoc(ref);
+    if (!docSnap.exists()) {
+        // Returning null or undefined might be better than throwing here depending on use case
+        // For getById, returning null is appropriate. For update/delete, throwing is better.
+        // Let's keep throwing for now as the calling functions handle it.
+        throw new Error('Documento não encontrado');
+    }
+    return docSnap;
 }

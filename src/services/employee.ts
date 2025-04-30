@@ -1,15 +1,33 @@
 
 'use server';
 
-import { mockEmployees } from './mock-data'; // Import from centralized store
+import { db } from '@/lib/firebase';
+import {
+    collection,
+    getDocs,
+    addDoc,
+    updateDoc,
+    deleteDoc,
+    doc,
+    query,
+    where,
+    orderBy,
+    Timestamp,
+    DocumentData,
+    QueryDocumentSnapshot,
+    Query,
+    getCountFromServer,
+    limit // Import limit
+} from 'firebase/firestore';
 import { getAllDepartments } from './department'; // Still needed for validation
+import { getAllRoles } from './role'; // For validation
 
 /**
  * Represents employee information.
  */
 export interface Employee {
   /**
-   * The employee's unique identifier.
+   * The employee's unique identifier (document ID).
    */
   id: string;
   /**
@@ -21,7 +39,7 @@ export interface Employee {
    */
   department: string;
   /**
-   * The employee's role or job title.
+   * The employee's role or job title (should match a valid Role name).
    */
   role: string;
    /**
@@ -29,13 +47,30 @@ export interface Employee {
    */
   email?: string;
    /**
-   * Optional: Admission date.
+   * Optional: Admission date (stored as string YYYY-MM-DD).
    */
-  admissionDate?: string; // ISO string format ideally (e.g., "2024-01-15")
+  admissionDate?: string;
+  /** Timestamp of creation */
+  createdAt?: Timestamp;
 }
 
+const employeesCollection = collection(db, 'employees');
 
-// --- Mock API Functions ---
+// Helper to convert Firestore doc to Employee
+const docToEmployee = (doc: QueryDocumentSnapshot<DocumentData>): Employee => {
+    const data = doc.data();
+    return {
+        id: doc.id,
+        name: data.name,
+        department: data.department,
+        role: data.role,
+        email: data.email,
+        admissionDate: data.admissionDate, // Stored as string
+        createdAt: data.createdAt,
+    };
+};
+
+// --- Firestore API Functions ---
 
 /**
  * Asynchronously retrieves employee information by ID.
@@ -44,10 +79,15 @@ export interface Employee {
  * @returns A promise that resolves to an Employee object or null if not found.
  */
 export async function getEmployee(id: string): Promise<Employee | null> {
-  console.log("Fetching employee by ID (mock):", id);
-  await new Promise(resolve => setTimeout(resolve, 50));
-  const employee = mockEmployees.find(emp => emp.id === id);
-  return employee ? { ...employee } : null; // Return a copy
+  console.log("Fetching employee by ID from Firestore:", id);
+  try {
+      const docRef = doc(db, 'employees', id);
+      const docSnap = await getDoc(docRef);
+      return docSnap.exists() ? docToEmployee(docSnap as QueryDocumentSnapshot<DocumentData>) : null;
+  } catch (error) {
+      console.error("Error fetching employee by ID:", error);
+      throw new Error("Falha ao buscar colaborador.");
+  }
 }
 
 /**
@@ -57,144 +97,239 @@ export async function getEmployee(id: string): Promise<Employee | null> {
  * @returns A promise that resolves to an array of Employee objects.
  */
 export async function getAllEmployees(department?: string): Promise<Employee[]> {
-  console.log(`Fetching all employees${department ? ` for department ${department}` : ''} (mock)...`);
-  await new Promise(resolve => setTimeout(resolve, 100)); // Reduced delay
-  if (department) {
-      return mockEmployees.filter(emp => emp.department === department).map(emp => ({ ...emp })); // Return copies
+  console.log(`Fetching all employees${department ? ` for department ${department}` : ''} from Firestore...`);
+  try {
+      let q: Query = query(employeesCollection, orderBy("name")); // Order by name
+
+      if (department) {
+          q = query(q, where("department", "==", department));
+      }
+
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(docToEmployee);
+  } catch (error) {
+      console.error("Error fetching employees:", error);
+      throw new Error("Falha ao buscar colaboradores.");
   }
-  return [...mockEmployees].map(emp => ({ ...emp })); // Return copies from shared store
 }
 
 /**
- * Asynchronously adds a new employee.
+ * Asynchronously adds a new employee to Firestore.
  *
- * @param employeeData Data for the new employee (excluding ID).
+ * @param employeeData Data for the new employee (excluding ID, createdAt).
  * @returns A promise that resolves to the newly created Employee object.
- * @throws Error if validation fails (e.g., duplicate email, invalid department).
+ * @throws Error if validation fails (e.g., duplicate email, invalid department/role).
  */
-export async function addEmployee(employeeData: Omit<Employee, 'id'>): Promise<Employee> {
-    console.log("Adding employee (mock):", employeeData);
-    await new Promise(resolve => setTimeout(resolve, 200));
+export async function addEmployee(employeeData: Omit<Employee, 'id' | 'createdAt'>): Promise<Employee> {
+    console.log("Adding employee to Firestore:", employeeData);
+    try {
+        // --- Validation ---
+        if (!employeeData.name?.trim() || !employeeData.department?.trim() || !employeeData.role?.trim()) {
+            throw new Error("Nome, Departamento e Função são obrigatórios.");
+        }
+        if (employeeData.email && !/\S+@\S+\.\S+/.test(employeeData.email)) {
+             throw new Error("Formato de email inválido.");
+        }
+        // Check for duplicate email if provided
+        if (employeeData.email) {
+            const q = query(employeesCollection, where("email", "==", employeeData.email));
+            const existingEmail = await getDocs(q);
+            if (!existingEmail.empty) {
+                throw new Error(`Email "${employeeData.email}" já está em uso.`);
+            }
+        }
+        // Validate department exists
+        const validDepartments = await getAllDepartments(); // Fetches from Firestore
+        if (!validDepartments.some(dept => dept.name === employeeData.department)) {
+             throw new Error(`Departamento "${employeeData.department}" inválido.`);
+        }
+         // Validate role exists
+        const validRoles = await getAllRoles(); // Fetches from Firestore
+        if (!validRoles.some(role => role.name === employeeData.role)) {
+            throw new Error(`Função "${employeeData.role}" inválida.`);
+        }
+        // Validate admissionDate format if provided (basic check)
+        if (employeeData.admissionDate && !/^\d{4}-\d{2}-\d{2}$/.test(employeeData.admissionDate)) {
+            throw new Error("Formato inválido para Data de Admissão (use AAAA-MM-DD).");
+        }
 
-    // --- Basic Validation ---
-    if (!employeeData.name?.trim() || !employeeData.department?.trim() || !employeeData.role?.trim()) {
-        throw new Error("Nome, Departamento e Função são obrigatórios.");
-    }
-     // Validate email format if provided
-    if (employeeData.email && !/\S+@\S+\.\S+/.test(employeeData.email)) {
-         throw new Error("Formato de email inválido.");
-    }
-    // Check for duplicate email if provided
-    if (employeeData.email && mockEmployees.some(emp => emp.email?.toLowerCase() === employeeData.email?.toLowerCase())) {
-        throw new Error(`Email "${employeeData.email}" já está em uso.`);
-    }
-    // Validate department exists (requires fetching departments)
-    const validDepartments = await getAllDepartments();
-    if (!validDepartments.some(dept => dept.name === employeeData.department)) {
-         throw new Error(`Departamento "${employeeData.department}" inválido.`);
-    }
-    // Add more validations as needed (e.g., role format, admission date)
+        const newEmployeeData = {
+            ...employeeData,
+            createdAt: Timestamp.now(),
+        };
 
-    const newEmployee: Employee = {
-        ...employeeData,
-        id: `emp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-    };
-    mockEmployees.push(newEmployee); // Add to shared store
-    return { ...newEmployee }; // Return a copy
+        const docRef = await addDoc(employeesCollection, newEmployeeData);
+        return {
+            id: docRef.id,
+            ...newEmployeeData,
+        } as Employee; // Ensure return type matches
+
+    } catch (error: any) {
+        console.error("Error adding employee:", error);
+        // Rethrow specific validation errors
+        if (error.message.includes("obrigatórios") || error.message.includes("inválido") || error.message.includes("em uso") || error.message.includes("inválida")) {
+            throw error;
+        }
+        throw new Error("Falha ao adicionar colaborador.");
+    }
 }
 
 /**
- * Asynchronously updates an existing employee.
+ * Asynchronously updates an existing employee in Firestore.
  *
  * @param id The ID of the employee to update.
  * @param employeeData Partial data containing the fields to update.
  * @returns A promise that resolves to the updated Employee object.
  * @throws Error if employee not found or validation fails.
  */
-export async function updateEmployee(id: string, employeeData: Partial<Omit<Employee, 'id'>>): Promise<Employee> {
-    console.log("Updating employee (mock):", id, employeeData);
-    await new Promise(resolve => setTimeout(resolve, 200));
+export async function updateEmployee(id: string, employeeData: Partial<Omit<Employee, 'id' | 'createdAt'>>): Promise<Employee> {
+    console.log("Updating employee in Firestore:", id, employeeData);
+    try {
+        const docRef = doc(db, 'employees', id);
+        const docSnap = await getDoc(docRef);
 
-    const empIndex = mockEmployees.findIndex(e => e.id === id);
-    if (empIndex === -1) {
-        throw new Error("Colaborador não encontrado.");
-    }
-
-    const currentEmployee = mockEmployees[empIndex];
-    const updatedFields = { ...currentEmployee, ...employeeData };
-
-    // --- Validation on updated fields ---
-    if (updatedFields.name !== undefined && !updatedFields.name?.trim()) {
-        throw new Error("Nome não pode ser vazio.");
-    }
-    if (updatedFields.department !== undefined && !updatedFields.department?.trim()) {
-        throw new Error("Departamento não pode ser vazio.");
-    }
-    if (updatedFields.role !== undefined && !updatedFields.role?.trim()) {
-        throw new Error("Função não pode ser vazia.");
-    }
-     // Validate email format if changed
-    if (updatedFields.email !== undefined && updatedFields.email && !/\S+@\S+\.\S+/.test(updatedFields.email)) {
-         throw new Error("Formato de email inválido.");
-    }
-    // Check for duplicate email if changed
-    if (updatedFields.email !== undefined && updatedFields.email && mockEmployees.some(emp => emp.email?.toLowerCase() === updatedFields.email?.toLowerCase() && emp.id !== id)) {
-        throw new Error(`Email "${updatedFields.email}" já está em uso por outro colaborador.`);
-    }
-    // Validate department if changed
-    if (updatedFields.department !== undefined && updatedFields.department !== currentEmployee.department) {
-        const validDepartments = await getAllDepartments();
-         if (!validDepartments.some(dept => dept.name === updatedFields.department)) {
-            throw new Error(`Departamento "${updatedFields.department}" inválido.`);
+        if (!docSnap.exists()) {
+            throw new Error("Colaborador não encontrado.");
         }
-    }
-    // Add more validations...
+        const currentEmployee = docToEmployee(docSnap as QueryDocumentSnapshot<DocumentData>); // Get current data
 
-    mockEmployees[empIndex] = updatedFields; // Update shared store
-    return { ...updatedFields }; // Return a copy
+        // --- Validation on updated fields ---
+        if (employeeData.name !== undefined && !employeeData.name?.trim()) {
+            throw new Error("Nome não pode ser vazio.");
+        }
+        if (employeeData.email !== undefined && employeeData.email && !/\S+@\S+\.\S+/.test(employeeData.email)) {
+             throw new Error("Formato de email inválido.");
+        }
+        // Check for duplicate email if changed
+        if (employeeData.email !== undefined && employeeData.email && employeeData.email !== currentEmployee.email) {
+            const q = query(employeesCollection, where("email", "==", employeeData.email));
+            const existingEmail = await getDocs(q);
+             // Ensure the found doc isn't the one we are currently updating
+            if (!existingEmail.empty && existingEmail.docs[0].id !== id) {
+                throw new Error(`Email "${employeeData.email}" já está em uso por outro colaborador.`);
+            }
+        }
+        // Validate department if changed
+        if (employeeData.department !== undefined && employeeData.department !== currentEmployee.department) {
+             if (!employeeData.department?.trim()) {
+                throw new Error("Departamento não pode ser vazio.");
+            }
+             const validDepartments = await getAllDepartments();
+             if (!validDepartments.some(dept => dept.name === employeeData.department)) {
+                throw new Error(`Departamento "${employeeData.department}" inválido.`);
+            }
+        }
+         // Validate role if changed
+        if (employeeData.role !== undefined && employeeData.role !== currentEmployee.role) {
+            if (!employeeData.role?.trim()) {
+                throw new Error("Função não pode ser vazia.");
+            }
+            const validRoles = await getAllRoles();
+            if (!validRoles.some(role => role.name === employeeData.role)) {
+                throw new Error(`Função "${employeeData.role}" inválida.`);
+            }
+        }
+        // Validate admissionDate format if changed
+        if (employeeData.admissionDate !== undefined && employeeData.admissionDate && !/^\d{4}-\d{2}-\d{2}$/.test(employeeData.admissionDate)) {
+            throw new Error("Formato inválido para Data de Admissão (use AAAA-MM-DD).");
+        }
+
+        const updateData = { ...employeeData, updatedAt: Timestamp.now() };
+
+         // Remove undefined fields before updating
+        Object.keys(updateData).forEach(key => updateData[key as keyof typeof updateData] === undefined && delete updateData[key as keyof typeof updateData]);
+
+        await updateDoc(docRef, updateData);
+
+        // Fetch the updated document to return complete data
+        const updatedDoc = await getDoc(docRef);
+        return docToEmployee(updatedDoc as QueryDocumentSnapshot<DocumentData>); // Cast needed
+
+    } catch (error: any) {
+        console.error("Error updating employee:", error);
+         if (error.message.includes("encontrado") || error.message.includes("vazio") || error.message.includes("inválido") || error.message.includes("em uso") || error.message.includes("inválida")) {
+            throw error;
+        }
+        throw new Error("Falha ao atualizar colaborador.");
+    }
 }
 
 
 /**
- * Asynchronously deletes an employee.
+ * Asynchronously deletes an employee from Firestore.
  *
  * @param id The ID of the employee to delete.
  * @returns A promise that resolves when deletion is complete.
  * @throws Error if employee not found or cannot be deleted.
  */
 export async function deleteEmployee(id: string): Promise<void> {
-    console.log("Deleting employee (mock):", id);
-    await new Promise(resolve => setTimeout(resolve, 200));
+    console.log("Deleting employee from Firestore:", id);
+    try {
+        const docRef = doc(db, 'employees', id);
+         // Optional: Check if doc exists before attempting delete
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) {
+             throw new Error("Colaborador não encontrado para exclusão.");
+        }
 
-    const initialLength = mockEmployees.length;
-    const empIndex = mockEmployees.findIndex(emp => emp.id === id);
-
-    if (empIndex === -1) {
-         throw new Error("Colaborador não encontrado para exclusão.");
+        await deleteDoc(docRef);
+        console.log(`Employee ${id} deleted successfully.`);
+         // TODO: Consider implications for related data (evaluations, ranking history, etc.)
+         // Might need a Firebase Function for cleanup.
+    } catch (error: any) {
+        console.error("Error deleting employee:", error);
+         if (error.message.includes("encontrado")) {
+             throw error;
+         }
+        throw new Error("Falha ao excluir colaborador.");
     }
-
-    mockEmployees.splice(empIndex, 1); // Remove from shared store
-
-    // In a real app, handle related data (e.g., evaluations, access rights)
 }
 
-// --- Helper Functions (could be moved) ---
+// --- Helper Functions (using Firestore) ---
 
 /**
  * Gets a list of unique department names currently used by employees.
- * Useful for filtering if not fetching all departments separately.
+ * Note: Can be inefficient on very large datasets.
  */
 export async function getUsedDepartmentNames(): Promise<string[]> {
-    await new Promise(resolve => setTimeout(resolve, 20)); // Simulate small delay
-    const departments = new Set(mockEmployees.map(emp => emp.department));
-    return Array.from(departments);
+    console.log("Fetching used department names from Firestore employees...");
+    try {
+        const snapshot = await getDocs(collection(db, 'employees'));
+        const departments = new Set<string>();
+        snapshot.docs.forEach(doc => {
+            const dept = doc.data().department;
+            if (dept) departments.add(dept);
+        });
+        return Array.from(departments).sort();
+    } catch (error) {
+        console.error("Error fetching used department names:", error);
+        return [];
+    }
 }
 
 /**
  * Gets a list of unique role names currently used by employees.
+ * Note: Can be inefficient on very large datasets.
  */
 export async function getUsedRoleNames(): Promise<string[]> {
-    await new Promise(resolve => setTimeout(resolve, 20));
-    const roles = new Set(mockEmployees.map(emp => emp.role));
-    return Array.from(roles);
+     console.log("Fetching used role names from Firestore employees...");
+     try {
+        const snapshot = await getDocs(collection(db, 'employees'));
+        const roles = new Set<string>();
+        snapshot.docs.forEach(doc => {
+             const role = doc.data().role;
+             if (role) roles.add(role);
+        });
+        return Array.from(roles).sort();
+    } catch (error) {
+        console.error("Error fetching used role names:", error);
+        return [];
+    }
+}
+
+// Helper to get document snapshot
+async function getDoc(ref: any): Promise<DocumentData> {
+    const docSnap = await getDoc(ref);
+    // Removed the throw here, let the caller decide how to handle non-existence
+    return docSnap;
 }

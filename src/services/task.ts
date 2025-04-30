@@ -1,81 +1,114 @@
 
 'use server';
 
-import { mockTasks } from './mock-data'; // Import from centralized store
+import { db } from '@/lib/firebase';
+import {
+    collection,
+    getDocs,
+    addDoc,
+    updateDoc,
+    deleteDoc,
+    doc,
+    query,
+    where,
+    orderBy,
+    Timestamp,
+    DocumentData,
+    QueryDocumentSnapshot,
+    Query,
+    getCountFromServer,
+    limit // Import limit
+} from 'firebase/firestore';
 import { getAllDepartments } from './department'; // Keep for validation
 
 /**
  * Represents a task.
  */
 export interface Task {
-  /**
-   * The task's unique identifier.
-   */
+  /** The task's unique identifier (document ID) */
   id: string;
-  /**
-   * The title of the task.
-   */
+  /** The title of the task */
   title: string;
-  /**
-   * The detailed description of the task.
-   */
+  /** The detailed description of the task */
   description: string;
-  /**
-   * The department name to which the task belongs, or 'Geral'.
-   */
+  /** Department name or 'Geral' */
   department: string;
-  /**
-   * Optional: Criteria for achieving a score of 10.
-   */
+  /** Optional: Criteria for score 10 */
   criteria?: string;
-   /**
-   * Optional: Category for grouping tasks.
-   */
+  /** Optional: Category */
   category?: string;
-   /**
-   * Optional: Priority level.
-   */
+  /** Optional: Priority */
   priority?: 'Baixa' | 'Média' | 'Alta' | 'Crítica';
-   /**
-   * Optional: How often the task should appear (e.g., daily, weekly).
-   */
+  /** Optional: Periodicity */
   periodicity?: 'Diária' | 'Semanal' | 'Mensal' | 'Específica';
+  /** Timestamp of creation */
+  createdAt?: Timestamp;
 }
 
+const tasksCollection = collection(db, 'tasks');
 
-// --- Mock API Functions ---
+// Helper to convert Firestore doc to Task
+const docToTask = (doc: QueryDocumentSnapshot<DocumentData>): Task => {
+    const data = doc.data();
+    return {
+        id: doc.id,
+        title: data.title,
+        description: data.description,
+        department: data.department,
+        criteria: data.criteria,
+        category: data.category,
+        priority: data.priority,
+        periodicity: data.periodicity,
+        createdAt: data.createdAt,
+    };
+};
+
+// --- Firestore API Functions ---
 
 /**
- * Asynchronously retrieves task information by ID.
+ * Asynchronously retrieves task information by ID from Firestore.
  *
  * @param id The ID of the task to retrieve.
  * @returns A promise that resolves to a Task object or null if not found.
  */
 export async function getTask(id: string): Promise<Task | null> {
-  console.log("Fetching task by ID (mock):", id);
-  await new Promise(resolve => setTimeout(resolve, 50));
-  const task = mockTasks.find(t => t.id === id);
-  return task ? { ...task } : null; // Return copy
+  console.log("Fetching task by ID from Firestore:", id);
+  try {
+    const docRef = doc(db, 'tasks', id);
+    const docSnap = await getDoc(docRef);
+    return docSnap.exists() ? docToTask(docSnap as QueryDocumentSnapshot<DocumentData>) : null;
+  } catch (error) {
+    console.error("Error fetching task by ID:", error);
+    throw new Error("Falha ao buscar tarefa.");
+  }
 }
 
 /**
- * Asynchronously retrieves all tasks, optionally filtered by department.
+ * Asynchronously retrieves all tasks from Firestore, optionally filtered by department.
  *
- * @param department Optional department name to filter tasks. Use 'Todos' to skip filtering.
+ * @param department Optional department name to filter tasks. Use 'Todos' or undefined for all.
  * @returns A promise that resolves to an array of Task objects.
  */
 export async function getAllTasks(department?: string): Promise<Task[]> {
-   console.log(`Fetching tasks${department && department !== 'Todos' ? ` for ${department}` : ' (all)'} (mock)...`);
-   await new Promise(resolve => setTimeout(resolve, 100)); // Reduced delay
-   const filteredTasks = (department && department !== 'Todos')
-     ? mockTasks.filter(task => task.department === department)
-     : [...mockTasks];
-   return filteredTasks.map(task => ({...task})); // Return copies from shared store
+   console.log(`Fetching tasks${department && department !== 'Todos' ? ` for ${department}` : ' (all)'} from Firestore...`);
+   try {
+       let q: Query = query(tasksCollection, orderBy("department"), orderBy("title")); // Order by department then title
+
+       if (department && department !== 'Todos') {
+           q = query(q, where("department", "==", department));
+       }
+
+       const snapshot = await getDocs(q);
+       return snapshot.docs.map(docToTask);
+   } catch (error) {
+       console.error("Error fetching tasks:", error);
+       throw new Error("Falha ao buscar tarefas.");
+   }
 }
 
 
 /**
- * Asynchronously retrieves tasks relevant for a specific department's evaluation checklist.
+ * Asynchronously retrieves tasks relevant for a specific department's evaluation checklist from Firestore.
  * Includes tasks assigned directly to the department AND 'Geral' tasks.
  *
  * @param department The specific department name. Cannot be 'Todos'.
@@ -84,127 +117,194 @@ export async function getAllTasks(department?: string): Promise<Task[]> {
  */
 export async function getTasksForDepartmentEvaluation(department: string): Promise<Task[]> {
    if (!department || department === 'Todos') {
-       throw new Error("Department must be specified for evaluation tasks.");
+       throw new Error("Departamento deve ser especificado para buscar tarefas de avaliação.");
    }
-   console.log(`Fetching tasks for evaluation in ${department} (mock)...`);
-   await new Promise(resolve => setTimeout(resolve, 100));
+   console.log(`Fetching tasks for evaluation in ${department} from Firestore...`);
+   try {
+        // Query for tasks specific to the department OR 'Geral' tasks
+        const q = query(
+            tasksCollection,
+            where("department", "in", [department, 'Geral']),
+            orderBy("department"), // Optional: Group by 'Geral' then specific dept
+            orderBy("title")
+        );
 
-   // Filter tasks assigned to the specific department OR the 'Geral' department
-   const relevantTasks = mockTasks.filter(task =>
-       task.department === department || task.department === 'Geral'
-   );
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(docToTask);
 
-   return relevantTasks.map(task => ({...task})); // Return copies
+   } catch (error) {
+        console.error("Error fetching tasks for evaluation:", error);
+        throw new Error("Falha ao buscar tarefas de avaliação para o departamento.");
+   }
 }
 
 
 /**
- * Asynchronously adds a new task.
+ * Asynchronously adds a new task to Firestore.
  *
- * @param taskData Data for the new task (excluding ID).
+ * @param taskData Data for the new task (excluding ID, createdAt).
  * @returns A promise that resolves to the newly created Task object.
  * @throws Error if validation fails.
  */
-export async function addTask(taskData: Omit<Task, 'id'>): Promise<Task> {
-    console.log("Adding task (mock):", taskData);
-    await new Promise(resolve => setTimeout(resolve, 200));
-
-    // --- Basic Validation ---
-    if (!taskData.title?.trim() || !taskData.description?.trim() || !taskData.department?.trim()) {
-        throw new Error("Título, Descrição e Departamento são obrigatórios.");
-    }
-    // Validate department exists (including 'Geral')
-    if (taskData.department !== 'Geral') {
-        const validDepartments = await getAllDepartments();
-        if (!validDepartments.some(d => d.name === taskData.department)) {
-            throw new Error(`Departamento "${taskData.department}" inválido.`);
+export async function addTask(taskData: Omit<Task, 'id' | 'createdAt'>): Promise<Task> {
+    console.log("Adding task to Firestore:", taskData);
+    try {
+        // --- Validation ---
+        if (!taskData.title?.trim() || !taskData.description?.trim() || !taskData.department?.trim()) {
+            throw new Error("Título, Descrição e Departamento são obrigatórios.");
         }
-    }
-     // Add more specific validations (e.g., category from allowed list, priority format)
+        // Validate department exists (including 'Geral')
+        if (taskData.department !== 'Geral') {
+            const validDepartments = await getAllDepartments(); // Fetches from Firestore
+            if (!validDepartments.some(d => d.name === taskData.department)) {
+                throw new Error(`Departamento "${taskData.department}" inválido.`);
+            }
+        }
+        // Add other specific validations as needed...
 
-    const newTask: Task = {
-        ...taskData,
-        id: `task_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        // Set defaults if needed
-        priority: taskData.priority ?? 'Média',
-        periodicity: taskData.periodicity ?? 'Diária',
-    };
-    mockTasks.push(newTask); // Add to shared store
-    return { ...newTask }; // Return copy
+        const newTaskData = {
+            ...taskData,
+            priority: taskData.priority ?? 'Média', // Default priority
+            periodicity: taskData.periodicity ?? 'Diária', // Default periodicity
+            createdAt: Timestamp.now(),
+        };
+
+        const docRef = await addDoc(tasksCollection, newTaskData);
+        return {
+            id: docRef.id,
+            ...newTaskData,
+        } as Task; // Ensure return type matches
+
+    } catch (error: any) {
+        console.error("Error adding task:", error);
+         if (error.message.includes("obrigatórios") || error.message.includes("inválido")) {
+            throw error;
+         }
+        throw new Error("Falha ao adicionar tarefa.");
+    }
 }
 
 /**
- * Asynchronously updates an existing task.
+ * Asynchronously updates an existing task in Firestore.
  *
  * @param id The ID of the task to update.
  * @param taskData Partial data containing the fields to update.
  * @returns A promise that resolves to the updated Task object.
  * @throws Error if task not found or validation fails.
  */
-export async function updateTask(id: string, taskData: Partial<Omit<Task, 'id'>>): Promise<Task> {
-    console.log("Updating task (mock):", id, taskData);
-    await new Promise(resolve => setTimeout(resolve, 200));
+export async function updateTask(id: string, taskData: Partial<Omit<Task, 'id' | 'createdAt'>>): Promise<Task> {
+    console.log("Updating task in Firestore:", id, taskData);
+    try {
+        const docRef = doc(db, 'tasks', id);
+        const docSnap = await getDoc(docRef);
 
-    const taskIndex = mockTasks.findIndex(t => t.id === id);
-    if (taskIndex === -1) {
-        throw new Error("Tarefa não encontrada.");
-    }
-
-    const currentTask = mockTasks[taskIndex];
-    const updatedFields = { ...currentTask, ...taskData };
-
-    // --- Validation on updated fields ---
-    if (updatedFields.title !== undefined && !updatedFields.title?.trim()) {
-        throw new Error("Título não pode ser vazio.");
-    }
-    if (updatedFields.description !== undefined && !updatedFields.description?.trim()) {
-         throw new Error("Descrição não pode ser vazia.");
-    }
-    if (updatedFields.department !== undefined) {
-        if (!updatedFields.department?.trim()) {
-            throw new Error("Departamento não pode ser vazio.");
+        if (!docSnap.exists()) {
+            throw new Error("Tarefa não encontrada.");
         }
-        // Validate department if changed
-        if (updatedFields.department !== currentTask.department && updatedFields.department !== 'Geral') {
-             const validDepartments = await getAllDepartments();
-             if (!validDepartments.some(d => d.name === updatedFields.department)) {
-                 throw new Error(`Departamento "${updatedFields.department}" inválido.`);
-             }
-        }
-    }
-    // Add more specific validations...
 
-    mockTasks[taskIndex] = updatedFields; // Update shared store
-    return { ...updatedFields }; // Return copy
+        // --- Validation on updated fields ---
+        if (taskData.title !== undefined && !taskData.title?.trim()) {
+            throw new Error("Título não pode ser vazio.");
+        }
+        if (taskData.description !== undefined && !taskData.description?.trim()) {
+             throw new Error("Descrição não pode ser vazia.");
+        }
+        if (taskData.department !== undefined) {
+            if (!taskData.department?.trim()) {
+                throw new Error("Departamento não pode ser vazio.");
+            }
+            // Validate department if changed
+            if (taskData.department !== docSnap.data().department && taskData.department !== 'Geral') {
+                 const validDepartments = await getAllDepartments();
+                 if (!validDepartments.some(d => d.name === taskData.department)) {
+                     throw new Error(`Departamento "${taskData.department}" inválido.`);
+                 }
+            }
+        }
+        // Add more specific validations...
+
+        const updateData = { ...taskData, updatedAt: Timestamp.now() };
+
+         // Remove undefined fields before updating
+        Object.keys(updateData).forEach(key => updateData[key as keyof typeof updateData] === undefined && delete updateData[key as keyof typeof updateData]);
+
+
+        await updateDoc(docRef, updateData);
+
+        // Fetch the updated document to return complete data
+        const updatedDoc = await getDoc(docRef);
+        return docToTask(updatedDoc as QueryDocumentSnapshot<DocumentData>); // Cast needed
+
+    } catch (error: any) {
+        console.error("Error updating task:", error);
+        if (error.message.includes("encontrada") || error.message.includes("vazio") || error.message.includes("inválido")) {
+           throw error;
+        }
+        throw new Error("Falha ao atualizar tarefa.");
+    }
 }
 
 /**
- * Asynchronously deletes a task.
+ * Asynchronously deletes a task from Firestore.
  *
  * @param id The ID of the task to delete.
  * @returns A promise that resolves when deletion is complete.
  * @throws Error if task not found.
  */
 export async function deleteTask(id: string): Promise<void> {
-    console.log("Deleting task (mock):", id);
-    await new Promise(resolve => setTimeout(resolve, 200));
+    console.log("Deleting task from Firestore:", id);
+    try {
+        const docRef = doc(db, 'tasks', id);
+        // Optional: Check if doc exists before attempting delete
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) {
+             throw new Error("Tarefa não encontrada para exclusão.");
+        }
 
-    const initialLength = mockTasks.length;
-    const taskIndex = mockTasks.findIndex(task => task.id === id);
+        // TODO: Consider implications - should past evaluations using this task be kept?
+        // Deleting might orphan evaluation data unless structured differently.
+        // For now, we just delete the task definition.
 
-    if (taskIndex === -1) {
-        throw new Error("Tarefa não encontrada para exclusão.");
+        await deleteDoc(docRef);
+        console.log(`Task ${id} deleted successfully.`);
+    } catch (error: any) {
+        console.error("Error deleting task:", error);
+         if (error.message.includes("encontrada")) {
+             throw error;
+         }
+        throw new Error("Falha ao excluir tarefa.");
     }
-
-    mockTasks.splice(taskIndex, 1); // Remove from shared store
-    // In a real app, consider implications (e.g., past evaluations using this task?)
 }
 
 // --- Helper Functions ---
 
-/** Gets unique categories used in tasks */
+/**
+ * Gets unique categories used in tasks from Firestore.
+ * Note: Can be inefficient. Consider alternatives for large datasets.
+ */
 export async function getUsedTaskCategories(): Promise<string[]> {
-    await new Promise(resolve => setTimeout(resolve, 20));
-    const categories = new Set(mockTasks.map(t => t.category).filter(Boolean) as string[]);
-    return Array.from(categories);
+    console.log("Fetching used task categories from Firestore...");
+    try {
+        // This fetches all documents just to get categories - potentially inefficient
+        const q = query(tasksCollection, where('category', '!=', null)); // Get docs with a category
+        const snapshot = await getDocs(q);
+        const categories = new Set<string>();
+        snapshot.docs.forEach(doc => {
+            const category = doc.data().category;
+            if (category && typeof category === 'string') {
+                categories.add(category);
+            }
+        });
+        return Array.from(categories).sort();
+    } catch (error) {
+        console.error("Error fetching task categories:", error);
+        return [];
+    }
+}
+
+// Helper to get document snapshot
+async function getDoc(ref: any): Promise<DocumentData> {
+    const docSnap = await getDoc(ref);
+    // Let the caller handle non-existence if needed
+    return docSnap;
 }
