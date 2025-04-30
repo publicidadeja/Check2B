@@ -577,23 +577,20 @@ const SidebarMenuButton = React.forwardRef<
 
     let tooltipContentProps: React.ComponentProps<typeof TooltipContent> = {}
     if (typeof tooltip === "string") {
-        tooltipContentProps.children = tooltip;
+      tooltipContentProps.children = tooltip;
     } else {
-        tooltipContentProps = tooltip;
+      tooltipContentProps = tooltip;
     }
 
+    // If the button itself is already a Slot (asChild=true),
+    // TooltipTrigger should pass the button element directly.
+    const triggerAsChild = !asChild;
 
     return (
       <Tooltip>
-        {/* When asChild is true for TooltipTrigger, it expects a single child,
-            but the buttonElement could be a Slot, which might render multiple elements
-            or no element if its child is null/undefined.
-            To fix this, we render the buttonElement *inside* a default button trigger
-            instead of using asChild.
-        */}
-        <TooltipTrigger asChild={false}>
-          {buttonElement}
-        </TooltipTrigger>
+         <TooltipTrigger asChild={triggerAsChild}>
+           {asChild ? children : buttonElement} {/* Pass button element directly if not asChild */}
+         </TooltipTrigger>
         <TooltipContent
           side="right"
           align="center"

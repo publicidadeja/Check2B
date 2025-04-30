@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Bell, Gauge, Users, CheckSquare, Settings, LogOut, Building, UserPlus, Trophy, Award, Target, UserRoundCog, ListTodo } from 'lucide-react'; // Added Target, UserRoundCog, ListTodo
+import { Bell, Gauge, Users, Settings, LogOut, Building, UserPlus, Trophy, Award, Target, UserRoundCog, ListTodo, SquareCheckBig } from 'lucide-react'; // Added SquareCheckBig
 import Link from 'next/link';
 
 interface AdminLayoutProps {
@@ -24,7 +24,7 @@ interface AdminLayoutProps {
 export default function AdminLayout({ children }: AdminLayoutProps) {
   // TODO: Replace with actual authentication check and user data
   const isAdminAuthenticated = true; // Example
-  const adminUser = { name: 'Admin', avatarFallback: 'AD', avatarUrl: 'https://picsum.photos/32/32' };
+  const adminUser = { name: 'Admin', avatarFallback: 'AD', avatarUrl: 'https://picsum.photos/seed/adminavatar/32/32' };
 
   if (!isAdminAuthenticated) {
     // Handle unauthenticated state, e.g., redirect to login
@@ -39,7 +39,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       <Sidebar>
         <SidebarHeader>
           <div className="flex items-center gap-2 p-2">
-             {/* Check2B Logo SVG */}
+            {/* Check2B Logo SVG */}
              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 text-primary">
                  <path fillRule="evenodd" d="M8.603 3.799A4.49 4.49 0 0 1 12 2.25c1.357 0 2.573.6 3.397 1.549a4.49 4.49 0 0 1 3.498 1.307 4.491 4.491 0 0 1 1.307 3.497A4.49 4.49 0 0 1 21.75 12c0 1.357-.6 2.573-1.549 3.397a4.49 4.49 0 0 1-1.307 3.497 4.491 4.491 0 0 1-3.497 1.307A4.49 4.49 0 0 1 12 21.75a4.49 4.49 0 0 1-3.397-1.549 4.49 4.49 0 0 1-3.498-1.306 4.491 4.491 0 0 1-1.307-3.498A4.49 4.49 0 0 1 2.25 12c0-1.357.6-2.573 1.549-3.397a4.49 4.49 0 0 1 1.307-3.497 4.49 4.49 0 0 1 3.497-1.307Zm7.007 6.387a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z" clipRule="evenodd" />
              </svg>
@@ -50,11 +50,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           <SidebarMenu>
             {/* Dashboard */}
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive> {/* TODO: Implement dynamic isActive */}
-                 <Link href="/admin/dashboard" className="flex items-center gap-2 w-full">
-                     <Gauge />
-                     <span>Dashboard</span>
-                 </Link>
+              <SidebarMenuButton asChild isActive={true}>
+                <Link href="/admin/dashboard" className="flex items-center gap-2 w-full">
+                  <Gauge />
+                  <span>Dashboard</span>
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
 
@@ -62,7 +62,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
              <SidebarMenuItem>
               <SidebarMenuButton asChild>
                 <Link href="/admin/evaluations" className="flex items-center gap-2 w-full">
-                  <CheckSquare />
+                  <SquareCheckBig />
                   <span>Avaliações</span>
                 </Link>
               </SidebarMenuButton>
@@ -165,8 +165,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             <SidebarMenuItem>
               <SidebarMenuButton asChild>
                 <Link href="/logout" className="flex items-center gap-2 w-full"> {/* TODO: Implementar logout real */}
-                 <LogOut />
-                 <span>Logout</span>
+                  <LogOut />
+                  <span>Logout</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
