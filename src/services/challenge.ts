@@ -17,7 +17,8 @@ import {
     QueryDocumentSnapshot,
     Query,
     collectionGroup,
-    getCountFromServer // Import getCountFromServer
+    getCountFromServer,
+    getDoc // Import getDoc directly
 } from 'firebase/firestore';
 import { getAllDepartments } from './department'; // Keep for validation
 
@@ -60,8 +61,11 @@ export interface Challenge {
 const challengesCollection = collection(db, 'challenges');
 
 // Helper to convert Firestore doc to Challenge
-const docToChallenge = (doc: QueryDocumentSnapshot<DocumentData>): Challenge => {
+const docToChallenge = (doc: QueryDocumentSnapshot<DocumentData> | DocumentData): Challenge => {
     const data = doc.data();
+    if (!data) {
+        throw new Error("Document data is undefined.");
+    }
     return {
         id: doc.id,
         title: data.title,
@@ -128,8 +132,8 @@ export async function getChallengeById(id: string): Promise<Challenge | null> {
   console.log("Fetching challenge by ID from Firestore:", id);
   try {
     const docRef = doc(db, 'challenges', id);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? docToChallenge(docSnap as QueryDocumentSnapshot<DocumentData>) : null;
+    const docSnap = await getDoc(docRef); // Use imported getDoc
+    return docSnap.exists() ? docToChallenge(docSnap) : null;
   } catch (error) {
     console.error("Error fetching challenge by ID:", error);
     throw new Error("Falha ao buscar o desafio.");
@@ -171,10 +175,12 @@ export async function addChallenge(challengeData: Omit<Challenge, 'id' | 'create
 
     const docRef = await addDoc(challengesCollection, newChallengeData);
 
-    return {
-        id: docRef.id,
-        ...newChallengeData,
-    } as Challenge; // Ensure return type matches
+    // Fetch the created doc to return consistent data structure
+    const newDoc = await getDoc(docRef);
+     if (!newDoc.exists()) {
+        throw new Error("Falha ao buscar desafio recém-criado.");
+    }
+    return docToChallenge(newDoc); // Ensure return type matches
 
   } catch (error: any) {
     console.error("Error adding challenge:", error);
@@ -196,7 +202,7 @@ export async function updateChallenge(id: string, challengeData: Partial<Omit<Ch
   console.log("Updating challenge in Firestore:", id, challengeData);
   try {
     const docRef = doc(db, 'challenges', id);
-    const docSnap = await getDoc(docRef);
+    const docSnap = await getDoc(docRef); // Use imported getDoc
 
     if (!docSnap.exists()) {
       throw new Error("Desafio não encontrado.");
@@ -226,8 +232,8 @@ export async function updateChallenge(id: string, challengeData: Partial<Omit<Ch
     await updateDoc(docRef, updateData);
 
     // Fetch the updated document to return complete data
-    const updatedDoc = await getDoc(docRef);
-    return docToChallenge(updatedDoc as QueryDocumentSnapshot<DocumentData>);
+    const updatedDoc = await getDoc(docRef); // Use imported getDoc
+    return docToChallenge(updatedDoc);
 
   } catch (error: any) {
     console.error("Error updating challenge:", error);
@@ -249,7 +255,7 @@ export async function deleteChallenge(id: string): Promise<void> {
   try {
     const docRef = doc(db, 'challenges', id);
     // Optional: Check if doc exists before deleting
-    const docSnap = await getDoc(docRef);
+    const docSnap = await getDoc(docRef); // Use imported getDoc
     if (!docSnap.exists()) {
         throw new Error("Desafio não encontrado para exclusão.");
     }
@@ -315,14 +321,4 @@ export async function evaluateChallengeSubmission(challengeId: string, employeeI
     await new Promise(resolve => setTimeout(resolve, 150));
 }
 
-// Helper to get document snapshot
-async function getDoc(ref: any): Promise<DocumentData> {
-    const docSnap = await getDoc(ref);
-    if (!docSnap.exists()) {
-        // Returning null or undefined might be better than throwing here depending on use case
-        // For getById, returning null is appropriate. For update/delete, throwing is better.
-        // Let's keep throwing for now as the calling functions handle it.
-        throw new Error('Documento não encontrado');
-    }
-    return docSnap;
-}
+// Removed local helper function 'getDoc'

@@ -4,7 +4,7 @@
 import { db } from '@/lib/firebase';
 import {
     collection,
-    getDocs,
+    getDocs, // Use imported getDocs
     addDoc,
     updateDoc,
     deleteDoc,
@@ -16,7 +16,9 @@ import {
     DocumentData,
     QueryDocumentSnapshot,
     Query,
-    getCountFromServer // Import getCountFromServer
+    getCountFromServer,
+    limit, // Use imported limit
+    getDoc // Use imported getDoc
 } from 'firebase/firestore';
 
 // Define the Department interface
@@ -98,7 +100,7 @@ export async function updateDepartment(id: string, name: string): Promise<Depart
 
     try {
         const deptDocRef = doc(db, 'departments', id);
-        const deptDoc = await getDoc(deptDocRef);
+        const deptDoc = await getDoc(deptDocRef); // Use imported getDoc
 
         if (!deptDoc.exists()) {
             throw new Error("Departamento não encontrado.");
@@ -106,7 +108,7 @@ export async function updateDepartment(id: string, name: string): Promise<Depart
 
         // Check if new name conflicts with another department (case-insensitive)
         const q = query(departmentsCollection, where("nameLower", "==", trimmedName.toLowerCase()));
-        const existing = await getDocs(q);
+        const existing = await getDocs(q); // Use imported getDocs
         if (!existing.empty && existing.docs[0].id !== id) {
             throw new Error(`Outro departamento já possui o nome "${trimmedName}".`);
         }
@@ -120,7 +122,7 @@ export async function updateDepartment(id: string, name: string): Promise<Depart
         await updateDoc(deptDocRef, updateData);
 
         // Fetch the updated document to return complete data
-        const updatedDoc = await getDoc(deptDocRef);
+        const updatedDoc = await getDoc(deptDocRef); // Use imported getDoc
         return docToDepartment(updatedDoc as QueryDocumentSnapshot<DocumentData>); // Cast needed
 
     } catch (error: any) {
@@ -136,7 +138,7 @@ export async function deleteDepartment(id: string): Promise<void> {
     console.log("Deleting department from Firestore:", id);
     try {
         const deptDocRef = doc(db, 'departments', id);
-        const deptDoc = await getDoc(deptDocRef);
+        const deptDoc = await getDoc(deptDocRef); // Use imported getDoc
 
         if (!deptDoc.exists()) {
              throw new Error("Departamento não encontrado para exclusão.");
@@ -144,7 +146,8 @@ export async function deleteDepartment(id: string): Promise<void> {
 
          // **Important Check:** Verify if any employees are linked to this department before deleting.
          const employeesCollection = collection(db, 'employees');
-         const q = query(employeesCollection, where("department", "==", deptDoc.data().name), limit(1)); // Check if at least one exists
+         // Use imported limit and getDocs
+         const q = query(employeesCollection, where("department", "==", deptDoc.data().name), limit(1));
          const employeeSnapshot = await getDocs(q);
          if (!employeeSnapshot.empty) {
              throw new Error(`Não é possível excluir o departamento "${deptDoc.data().name}" pois existem colaboradores associados.`);
@@ -162,25 +165,4 @@ export async function deleteDepartment(id: string): Promise<void> {
     }
 }
 
-
-// Helper to get document snapshot
-async function getDoc(ref: any): Promise<DocumentData> {
-    const docSnap = await getDoc(ref);
-    if (!docSnap.exists()) {
-        throw new Error('Documento não encontrado');
-    }
-    return docSnap;
-}
-
-// Helper function needed by deleteDepartment - consider moving getDocs to a shared utils?
-async function getDocs(query: Query): Promise<{ empty: boolean; docs: QueryDocumentSnapshot[] }> {
-    const snapshot = await getDocs(query);
-    return {
-        empty: snapshot.empty,
-        docs: snapshot.docs,
-    };
-}
-// Helper function needed by deleteDepartment - consider moving limit to a shared utils?
-function limit(n: number): any { // Simplified type, adjust as per actual Firestore v9 usage if needed
-    return (query: Query) => query.limit(n);
-}
+// Removed local helper functions 'getDoc', 'getDocs', and 'limit' as they are imported or directly used from firebase/firestore

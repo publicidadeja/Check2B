@@ -17,7 +17,8 @@ import {
     QueryDocumentSnapshot,
     Query,
     getCountFromServer,
-    limit // Import limit
+    limit,
+    getDoc // Import getDoc directly
 } from 'firebase/firestore';
 import { getAllDepartments } from './department'; // Still needed for validation
 import { getAllRoles } from './role'; // For validation
@@ -57,8 +58,11 @@ export interface Employee {
 const employeesCollection = collection(db, 'employees');
 
 // Helper to convert Firestore doc to Employee
-const docToEmployee = (doc: QueryDocumentSnapshot<DocumentData>): Employee => {
+const docToEmployee = (doc: QueryDocumentSnapshot<DocumentData> | DocumentData): Employee => {
     const data = doc.data();
+     if (!data) {
+        throw new Error("Document data is undefined.");
+    }
     return {
         id: doc.id,
         name: data.name,
@@ -82,8 +86,8 @@ export async function getEmployee(id: string): Promise<Employee | null> {
   console.log("Fetching employee by ID from Firestore:", id);
   try {
       const docRef = doc(db, 'employees', id);
-      const docSnap = await getDoc(docRef);
-      return docSnap.exists() ? docToEmployee(docSnap as QueryDocumentSnapshot<DocumentData>) : null;
+      const docSnap = await getDoc(docRef); // Use imported getDoc
+      return docSnap.exists() ? docToEmployee(docSnap) : null;
   } catch (error) {
       console.error("Error fetching employee by ID:", error);
       throw new Error("Falha ao buscar colaborador.");
@@ -159,10 +163,13 @@ export async function addEmployee(employeeData: Omit<Employee, 'id' | 'createdAt
         };
 
         const docRef = await addDoc(employeesCollection, newEmployeeData);
-        return {
-            id: docRef.id,
-            ...newEmployeeData,
-        } as Employee; // Ensure return type matches
+
+        // Fetch the created doc to return consistent data structure
+        const newDoc = await getDoc(docRef);
+        if (!newDoc.exists()) {
+            throw new Error("Falha ao buscar colaborador recém-criado.");
+        }
+        return docToEmployee(newDoc); // Ensure return type matches
 
     } catch (error: any) {
         console.error("Error adding employee:", error);
@@ -186,12 +193,12 @@ export async function updateEmployee(id: string, employeeData: Partial<Omit<Empl
     console.log("Updating employee in Firestore:", id, employeeData);
     try {
         const docRef = doc(db, 'employees', id);
-        const docSnap = await getDoc(docRef);
+        const docSnap = await getDoc(docRef); // Use imported getDoc
 
         if (!docSnap.exists()) {
             throw new Error("Colaborador não encontrado.");
         }
-        const currentEmployee = docToEmployee(docSnap as QueryDocumentSnapshot<DocumentData>); // Get current data
+        const currentEmployee = docToEmployee(docSnap); // Get current data
 
         // --- Validation on updated fields ---
         if (employeeData.name !== undefined && !employeeData.name?.trim()) {
@@ -242,8 +249,8 @@ export async function updateEmployee(id: string, employeeData: Partial<Omit<Empl
         await updateDoc(docRef, updateData);
 
         // Fetch the updated document to return complete data
-        const updatedDoc = await getDoc(docRef);
-        return docToEmployee(updatedDoc as QueryDocumentSnapshot<DocumentData>); // Cast needed
+        const updatedDoc = await getDoc(docRef); // Use imported getDoc
+        return docToEmployee(updatedDoc); // Cast needed
 
     } catch (error: any) {
         console.error("Error updating employee:", error);
@@ -267,7 +274,7 @@ export async function deleteEmployee(id: string): Promise<void> {
     try {
         const docRef = doc(db, 'employees', id);
          // Optional: Check if doc exists before attempting delete
-        const docSnap = await getDoc(docRef);
+        const docSnap = await getDoc(docRef); // Use imported getDoc
         if (!docSnap.exists()) {
              throw new Error("Colaborador não encontrado para exclusão.");
         }
@@ -327,9 +334,4 @@ export async function getUsedRoleNames(): Promise<string[]> {
     }
 }
 
-// Helper to get document snapshot
-async function getDoc(ref: any): Promise<DocumentData> {
-    const docSnap = await getDoc(ref);
-    // Removed the throw here, let the caller decide how to handle non-existence
-    return docSnap;
-}
+// Removed local helper function 'getDoc'

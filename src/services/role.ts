@@ -17,7 +17,8 @@ import {
     QueryDocumentSnapshot,
     Query,
     getCountFromServer,
-    limit // Import limit
+    limit, // Use imported limit
+    getDoc // Use imported getDoc
 } from 'firebase/firestore';
 
 /**
@@ -39,8 +40,11 @@ export interface Role {
 const rolesCollection = collection(db, 'roles');
 
 // Helper to convert Firestore doc to Role
-const docToRole = (doc: QueryDocumentSnapshot<DocumentData>): Role => {
+const docToRole = (doc: QueryDocumentSnapshot<DocumentData> | DocumentData): Role => {
     const data = doc.data();
+     if (!data) {
+        throw new Error("Document data is undefined.");
+    }
     return {
         id: doc.id,
         name: data.name,
@@ -97,10 +101,13 @@ export async function addRole(roleName: string): Promise<Role> {
         };
 
         const docRef = await addDoc(rolesCollection, newRoleData);
-        return {
-            id: docRef.id,
-            ...newRoleData,
-        } as Role;
+
+        // Fetch the created doc to return consistent data structure
+        const newDoc = await getDoc(docRef);
+        if (!newDoc.exists()) {
+            throw new Error("Falha ao buscar função recém-criada.");
+        }
+        return docToRole(newDoc);
 
     } catch (error: any) {
         console.error("Error adding role:", error);
@@ -153,7 +160,7 @@ export async function deleteRole(roleId: string): Promise<void> {
     console.log("Deleting role from Firestore:", roleId);
     try {
         const roleDocRef = doc(db, 'roles', roleId);
-        const roleDoc = await getDoc(roleDocRef);
+        const roleDoc = await getDoc(roleDocRef); // Use imported getDoc
 
         if (!roleDoc.exists()) {
             throw new Error("Função não encontrada para exclusão.");
@@ -163,7 +170,8 @@ export async function deleteRole(roleId: string): Promise<void> {
 
         // **Important Check:** Verify if any employees are using this role.
         const employeesCollection = collection(db, 'employees');
-        const q = query(employeesCollection, where("role", "==", roleName), limit(1)); // Check if at least one exists
+        // Use imported limit and getDocs
+        const q = query(employeesCollection, where("role", "==", roleName), limit(1));
         const employeeSnapshot = await getDocs(q);
 
         if (!employeeSnapshot.empty) {
@@ -183,9 +191,4 @@ export async function deleteRole(roleId: string): Promise<void> {
     }
 }
 
-// Helper to get document snapshot
-async function getDoc(ref: any): Promise<DocumentData> {
-    const docSnap = await getDoc(ref);
-    // Let the caller handle non-existence if needed
-    return docSnap;
-}
+// Removed local helper function 'getDoc'

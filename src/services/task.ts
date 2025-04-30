@@ -17,7 +17,8 @@ import {
     QueryDocumentSnapshot,
     Query,
     getCountFromServer,
-    limit // Import limit
+    limit, // Use imported limit
+    getDoc // Use imported getDoc
 } from 'firebase/firestore';
 import { getAllDepartments } from './department'; // Keep for validation
 
@@ -48,8 +49,11 @@ export interface Task {
 const tasksCollection = collection(db, 'tasks');
 
 // Helper to convert Firestore doc to Task
-const docToTask = (doc: QueryDocumentSnapshot<DocumentData>): Task => {
+const docToTask = (doc: QueryDocumentSnapshot<DocumentData> | DocumentData): Task => {
     const data = doc.data();
+     if (!data) {
+        throw new Error("Document data is undefined.");
+    }
     return {
         id: doc.id,
         title: data.title,
@@ -75,8 +79,8 @@ export async function getTask(id: string): Promise<Task | null> {
   console.log("Fetching task by ID from Firestore:", id);
   try {
     const docRef = doc(db, 'tasks', id);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? docToTask(docSnap as QueryDocumentSnapshot<DocumentData>) : null;
+    const docSnap = await getDoc(docRef); // Use imported getDoc
+    return docSnap.exists() ? docToTask(docSnap) : null;
   } catch (error) {
     console.error("Error fetching task by ID:", error);
     throw new Error("Falha ao buscar tarefa.");
@@ -170,10 +174,13 @@ export async function addTask(taskData: Omit<Task, 'id' | 'createdAt'>): Promise
         };
 
         const docRef = await addDoc(tasksCollection, newTaskData);
-        return {
-            id: docRef.id,
-            ...newTaskData,
-        } as Task; // Ensure return type matches
+
+        // Fetch the created doc to return consistent data structure
+        const newDoc = await getDoc(docRef);
+        if (!newDoc.exists()) {
+            throw new Error("Falha ao buscar tarefa recém-criada.");
+        }
+        return docToTask(newDoc); // Ensure return type matches
 
     } catch (error: any) {
         console.error("Error adding task:", error);
@@ -196,7 +203,7 @@ export async function updateTask(id: string, taskData: Partial<Omit<Task, 'id' |
     console.log("Updating task in Firestore:", id, taskData);
     try {
         const docRef = doc(db, 'tasks', id);
-        const docSnap = await getDoc(docRef);
+        const docSnap = await getDoc(docRef); // Use imported getDoc
 
         if (!docSnap.exists()) {
             throw new Error("Tarefa não encontrada.");
@@ -232,8 +239,8 @@ export async function updateTask(id: string, taskData: Partial<Omit<Task, 'id' |
         await updateDoc(docRef, updateData);
 
         // Fetch the updated document to return complete data
-        const updatedDoc = await getDoc(docRef);
-        return docToTask(updatedDoc as QueryDocumentSnapshot<DocumentData>); // Cast needed
+        const updatedDoc = await getDoc(docRef); // Use imported getDoc
+        return docToTask(updatedDoc); // Cast needed
 
     } catch (error: any) {
         console.error("Error updating task:", error);
@@ -256,7 +263,7 @@ export async function deleteTask(id: string): Promise<void> {
     try {
         const docRef = doc(db, 'tasks', id);
         // Optional: Check if doc exists before attempting delete
-        const docSnap = await getDoc(docRef);
+        const docSnap = await getDoc(docRef); // Use imported getDoc
         if (!docSnap.exists()) {
              throw new Error("Tarefa não encontrada para exclusão.");
         }
@@ -302,9 +309,4 @@ export async function getUsedTaskCategories(): Promise<string[]> {
     }
 }
 
-// Helper to get document snapshot
-async function getDoc(ref: any): Promise<DocumentData> {
-    const docSnap = await getDoc(ref);
-    // Let the caller handle non-existence if needed
-    return docSnap;
-}
+// Removed local helper function 'getDoc'

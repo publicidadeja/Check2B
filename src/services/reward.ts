@@ -16,7 +16,9 @@ import {
     DocumentData,
     QueryDocumentSnapshot,
     Query,
-    getCountFromServer // Import getCountFromServer
+    getCountFromServer,
+    getDoc, // Use imported getDoc
+    limit // Use imported limit
 } from 'firebase/firestore';
 import { getAllDepartments } from './department'; // Keep for validation
 
@@ -56,8 +58,11 @@ export interface Reward {
 const rewardsCollection = collection(db, 'rewards');
 
 // Helper to convert Firestore doc to Reward
-const docToReward = (doc: QueryDocumentSnapshot<DocumentData>): Reward => {
+const docToReward = (doc: QueryDocumentSnapshot<DocumentData> | DocumentData): Reward => {
     const data = doc.data();
+     if (!data) {
+        throw new Error("Document data is undefined.");
+    }
     return {
         id: doc.id,
         title: data.title,
@@ -103,8 +108,8 @@ export async function getRewardById(id: string): Promise<Reward | null> {
     console.log("Fetching reward by ID from Firestore:", id);
      try {
         const docRef = doc(db, 'rewards', id);
-        const docSnap = await getDoc(docRef);
-        return docSnap.exists() ? docToReward(docSnap as QueryDocumentSnapshot<DocumentData>) : null;
+        const docSnap = await getDoc(docRef); // Use imported getDoc
+        return docSnap.exists() ? docToReward(docSnap) : null;
     } catch (error) {
         console.error("Error fetching reward by ID:", error);
         throw new Error("Falha ao buscar a premiação.");
@@ -156,10 +161,13 @@ export async function addReward(rewardData: Omit<Reward, 'id' | 'createdAt'>): P
         };
 
         const docRef = await addDoc(rewardsCollection, newRewardData);
-        return {
-            id: docRef.id,
-            ...newRewardData,
-        } as Reward; // Ensure return type matches
+
+         // Fetch the created doc to return consistent data structure
+        const newDoc = await getDoc(docRef);
+         if (!newDoc.exists()) {
+            throw new Error("Falha ao buscar premiação recém-criada.");
+        }
+        return docToReward(newDoc); // Ensure return type matches
 
     } catch (error: any) {
         console.error("Error adding reward:", error);
@@ -181,7 +189,7 @@ export async function updateReward(id: string, rewardData: Partial<Omit<Reward, 
     console.log("Updating reward in Firestore:", id, rewardData);
     try {
         const docRef = doc(db, 'rewards', id);
-        const docSnap = await getDoc(docRef);
+        const docSnap = await getDoc(docRef); // Use imported getDoc
 
         if (!docSnap.exists()) {
             throw new Error("Premiação não encontrada.");
@@ -222,8 +230,8 @@ export async function updateReward(id: string, rewardData: Partial<Omit<Reward, 
         await updateDoc(docRef, updateData);
 
         // Fetch the updated document to return complete data
-        const updatedDoc = await getDoc(docRef);
-        return docToReward(updatedDoc as QueryDocumentSnapshot<DocumentData>);
+        const updatedDoc = await getDoc(docRef); // Use imported getDoc
+        return docToReward(updatedDoc);
 
     } catch (error: any) {
         console.error("Error updating reward:", error);
@@ -245,7 +253,7 @@ export async function deleteReward(id: string): Promise<void> {
     try {
         const docRef = doc(db, 'rewards', id);
         // Optional: Check if doc exists before deleting
-        const docSnap = await getDoc(docRef);
+        const docSnap = await getDoc(docRef); // Use imported getDoc
         if (!docSnap.exists()) {
             throw new Error("Premiação não encontrada para exclusão.");
         }
@@ -268,14 +276,4 @@ export async function deleteReward(id: string): Promise<void> {
     }
 }
 
-// Helper to get document snapshot
-async function getDoc(ref: any): Promise<DocumentData> {
-    const docSnap = await getDoc(ref);
-    // Removed the throw here, let the caller decide how to handle non-existence
-    return docSnap;
-}
-
-// Helper function needed by deleteReward checks - consider moving limit to a shared utils?
-function limit(n: number): any { // Simplified type, adjust as per actual Firestore v9 usage if needed
-    return (query: Query) => query.limit(n);
-}
+// Removed local helper functions 'getDoc' and 'limit'

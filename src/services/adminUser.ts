@@ -13,7 +13,8 @@ import {
     where,
     Timestamp,
     DocumentData,
-    QueryDocumentSnapshot
+    QueryDocumentSnapshot,
+    getDoc // Import getDoc directly
 } from 'firebase/firestore';
 
 // Define the AdminUser interface (ensure consistency with the page)
@@ -29,8 +30,13 @@ export interface AdminUser {
 const adminCollection = collection(db, 'admins');
 
 // Helper to convert Firestore doc to AdminUser
-const docToAdminUser = (doc: QueryDocumentSnapshot<DocumentData>): AdminUser => {
+const docToAdminUser = (doc: QueryDocumentSnapshot<DocumentData> | DocumentData): AdminUser => {
+    // Handle both QueryDocumentSnapshot and DocumentSnapshot from getDoc
     const data = doc.data();
+    if (!data) {
+        // This case should ideally not happen if we check exists() before calling, but good practice
+        throw new Error("Document data is undefined.");
+    }
     return {
         id: doc.id,
         name: data.name,
@@ -84,12 +90,13 @@ export async function addAdminUser(userData: Omit<AdminUser, 'id' | 'lastLogin'>
          // In a real app, trigger Firebase Function to send welcome/password setup email here
          console.log(`Real app: Trigger welcome email function for ${userData.email}`);
 
-         return {
-             id: docRef.id,
-             ...adminData,
-             // Convert timestamp back if needed, though not strictly necessary here
-             lastLogin: undefined, // No last login initially
-         } as AdminUser;
+         // Fetch the created doc to return consistent data structure
+         const newDoc = await getDoc(docRef);
+         if (!newDoc.exists()) {
+             throw new Error("Falha ao buscar admin recém-criado.");
+         }
+         return docToAdminUser(newDoc);
+
      } catch (error: any) {
          console.error("Error adding admin user:", error);
          // Rethrow specific errors or a generic one
@@ -104,7 +111,7 @@ export async function updateAdminUser(id: string, userData: Partial<Omit<AdminUs
     console.log("Updating admin user in Firestore:", id, userData);
     try {
         const adminDocRef = doc(db, 'admins', id);
-        const adminDoc = await getDoc(adminDocRef);
+        const adminDoc = await getDoc(adminDocRef); // Use imported getDoc
 
         if (!adminDoc.exists()) {
             throw new Error("Administrador não encontrado.");
@@ -128,8 +135,8 @@ export async function updateAdminUser(id: string, userData: Partial<Omit<AdminUs
         await updateDoc(adminDocRef, updateData);
 
          // Fetch the updated document to return complete data
-         const updatedDoc = await getDoc(adminDocRef);
-         return docToAdminUser(updatedDoc as QueryDocumentSnapshot<DocumentData>); // Cast needed as getDoc returns DocumentSnapshot
+         const updatedDoc = await getDoc(adminDocRef); // Use imported getDoc
+         return docToAdminUser(updatedDoc); // Cast needed as getDoc returns DocumentSnapshot
 
      } catch (error: any) {
          console.error("Error updating admin user:", error);
@@ -144,7 +151,7 @@ export async function deleteAdminUser(id: string): Promise<void> {
      console.log("Deleting admin user from Firestore:", id);
      try {
         const adminDocRef = doc(db, 'admins', id);
-        const adminDoc = await getDoc(adminDocRef);
+        const adminDoc = await getDoc(adminDocRef); // Use imported getDoc
 
         if (!adminDoc.exists()) {
              throw new Error("Administrador não encontrado para exclusão.");
@@ -170,7 +177,7 @@ export async function resetAdminPassword(id: string): Promise<void> {
     console.log("Resetting password for admin (Triggering function):", id);
     try {
         const adminDocRef = doc(db, 'admins', id);
-        const adminDoc = await getDoc(adminDocRef);
+        const adminDoc = await getDoc(adminDocRef); // Use imported getDoc
         if (!adminDoc.exists()) {
             throw new Error("Administrador não encontrado.");
         }
@@ -191,11 +198,4 @@ export async function resetAdminPassword(id: string): Promise<void> {
     }
 }
 
-// Helper to get admin document reference
-async function getDoc(ref: any): Promise<DocumentData> {
-    const docSnap = await getDoc(ref);
-    if (!docSnap.exists()) {
-        throw new Error('Documento não encontrado');
-    }
-    return docSnap;
-}
+// Removed local helper function 'getDoc'
