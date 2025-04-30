@@ -6,26 +6,29 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Users, CheckSquare, AlertTriangle, TrendingUp, Activity, Loader2 } from 'lucide-react'; // Changed AlertCircle to AlertTriangle, added Activity, Loader2
+import { Users, CheckSquare, AlertTriangle, TrendingUp, Activity, Loader2, Ban, CalendarCheck } from 'lucide-react'; // Added Ban, CalendarCheck
 import type { RankingEntry } from '@/services/ranking';
 import { getRanking } from '@/services/ranking';
-import type { Task } from '@/services/task';
-import { getAllTasks } from '@/services/task'; // Assuming a function to get failed tasks might use this or a dedicated one
+// import type { Task } from '@/services/task';
+// import { getAllTasks } from '@/services/task'; // Commented out as failed tasks logic needs evaluation service
 import type { Department } from '@/services/department';
 import { getAllDepartments } from '@/services/department';
 import { useToast } from '@/hooks/use-toast';
 import { format, startOfMonth } from 'date-fns';
-import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
+import { Skeleton } from '@/components/ui/skeleton';
+import Link from 'next/link'; // Import Link for navigation
+import { Button } from '@/components/ui/button'; // Import Button for link styling
 
 // Interface for dashboard summary data
 interface DashboardSummary {
     teamPerformance: number;
-    pendingEvaluations: number; // Placeholder, needs evaluation service integration
-    criticalAlerts: number; // Placeholder, needs logic based on ranking/zeros
+    pendingEvaluationsCount: number; // Renamed for clarity
+    criticalAlertsCount: number; // Renamed for clarity
     topPerformers: RankingEntry[];
-    recentActivity: { timestamp: string; description: string }[]; // Keep mock for now
     departmentPerformance: { name: string; performance: number }[];
-    failedTasks: { name: string; count: number }[]; // Placeholder, needs logic based on evaluations
+    // Removed recentActivity and failedTasks as they require unimplemented services/logic
+    // recentActivity: { timestamp: string; description: string }[];
+    // failedTasks: { name: string; count: number }[];
 }
 
 export default function AdminDashboard() {
@@ -39,13 +42,10 @@ export default function AdminDashboard() {
             try {
                 const currentMonth = format(startOfMonth(new Date()), 'yyyy-MM');
                 // Fetch ranking for top performers and overall performance calculation
-                const ranking = await getRanking(currentMonth); // Fetch all for calculations
+                const ranking = await getRanking(currentMonth, 'Todos'); // Fetch all for calculations
 
                 // Fetch departments to calculate average performance per department
                 const departments = await getAllDepartments();
-
-                // Fetch tasks (example: maybe to identify most failed tasks later)
-                // const tasks = await getAllTasks(); // This might be needed for 'failedTasks' logic
 
                 // --- Data Processing (Example Logic) ---
 
@@ -64,26 +64,21 @@ export default function AdminDashboard() {
                     return { name: dept.name, performance: deptAvgPerf };
                 }).sort((a, b) => b.performance - a.performance); // Sort by performance desc
 
-                // --- Placeholder Data (Needs real implementation) ---
-                const pendingEvaluations = 5; // TODO: Fetch from evaluation service
-                const criticalAlerts = ranking.filter(e => e.isEligibleForBonus === false && e.averagePercentage < 70).length; // Example logic
-                const failedTasks = [ // TODO: Fetch from evaluation service based on zero scores
-                    { name: "Follow-up Cliente X", count: 5 },
-                    { name: "Atualizar CRM", count: 3 },
-                ];
-                 const recentActivity = [ // TODO: Fetch from an activity log service
-                    { timestamp: "2024-07-27 10:00", description: "Avaliação de Carlos Souza concluída." },
-                    { timestamp: "2024-07-27 09:30", description: "Nova tarefa 'Relatório Semanal' adicionada." },
-                  ];
+                // --- Placeholder Data (Needs real implementation / Refinement) ---
+                // TODO: Implement logic to fetch actual pending evaluations count (e.g., count employees without evaluations for today)
+                const pendingEvaluationsCount = 0; // Placeholder - Requires evaluation service logic
+
+                // Critical alerts based on ranking data (Example: not eligible for bonus AND low score)
+                const criticalAlertsCount = ranking.filter(e => e.isEligibleForBonus === false && e.averagePercentage < 70).length;
+
 
                 setSummary({
                     teamPerformance,
-                    pendingEvaluations,
-                    criticalAlerts,
+                    pendingEvaluationsCount,
+                    criticalAlertsCount,
                     topPerformers,
-                    recentActivity,
                     departmentPerformance,
-                    failedTasks,
+                    // recentActivity and failedTasks removed
                 });
 
             } catch (error) {
@@ -93,15 +88,13 @@ export default function AdminDashboard() {
                     description: "Não foi possível buscar os dados para o painel.",
                     variant: "destructive",
                 });
-                // Set empty state or defaults on error?
+                // Set empty state or defaults on error
                 setSummary({
                     teamPerformance: 0,
-                    pendingEvaluations: 0,
-                    criticalAlerts: 0,
+                    pendingEvaluationsCount: 0,
+                    criticalAlertsCount: 0,
                     topPerformers: [],
-                    recentActivity: [],
                     departmentPerformance: [],
-                    failedTasks: [],
                 });
             } finally {
                 setIsLoading(false);
@@ -150,13 +143,16 @@ export default function AdminDashboard() {
             {/* Card: Pending Evaluations */}
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Avaliações Pendentes</CardTitle>
-                    <CheckSquare className="h-4 w-4 text-muted-foreground" />
+                    <CardTitle className="text-sm font-medium">Avaliações Pendentes (Hoje)</CardTitle>
+                    <CalendarCheck className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">{summary.pendingEvaluations}</div>
-                    <p className="text-xs text-muted-foreground">Avaliações a serem concluídas hoje</p>
-                    {/* TODO: Add link to evaluations page */}
+                    <div className="text-2xl font-bold">{summary.pendingEvaluationsCount}</div>
+                    <p className="text-xs text-muted-foreground">Colaboradores a avaliar hoje</p>
+                     <Button variant="link" size="sm" className="text-xs p-0 h-auto mt-1" asChild>
+                        <Link href="/admin/evaluations">Ir para Avaliações</Link>
+                    </Button>
+                    {/* TODO: Replace count with actual data from evaluation service */}
                 </CardContent>
             </Card>
 
@@ -167,16 +163,19 @@ export default function AdminDashboard() {
                     <AlertTriangle className="h-4 w-4 text-destructive" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">{summary.criticalAlerts}</div>
+                    <div className="text-2xl font-bold">{summary.criticalAlertsCount}</div>
                     <p className="text-xs text-muted-foreground">Colaboradores com desempenho baixo</p>
-                    {/* TODO: Add link to ranking page filtered */}
+                     <Button variant="link" size="sm" className="text-xs p-0 h-auto mt-1" asChild>
+                        <Link href="/admin/ranking">Ver Ranking</Link>
+                    </Button>
+                    {/* Logic based on ranking data (isEligible=false & avg < 70%) */}
                 </CardContent>
             </Card>
 
             {/* Card: Top Performers */}
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Melhores Desempenhos</CardTitle>
+                    <CardTitle className="text-sm font-medium">Melhores Desempenhos (Mês)</CardTitle>
                     <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -188,7 +187,7 @@ export default function AdminDashboard() {
                             </div>
                         ))
                     ) : (
-                         <p className="text-xs text-muted-foreground text-center py-4">Nenhum dado ainda.</p>
+                         <p className="text-xs text-muted-foreground text-center py-4">Nenhum dado de ranking ainda.</p>
                     )}
                 </CardContent>
             </Card>
@@ -227,32 +226,29 @@ export default function AdminDashboard() {
                 </CardContent>
             </Card>
 
-            {/* Card: Recent Activity */}
-            <Card className="lg:col-span-2">
+            {/* Card: Recent Activity (Removed - requires dedicated logging service) */}
+            {/* <Card className="lg:col-span-2">
                 <CardHeader>
                     <CardTitle>Atividade Recente</CardTitle>
-                    <CardDescription>Últimas ações realizadas no sistema.</CardDescription>
+                    <CardDescription>Últimas ações realizadas no sistema (Exemplo).</CardDescription>
                 </CardHeader>
                 <CardContent>
-                     {summary.recentActivity.length > 0 ? (
-                        <div className="space-y-4">
-                        {summary.recentActivity.map((activity, index) => (
-                            <div key={index} className="flex items-start space-x-3">
-                                <div className="flex-shrink-0 pt-1">
-                                    <Activity className="h-4 w-4 text-muted-foreground" />
-                                </div>
-                            <div className="flex-1">
-                                <p className="text-sm">{activity.description}</p>
-                                <p className="text-xs text-muted-foreground">{activity.timestamp}</p>
-                            </div>
-                            </div>
-                        ))}
-                        </div>
-                    ) : (
-                        <p className="text-xs text-muted-foreground text-center py-4">Nenhuma atividade recente registrada.</p>
-                    )}
+                    <p className="text-xs text-muted-foreground text-center py-4">Funcionalidade de log de atividades não implementada.</p>
+                </CardContent>
+            </Card> */}
+
+            {/* Placeholder Card for Future/Other Info */}
+             <Card className="lg:col-span-2">
+                <CardHeader>
+                    <CardTitle>Informações Adicionais</CardTitle>
+                    <CardDescription>Espaço para futuras métricas ou informações relevantes.</CardDescription>
+                </CardHeader>
+                <CardContent className="flex items-center justify-center h-32">
+                    <p className="text-sm text-muted-foreground">Nenhuma informação adicional no momento.</p>
                 </CardContent>
             </Card>
         </div>
     );
 }
+
+    
