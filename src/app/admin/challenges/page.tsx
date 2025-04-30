@@ -27,7 +27,7 @@ import { getAllDepartments } from '@/services/department';
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image'; // Usar next/image para otimização
 import { format, parseISO, isBefore, isAfter } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { ptBR } from 'date-fns/locale'; // Importar locale ptBR
 import { cn } from '@/lib/utils';
 
 // Define constants for select options
@@ -366,7 +366,7 @@ export default function ChallengesPage() {
                     </TableCell>
                     <TableCell className="font-medium">{challenge.title}</TableCell>
                     <TableCell className="text-xs">
-                        {format(parseISO(challenge.startDate + 'T00:00:00'), 'dd/MM')} - {format(parseISO(challenge.endDate + 'T23:59:59'), 'dd/MM/yy')}
+                        {format(parseISO(challenge.startDate + 'T00:00:00'), 'dd/MM', { locale: ptBR })} - {format(parseISO(challenge.endDate + 'T23:59:59'), 'dd/MM/yy', { locale: ptBR })}
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-xs">
                          {challenge.eligibleDepartments.includes('Todos') ? 'Todos' : challenge.eligibleDepartments.join(', ')}
@@ -574,4 +574,3 @@ function ChallengeForm({
        </form>
     );
 }
-

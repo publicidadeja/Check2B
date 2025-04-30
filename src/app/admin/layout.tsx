@@ -1,3 +1,4 @@
+
 import type { ReactNode } from 'react';
 import {
   SidebarProvider,
@@ -38,122 +39,121 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       <Sidebar>
         <SidebarHeader>
           <div className="flex items-center gap-2 p-2">
+             {/* Check2B Logo SVG */}
              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 text-primary">
-               <path fillRule="evenodd" d="M12.963 2.286a.75.75 0 0 0-1.071-.136 9.742 9.742 0 0 0-3.539 6.177A7.547 7.547 0 0 1 6.648 6.61a.75.75 0 0 0-1.152-.082A9 9 0 1 0 15.68 4.534a7.46 7.46 0 0 1-2.717-2.248ZM15.75 14.25a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" clipRule="evenodd" />
-            </svg>
+                 <path fillRule="evenodd" d="M8.603 3.799A4.49 4.49 0 0 1 12 2.25c1.357 0 2.573.6 3.397 1.549a4.49 4.49 0 0 1 3.498 1.307 4.491 4.491 0 0 1 1.307 3.497A4.49 4.49 0 0 1 21.75 12c0 1.357-.6 2.573-1.549 3.397a4.49 4.49 0 0 1-1.307 3.497 4.491 4.491 0 0 1-3.497 1.307A4.49 4.49 0 0 1 12 21.75a4.49 4.49 0 0 1-3.397-1.549 4.49 4.49 0 0 1-3.498-1.306 4.491 4.491 0 0 1-1.307-3.498A4.49 4.49 0 0 1 2.25 12c0-1.357.6-2.573 1.549-3.397a4.49 4.49 0 0 1 1.307-3.497 4.49 4.49 0 0 1 3.497-1.307Zm7.007 6.387a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z" clipRule="evenodd" />
+             </svg>
             <span className="text-lg font-semibold">Check2B</span>
           </div>
         </SidebarHeader>
         <SidebarContent className="flex-1 overflow-auto">
           <SidebarMenu>
+            {/* Dashboard */}
             <SidebarMenuItem>
-              {/* // TODO: Implement dynamic isActive based on pathname */}
-              <SidebarMenuButton asChild isActive>
-                <Link href="/admin/dashboard">
-                   <span className="flex items-center gap-2 w-full">
+              <SidebarMenuButton asChild isActive> {/* TODO: Implement dynamic isActive */}
+                 <Link href="/admin/dashboard" className="flex items-center gap-2 w-full">
                      <Gauge />
                      <span>Dashboard</span>
-                   </span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-             <SidebarMenuItem>
-              <SidebarMenuButton asChild>
-                <Link href="/admin/evaluations">
-                  <span className="flex items-center gap-2 w-full">
-                    <CheckSquare />
-                    <span>Avaliações</span>
-                  </span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-             <SidebarMenuItem>
-              <SidebarMenuButton asChild>
-                 <Link href="/admin/ranking">
-                    <span className="flex items-center gap-2 w-full">
-                      <Trophy />
-                      <span>Ranking</span>
-                    </span>
                  </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+
+             {/* Avaliações */}
              <SidebarMenuItem>
               <SidebarMenuButton asChild>
-                 <Link href="/admin/challenges">
-                   <span className="flex items-center gap-2 w-full">
-                     <Target />
-                     <span>Desafios</span>
-                   </span>
+                <Link href="/admin/evaluations" className="flex items-center gap-2 w-full">
+                  <CheckSquare />
+                  <span>Avaliações</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+             {/* Ranking */}
+             <SidebarMenuItem>
+              <SidebarMenuButton asChild>
+                 <Link href="/admin/ranking" className="flex items-center gap-2 w-full">
+                   <Trophy />
+                   <span>Ranking</span>
                  </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
-            <SidebarMenuItem>
+
+             {/* Desafios */}
+             <SidebarMenuItem>
               <SidebarMenuButton asChild>
-                 <Link href="/admin/rewards">
-                   <span className="flex items-center gap-2 w-full">
-                     <Award />
-                     <span>Prêmios</span>
-                   </span>
+                 <Link href="/admin/challenges" className="flex items-center gap-2 w-full">
+                   <Target />
+                   <span>Desafios</span>
                  </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+
+            {/* Prêmios */}
             <SidebarMenuItem>
               <SidebarMenuButton asChild>
-                 <Link href="/admin/employees">
-                    <span className="flex items-center gap-2 w-full">
-                      <Users />
-                      <span>Colaboradores</span>
-                    </span>
+                 <Link href="/admin/rewards" className="flex items-center gap-2 w-full">
+                   <Award />
+                   <span>Prêmios</span>
+                 </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            {/* Colaboradores */}
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild>
+                 <Link href="/admin/employees" className="flex items-center gap-2 w-full">
+                   <Users />
+                   <span>Colaboradores</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+
+             {/* Funções */}
              <SidebarMenuItem>
               <SidebarMenuButton asChild>
-                 <Link href="/admin/roles">
-                   <span className="flex items-center gap-2 w-full">
-                     <UserRoundCog />
-                      <span>Funções</span>
-                   </span>
+                 <Link href="/admin/roles" className="flex items-center gap-2 w-full">
+                   <UserRoundCog />
+                   <span>Funções</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+
+            {/* Tarefas */}
             <SidebarMenuItem>
               <SidebarMenuButton asChild>
-                <Link href="/admin/tasks">
-                   <span className="flex items-center gap-2 w-full">
-                    <ListTodo />
-                    <span>Tarefas</span>
-                   </span>
+                <Link href="/admin/tasks" className="flex items-center gap-2 w-full">
+                 <ListTodo />
+                  <span>Tarefas</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+
+            {/* Departamentos */}
             <SidebarMenuItem>
                <SidebarMenuButton asChild>
-                 <Link href="/admin/departments">
-                    <span className="flex items-center gap-2 w-full">
-                     <Building />
-                     <span>Departamentos</span>
-                    </span>
+                 <Link href="/admin/departments" className="flex items-center gap-2 w-full">
+                  <Building />
+                  <span>Departamentos</span>
                  </Link>
                </SidebarMenuButton>
             </SidebarMenuItem>
+
+            {/* Admins */}
             <SidebarMenuItem>
                <SidebarMenuButton asChild>
-                 <Link href="/admin/admins">
-                    <span className="flex items-center gap-2 w-full">
-                     <UserPlus />
-                     <span>Admins</span>
-                    </span>
+                 <Link href="/admin/admins" className="flex items-center gap-2 w-full">
+                  <UserPlus />
+                  <span>Admins</span>
                  </Link>
                </SidebarMenuButton>
             </SidebarMenuItem>
+
+            {/* Configurações */}
             <SidebarMenuItem>
               <SidebarMenuButton asChild>
-                <Link href="/admin/settings">
-                   <span className="flex items-center gap-2 w-full">
-                     <Settings />
-                     <span>Configurações</span>
-                   </span>
+                <Link href="/admin/settings" className="flex items-center gap-2 w-full">
+                  <Settings />
+                  <span>Configurações</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -161,13 +161,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         </SidebarContent>
         <SidebarFooter>
            <SidebarMenu>
+            {/* Logout */}
             <SidebarMenuItem>
               <SidebarMenuButton asChild>
-                <Link href="/logout"> {/* TODO: Implementar logout */}
-                  <span className="flex items-center gap-2 w-full">
-                   <LogOut />
-                   <span>Logout</span>
-                  </span>
+                <Link href="/logout" className="flex items-center gap-2 w-full"> {/* TODO: Implementar logout real */}
+                 <LogOut />
+                 <span>Logout</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

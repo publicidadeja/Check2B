@@ -68,9 +68,9 @@ export default function RankingPage() {
     }, [loadRankingData]); // Executar quando a função de carregamento mudar (devido a filtros)
 
     const getMedal = (rank: number): React.ReactNode => {
-        if (rank === 1) return <Medal className="h-5 w-5 text-yellow-500" />;
-        if (rank === 2) return <Medal className="h-5 w-5 text-slate-400" />; // Prata
-        if (rank === 3) return <Medal className="h-5 w-5 text-orange-600" />; // Bronze
+        if (rank === 1) return <Medal className="h-5 w-5 text-yellow-500" title="1º Lugar" />;
+        if (rank === 2) return <Medal className="h-5 w-5 text-slate-400" title="2º Lugar" />; // Prata
+        if (rank === 3) return <Medal className="h-5 w-5 text-orange-600" title="3º Lugar" />; // Bronze
         return <span className="text-xs font-medium text-muted-foreground w-5 text-center">{rank}</span>;
     };
 
@@ -189,7 +189,7 @@ export default function RankingPage() {
                                         <TableCell className="hidden md:table-cell text-muted-foreground">{entry.department}</TableCell>
                                         <TableCell className="text-center font-semibold">{entry.averagePercentage}%</TableCell>
                                         <TableCell className="text-center">
-                                            <Badge variant={entry.zerosCount > 0 ? "destructive" : "outline"}>
+                                            <Badge variant={entry.zerosCount > 0 ? "destructive" : "outline"} title={`${entry.zerosCount} nota(s) zero recebida(s) no período`}>
                                                 {entry.zerosCount}
                                             </Badge>
                                         </TableCell>
@@ -200,10 +200,9 @@ export default function RankingPage() {
                                              {entry.isEligibleForBonus ? (
                                                  <Badge variant="default" className="bg-accent text-accent-foreground">Elegível</Badge>
                                              ) : (
-                                                <Badge variant="secondary" className="flex items-center gap-1" title={`Não elegível devido a ${entry.zerosCount} zero(s) (limite: ?)`}>
+                                                <Badge variant="secondary" className="flex items-center gap-1" title={`Não elegível devido a ${entry.zerosCount} zero(s) (limite configurado: ?).`}> {/* TODO: Buscar limite de zeros das settings */}
                                                     <AlertTriangle className="h-3 w-3" /> Não Elegível
                                                 </Badge>
-                                                // TODO: Buscar limite de zeros das settings para tooltip
                                              )}
                                         </TableCell>
                                         {/* <TableCell className="text-center hidden lg:table-cell">

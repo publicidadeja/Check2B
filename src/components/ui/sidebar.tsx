@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -549,6 +550,7 @@ const SidebarMenuButton = React.forwardRef<
       size = "default",
       tooltip,
       className,
+      children,
       ...props
     },
     ref
@@ -556,35 +558,47 @@ const SidebarMenuButton = React.forwardRef<
     const Comp = asChild ? Slot : "button"
     const { isMobile, state } = useSidebar()
 
-    const button = (
+    const buttonElement = (
       <Comp
         ref={ref}
         data-sidebar="menu-button"
         data-size={size}
         data-active={isActive}
-        className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
+        className={cn(sidebarMenuButtonVariants({ variant, size, className }))}
         {...props}
-      />
+      >
+        {children}
+      </Comp>
     )
 
     if (!tooltip) {
-      return button
+      return buttonElement
     }
 
+    let tooltipContentProps: React.ComponentProps<typeof TooltipContent> = {}
     if (typeof tooltip === "string") {
-      tooltip = {
-        children: tooltip,
-      }
+        tooltipContentProps.children = tooltip;
+    } else {
+        tooltipContentProps = tooltip;
     }
+
 
     return (
       <Tooltip>
-        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        {/* When asChild is true for TooltipTrigger, it expects a single child,
+            but the buttonElement could be a Slot, which might render multiple elements
+            or no element if its child is null/undefined.
+            To fix this, we render the buttonElement *inside* a default button trigger
+            instead of using asChild.
+        */}
+        <TooltipTrigger asChild={false}>
+          {buttonElement}
+        </TooltipTrigger>
         <TooltipContent
           side="right"
           align="center"
           hidden={state !== "collapsed" || isMobile}
-          {...tooltip}
+          {...tooltipContentProps}
         />
       </Tooltip>
     )

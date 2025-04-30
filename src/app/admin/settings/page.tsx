@@ -175,7 +175,9 @@ export default function SettingsPage() {
                 <p className="text-xs text-muted-foreground">Valor em R$ ganho por cada ponto diário (máximo 10). Ex: 1.50 = R$1,50 se o score for 10/10.</p>
             </div>
              <div className="space-y-2">
-                <Label htmlFor="maxZerosThreshold">Limite Máx. de Zeros / Mês</Label>
+                <Label htmlFor="maxZerosThreshold" className="flex items-center gap-1">
+                    <AlertTriangle className="h-4 w-4 text-destructive" /> Limite Máx. de Zeros / Mês
+                </Label>
                 <Input
                 id="maxZerosThreshold"
                 name="maxZerosThreshold"

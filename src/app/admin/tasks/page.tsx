@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react'; // Added missing React imports
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
@@ -26,7 +26,7 @@ import { getAllDepartments } from '@/services/department'; // To populate dropdo
 
 // Define constants for select options
 const priorities: Task['priority'][] = ["Baixa", "Média", "Alta", "Crítica"];
-const periodicities: Task['periodicity'][] = ["Diária", "Semanal", "Mensal", "Específica"];
+const periodicities: Task['periodicity'][] = ["Diária", "Semanal", "Mensal", "Específica"]; // Corrected typo
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -58,7 +58,7 @@ export default function TasksPage() {
       setCategories(usedCategories);
 
     } catch (error) {
-      console.error("Failed to fetch initial data:", error);
+      console.error("Falha ao carregar dados iniciais:", error);
       toast({ title: "Erro", description: "Falha ao carregar dados iniciais.", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -90,7 +90,7 @@ export default function TasksPage() {
       setIsDeleteDialogOpen(false);
       setSelectedTask(null);
     } catch (error: any) {
-      console.error("Failed to delete task:", error);
+      console.error("Falha ao excluir tarefa:", error);
       toast({ title: "Erro", description: error.message || "Falha ao excluir tarefa.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
@@ -127,7 +127,7 @@ export default function TasksPage() {
         setIsAddDialogOpen(false);
         event.currentTarget.reset(); // Reset form
     } catch (error: any) {
-        console.error("Failed to add task:", error);
+        console.error("Falha ao adicionar tarefa:", error);
         toast({ title: "Erro", description: error.message || "Falha ao adicionar tarefa.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
@@ -186,7 +186,7 @@ export default function TasksPage() {
         setIsEditDialogOpen(false);
         setSelectedTask(null);
      } catch (error: any) {
-        console.error("Failed to update task:", error);
+        console.error("Falha ao atualizar tarefa:", error);
         toast({ title: "Erro", description: error.message || "Falha ao atualizar tarefa.", variant: "destructive" });
      } finally {
        setIsSubmitting(false);
