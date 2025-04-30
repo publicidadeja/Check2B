@@ -9,8 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Skeleton } from '@/components/ui/skeleton'; // Ensure Skeleton is imported
-import { Loader2, TrendingUp, TrendingDown, Minus, Filter, Trophy, Medal, AlertTriangle, Info, Users } from 'lucide-react'; // Added Users icon
+import { Skeleton } from '@/components/ui/skeleton';
+import { Loader2, TrendingUp, TrendingDown, Minus, Filter, Trophy, Medal, AlertTriangle, Info, Users, ServerCrash } from 'lucide-react'; // Added ServerCrash
 import { useToast } from "@/hooks/use-toast";
 import type { RankingEntry } from '@/services/ranking';
 import { getRanking } from '@/services/ranking';
@@ -18,8 +18,10 @@ import type { Department } from '@/services/department';
 import { getAllDepartments } from '@/services/department';
 import { format, subMonths, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Button } from '@/components/ui/button'; // Import Button
-import { cn } from '@/lib/utils'; // Import cn for conditional class names
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { Alert } from '@/components/ui/alert'; // Import Alert
+
 
 export default function RankingPage() {
     const [ranking, setRanking] = useState<RankingEntry[]>([]);
@@ -27,6 +29,7 @@ export default function RankingPage() {
     const [selectedDepartment, setSelectedDepartment] = useState<string>("Todos");
     const [selectedPeriod, setSelectedPeriod] = useState<string>(format(startOfMonth(new Date()), 'yyyy-MM')); // Default para mês atual
     const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null); // State for error message
     const { toast } = useToast();
 
     // Gerar opções de período (últimos 6 meses)
@@ -45,6 +48,7 @@ export default function RankingPage() {
 
     const loadRankingData = React.useCallback(async () => {
         setIsLoading(true);
+        setError(null); // Reset error state before fetching
         console.log(`Loading ranking for period ${selectedPeriod} and department ${selectedDepartment}`);
         try {
             // Fetch departments only if needed
@@ -57,6 +61,7 @@ export default function RankingPage() {
             setRanking(fetchedRanking);
         } catch (error: any) {
             console.error("Falha ao carregar ranking:", error);
+            setError(error.message || "Falha desconhecida ao carregar dados do ranking."); // Set error message
             toast({ title: "Erro ao Carregar Ranking", description: error.message || "Falha ao carregar dados do ranking.", variant: "destructive" });
             setRanking([]); // Limpar ranking em caso de erro
         } finally {
@@ -119,6 +124,8 @@ export default function RankingPage() {
                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                             {[1,2,3].map(i => <Skeleton key={i} className="h-24 rounded-lg" />)}
                          </div>
+                     ) : error ? (
+                        null // Don't show top performers if there was an error loading main ranking
                      ) : (
                         topPerformers.length > 0 &&
                         selectedDepartment === "Todos" &&
@@ -166,7 +173,15 @@ export default function RankingPage() {
                         <div className="flex justify-center items-center p-10">
                             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                         </div>
-                    ) : ranking.length === 0 ? ( // Check if ranking array is empty AFTER loading
+                    ) : error ? ( // Display error message if error state is set
+                        <Alert variant="destructive">
+                            <ServerCrash className="h-4 w-4" />
+                            <AlertTitle>Erro ao Carregar Ranking</AlertTitle>
+                            <AlertDescription>
+                                {error}
+                            </AlertDescription>
+                        </Alert>
+                     ) : ranking.length === 0 ? ( // Check if ranking array is empty AFTER loading and no error
                         <div className="text-center p-6 border rounded-md bg-muted/50">
                              <p className="text-muted-foreground">
                                 Nenhum dado de ranking encontrado para o período e departamento selecionados.

@@ -89,7 +89,7 @@ export async function getRanking(yearMonth: string, department?: string): Promis
         // 2. Fetch Employees
         const allEmployees = await getAllEmployees(); // Fetch all employees
         if (allEmployees.length === 0) {
-             console.log("No employees found. Returning empty ranking.");
+             console.log("Nenhum colaborador encontrado. Retornando ranking vazio.");
              return []; // No employees, empty ranking
         }
 
@@ -98,21 +98,20 @@ export async function getRanking(yearMonth: string, department?: string): Promis
         // 3. Validate yearMonth and get date range
         const targetMonthDate = parse(yearMonth, 'yyyy-MM', new Date());
         if (!isValid(targetMonthDate)) {
-            throw new Error(`Invalid yearMonth format: ${yearMonth}. Use YYYY-MM.`);
+            console.error(`Formato inválido yearMonth: ${yearMonth}. Use YYYY-MM.`);
+            throw new Error(`Formato de data inválido: ${yearMonth}. Use AAAA-MM.`);
         }
-        // Dates are not used directly for querying in the evaluation service anymore, but keep for context
-        // const monthStart = startOfMonth(targetMonthDate);
-        // const monthEnd = endOfMonth(targetMonthDate);
+        // const monthStart = startOfMonth(targetMonthDate); // Not directly used for query anymore
+        // const monthEnd = endOfMonth(targetMonthDate); // Not directly used for query anymore
 
         // 4. Fetch Evaluations for all employees for the period
         const evaluationsByEmployee = await getEvaluationsForMultipleEmployeesByMonth(employeeIds, yearMonth);
 
         // Check if there are any evaluations at all for the period
         if (Object.keys(evaluationsByEmployee).length === 0) {
-            console.log(`No evaluations found for any employee in ${yearMonth}. Returning ranking with zero scores.`);
+            console.log(`Nenhuma avaliação encontrada para nenhum colaborador em ${yearMonth}. Retornando ranking com pontuações zeradas.`);
             // Still proceed to create ranking entries, but they will all have 0 score/count
         }
-
 
         // 5. Process evaluations and calculate scores for each employee
         const rankingData: Omit<RankingEntry, 'rank'>[] = [];
@@ -129,21 +128,20 @@ export async function getRanking(yearMonth: string, department?: string): Promis
                 const evaluationsForTask = employeeEvaluationsMap[taskId];
                 // Process scores found for this employee within the month
                 evaluationsForTask.forEach(evaluation => {
-                    // Ensure the evaluation date actually falls within the target month
-                    // (getEvaluationsForMultipleEmployeesByMonth should already handle this, but double-check)
-                    // This check might be redundant if the fetching function is correct
-                    // const evalDate = parse(evaluation.evaluationDate, 'yyyy-MM-dd', new Date());
-                    // if (isValid(evalDate) && isWithinInterval(evalDate, { start: monthStart, end: monthEnd })) {
+                    // Basic check to ensure data consistency (optional, fetch function should handle this)
+                    if (evaluation.evaluationDate.startsWith(yearMonth)) {
                         totalScore += evaluation.score;
                         evaluatedTasksCount++; // Count each evaluation record
                         if (evaluation.score === 0) {
                             zerosCount++;
                         }
-                    // }
+                    } else {
+                        console.warn(`Evaluation for task ${taskId} on date ${evaluation.evaluationDate} is outside the target month ${yearMonth}. Skipping.`);
+                    }
                 });
             }
 
-             // Calculate average percentage safely
+            // Calculate average percentage safely
             const averagePercentage = evaluatedTasksCount > 0
                 ? Math.round((totalScore / (evaluatedTasksCount * 10)) * 100)
                 : 0; // Default to 0 if no tasks were evaluated
@@ -193,25 +191,24 @@ export async function getRanking(yearMonth: string, department?: string): Promis
         // 8. Filter by department *after* calculating full ranking and ranks
         const filteredRanking = filterRanking(finalRankingWithRank, department);
 
-
         // 9. Update cache
         rankingCache[cacheKey] = { timestamp: now, data: filteredRanking };
         // Cache the full ranking as well if not already cached
         const fullCacheKey = `${yearMonth}_Todos`;
-         // Update full cache only if it's stale or doesn't exist
+        // Update full cache only if it's stale or doesn't exist
         if (!rankingCache[fullCacheKey] || now - rankingCache[fullCacheKey].timestamp >= CACHE_DURATION_MS) {
              rankingCache[fullCacheKey] = { timestamp: now, data: finalRankingWithRank };
         }
 
-
         return filteredRanking;
 
     } catch (error) {
-         console.error("Error calculating ranking:", error);
-         // Return empty array on error to avoid crashing the UI
-         return [];
-         // Or rethrow if the error should propagate:
-         // throw new Error("Falha ao calcular o ranking.");
+         console.error("Erro ao calcular ranking:", error);
+         // Instead of returning empty, re-throw the error so the caller can handle it (e.g., show a specific message)
+         if (error instanceof Error) {
+            throw new Error(`Falha ao calcular o ranking: ${error.message}`);
+         }
+         throw new Error("Falha desconhecida ao calcular o ranking.");
     }
 }
 
