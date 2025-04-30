@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale'; // Import ptBR locale
 import { CalendarIcon, UserPlus, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,7 @@ import {
     DialogHeader,
     DialogTitle,
     DialogTrigger,
+    DialogClose
 } from '@/components/ui/dialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
@@ -33,12 +35,11 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import type { Employee } from '@/types/employee';
-import { Slot } from '@radix-ui/react-slot'; // Import Slot
 
 const employeeSchema = z.object({
   name: z.string().min(2, { message: 'Nome deve ter pelo menos 2 caracteres.' }),
   email: z.string().email({ message: 'Email inválido.' }),
-  phone: z.string().optional(),
+  phone: z.string().optional().or(z.literal('')), // Allow empty string
   department: z.string().min(1, { message: 'Departamento é obrigatório.' }),
   role: z.string().min(1, { message: 'Função é obrigatória.' }),
   admissionDate: z.date({ required_error: 'Data de admissão é obrigatória.' }),
@@ -49,17 +50,15 @@ const employeeSchema = z.object({
 type EmployeeFormData = z.infer<typeof employeeSchema>;
 
 interface EmployeeFormProps {
-  employee?: Employee | null; // Pass employee data for editing
-  onSave: (data: EmployeeFormData) => Promise<void>; // Function to handle save
-  children?: React.ReactNode; // Add children prop
-  open?: boolean; // Allow controlling open state externally
-  onOpenChange?: (open: boolean) => void; // Allow controlling open state externally
+  employee?: Employee | null;
+  onSave: (data: EmployeeFormData) => Promise<void>;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function EmployeeForm({
     employee,
     onSave,
-    children,
     open: controlledOpen,
     onOpenChange: controlledOnOpenChange
 }: EmployeeFormProps) {
@@ -68,7 +67,6 @@ export function EmployeeForm({
   const [photoPreview, setPhotoPreview] = React.useState<string | undefined>(employee?.photoUrl);
   const { toast } = useToast();
 
-  // Use controlled state if provided, otherwise use internal state
   const isOpen = controlledOpen ?? internalOpen;
   const setIsOpen = controlledOnOpenChange ?? setInternalOpen;
 
@@ -76,19 +74,18 @@ export function EmployeeForm({
   const form = useForm<EmployeeFormData>({
     resolver: zodResolver(employeeSchema),
     defaultValues: {
-      name: employee?.name || '',
-      email: employee?.email || '',
-      phone: employee?.phone || '',
-      department: employee?.department || '',
-      role: employee?.role || '',
-      admissionDate: employee?.admissionDate ? new Date(employee.admissionDate) : new Date(),
-      photoUrl: employee?.photoUrl || '',
-      isActive: employee?.isActive ?? true,
+      name: '',
+      email: '',
+      phone: '',
+      department: '',
+      role: '',
+      admissionDate: new Date(),
+      photoUrl: '',
+      isActive: true,
     },
   });
 
    React.useEffect(() => {
-     // Only reset if the dialog is opening OR if the employee prop changes while open
     if (isOpen) {
         if (employee) {
           form.reset({
@@ -97,7 +94,8 @@ export function EmployeeForm({
             phone: employee.phone || '',
             department: employee.department,
             role: employee.role,
-            admissionDate: new Date(employee.admissionDate),
+            // Ensure admissionDate is parsed correctly, handling potential string format
+            admissionDate: employee.admissionDate ? new Date(employee.admissionDate + 'T00:00:00') : new Date(),
             photoUrl: employee.photoUrl || '',
             isActive: employee.isActive,
           });
@@ -116,20 +114,17 @@ export function EmployeeForm({
            setPhotoPreview(undefined);
         }
      }
-  }, [employee, form, isOpen]); // Dependency includes isOpen
+  }, [employee, form, isOpen]);
 
 
   const onSubmit = async (data: EmployeeFormData) => {
     setIsSaving(true);
     try {
       await onSave(data);
-      toast({
-        title: 'Sucesso!',
-        description: `Colaborador ${employee ? 'atualizado' : 'cadastrado'} com sucesso.`,
-      });
+       // Toast is handled in the parent component after successful save
       setIsOpen(false); // Close dialog on success
     } catch (error) {
-       console.error("Failed to save employee:", error);
+       console.error("Falha ao salvar colaborador:", error);
       toast({
         title: 'Erro!',
         description: `Falha ao ${employee ? 'atualizar' : 'cadastrar'} colaborador. Tente novamente.`,
@@ -142,8 +137,7 @@ export function EmployeeForm({
 
    const handlePhotoUrlChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const url = event.target.value;
-    form.setValue('photoUrl', url); // Update form value
-     // Basic URL validation for preview
+    form.setValue('photoUrl', url);
     if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
        setPhotoPreview(url);
      } else {
@@ -152,28 +146,22 @@ export function EmployeeForm({
   };
 
   const getInitials = (name: string) => {
+     if (!name) return '??';
      return name
-        ?.split(' ')
+        .split(' ')
         .map((n) => n[0])
         .slice(0, 2)
         .join('')
-        .toUpperCase() || '??';
+        .toUpperCase();
    };
 
-  // Determine the trigger component
-  const TriggerComponent = children ? Slot : Button;
-  const triggerProps = children ? {} : {
-      children: employee ? 'Editar' : <><UserPlus className="mr-2 h-4 w-4" />Adicionar Colaborador</>,
-      variant: employee ? 'outline' : 'default',
-      size: employee ? 'sm' : 'default',
-   };
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-          {/* Use Slot if children are provided, otherwise Button */}
+      {/* DialogTrigger is now handled in the parent component (EmployeesPage) */}
+      {/* <DialogTrigger asChild>
           {children ? <Slot>{children}</Slot> : <Button {...triggerProps} />}
-      </DialogTrigger>
+      </DialogTrigger> */}
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>{employee ? 'Editar Colaborador' : 'Adicionar Novo Colaborador'}</DialogTitle>
@@ -182,7 +170,7 @@ export function EmployeeForm({
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
             <div className="flex items-center space-x-4">
                 <Avatar className="h-20 w-20">
                   <AvatarImage src={photoPreview} alt={form.watch('name')} />
@@ -195,7 +183,7 @@ export function EmployeeForm({
                     <FormItem className="flex-1">
                       <FormLabel>URL da Foto (Opcional)</FormLabel>
                       <FormControl>
-                        <Input placeholder="https://example.com/photo.jpg" {...field} value={field.value ?? ''} onChange={handlePhotoUrlChange} />
+                        <Input placeholder="https://..." {...field} value={field.value ?? ''} onChange={handlePhotoUrlChange} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -210,7 +198,7 @@ export function EmployeeForm({
                 <FormItem>
                   <FormLabel>Nome Completo</FormLabel>
                   <FormControl>
-                    <Input placeholder="João da Silva" {...field} />
+                    <Input placeholder="Nome Sobrenome" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -221,9 +209,9 @@ export function EmployeeForm({
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel>Email Corporativo</FormLabel>
                   <FormControl>
-                    <Input type="email" placeholder="joao.silva@empresa.com" {...field} />
+                    <Input type="email" placeholder="nome.sobrenome@check2b.com" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -236,7 +224,7 @@ export function EmployeeForm({
                   <FormItem>
                     <FormLabel>Telefone (Opcional)</FormLabel>
                     <FormControl>
-                      <Input type="tel" placeholder="(11) 99999-9999" {...field} value={field.value ?? ''} />
+                      <Input type="tel" placeholder="(XX) XXXXX-XXXX" {...field} value={field.value ?? ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -250,8 +238,8 @@ export function EmployeeForm({
                   <FormItem>
                     <FormLabel>Departamento</FormLabel>
                     <FormControl>
-                      {/* TODO: Replace with Select component when departments are managed */}
-                      <Input placeholder="Engenharia" {...field} />
+                      {/* TODO: Substituir por Select/Combobox quando departamentos forem gerenciáveis */}
+                      <Input placeholder="Ex: Engenharia" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -264,8 +252,8 @@ export function EmployeeForm({
                   <FormItem>
                     <FormLabel>Função</FormLabel>
                     <FormControl>
-                       {/* TODO: Replace with Select component when roles are managed */}
-                      <Input placeholder="Desenvolvedor Frontend" {...field} />
+                       {/* TODO: Substituir por Select/Combobox quando funções forem gerenciáveis */}
+                      <Input placeholder="Ex: Desenvolvedor" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -290,7 +278,7 @@ export function EmployeeForm({
                           )}
                         >
                           {field.value ? (
-                            format(field.value, 'PPP') // 'PPP' -> locale specific date format like 'Sep 21, 2023'
+                            format(field.value, 'PPP', { locale: ptBR }) // Use ptBR locale
                           ) : (
                             <span>Escolha uma data</span>
                           )}
@@ -304,9 +292,10 @@ export function EmployeeForm({
                         selected={field.value}
                         onSelect={field.onChange}
                         disabled={(date) =>
-                          date > new Date() || date < new Date('1900-01-01')
+                          date > new Date() || date < new Date('1950-01-01') // Adjust range if needed
                         }
                         initialFocus
+                        locale={ptBR} // Use ptBR locale
                       />
                     </PopoverContent>
                   </Popover>
@@ -327,6 +316,7 @@ export function EmployeeForm({
                       <Switch
                         checked={field.value}
                         onCheckedChange={field.onChange}
+                        aria-readonly // Useful for screen readers
                       />
                     </FormControl>
                   </FormItem>
@@ -334,7 +324,9 @@ export function EmployeeForm({
               />
 
             <DialogFooter>
-               <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>Cancelar</Button>
+              <DialogClose asChild>
+                 <Button type="button" variant="outline">Cancelar</Button>
+              </DialogClose>
               <Button type="submit" disabled={isSaving}>
                 {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {employee ? 'Salvar Alterações' : 'Cadastrar Colaborador'}

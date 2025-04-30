@@ -11,12 +11,12 @@ export default function RolesPage() {
              <Briefcase className="h-5 w-5" />
              Gerenciamento de Funções
           </CardTitle>
-          <CardDescription>Crie, edite ou remova funções (cargos) dentro da organização.</CardDescription>
+          <CardDescription>Crie, edite ou remova funções (cargos) na organização.</CardDescription>
         </CardHeader>
         <CardContent>
-          {/* TODO: Implement Role management UI (list, add, edit, remove) */}
+          {/* TODO: Implementar UI de gerenciamento de Funções (listar, adicionar, editar, remover) */}
           <p className="text-muted-foreground">Funcionalidade de gerenciamento de funções ainda não implementada.</p>
-           <Button variant="default" className="mt-4">
+           <Button variant="default" className="mt-4" disabled> {/* Botão desabilitado até implementação */}
                 <Briefcase className="mr-2 h-4 w-4" />
                 Adicionar Função
             </Button>

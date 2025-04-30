@@ -1,11 +1,11 @@
 export interface Employee {
   id: string;
   name: string;
-  photoUrl?: string; // Optional photo URL
-  department: string;
-  role: string;
-  admissionDate: string; // Consider using Date type if needed
-  email: string;
-  phone: string;
-  isActive: boolean; // To handle activate/deactivate/archive
+  photoUrl?: string; // URL opcional da foto
+  department: string; // Departamento
+  role: string; // Função/Cargo
+  admissionDate: string; // Data de admissão (string YYYY-MM-DD)
+  email: string; // Email corporativo
+  phone?: string; // Telefone (opcional)
+  isActive: boolean; // Status (ativo/inativo)
 }

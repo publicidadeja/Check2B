@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { ClipboardList, Loader2 } from 'lucide-react';
+import { ClipboardPlus, Loader2 } from 'lucide-react'; // Changed Icon
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,29 +32,29 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
+    DialogClose // Added DialogClose
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import type { Task } from '@/types/task';
-import { Slot } from '@radix-ui/react-slot'; // Import Slot
 
+// Updated schema with Portuguese messages and refinement
 const taskSchema = z.object({
   title: z.string().min(3, { message: 'Título deve ter pelo menos 3 caracteres.' }),
   description: z.string().min(5, { message: 'Descrição deve ter pelo menos 5 caracteres.' }),
   criteria: z.string().min(10, { message: 'Critério deve ter pelo menos 10 caracteres.' }),
-  category: z.string().optional(),
+  category: z.string().optional().or(z.literal('')),
   priority: z.enum(['low', 'medium', 'high']).optional(),
-  periodicity: z.enum(['daily', 'specific_days', 'specific_dates']),
+  periodicity: z.enum(['daily', 'specific_days', 'specific_dates'], { required_error: "Periodicidade é obrigatória." }),
   assignedTo: z.enum(['role', 'department', 'individual']).optional(),
-  assignedEntityId: z.string().optional(),
+  assignedEntityId: z.string().optional().or(z.literal('')),
 }).refine(data => {
-     // If assignedTo is set, assignedEntityId must also be set
-     if (data.assignedTo && !data.assignedEntityId) {
+     // If assignedTo is set, assignedEntityId must also be set and not empty
+     if (data.assignedTo && !data.assignedEntityId?.trim()) {
        return false;
      }
      return true;
    }, {
-    message: "Se 'Atribuído a' for selecionado, o ID correspondente é obrigatório.",
+    message: "Se 'Atribuído a' for selecionado, o ID/Nome correspondente é obrigatório.",
     path: ["assignedEntityId"], // Attach error to assignedEntityId field
    });
 
@@ -62,17 +62,15 @@ const taskSchema = z.object({
 type TaskFormData = z.infer<typeof taskSchema>;
 
 interface TaskFormProps {
-  task?: Task | null; // Pass task data for editing
-  onSave: (data: TaskFormData) => Promise<void>; // Function to handle save
-  children?: React.ReactNode; // To allow custom trigger components
-  open?: boolean; // Allow controlling open state externally
-  onOpenChange?: (open: boolean) => void; // Allow controlling open state externally
+  task?: Task | null;
+  onSave: (data: TaskFormData) => Promise<void>;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function TaskForm({
     task,
     onSave,
-    children,
     open: controlledOpen,
     onOpenChange: controlledOnOpenChange
 }: TaskFormProps) {
@@ -86,14 +84,14 @@ export function TaskForm({
   const form = useForm<TaskFormData>({
     resolver: zodResolver(taskSchema),
     defaultValues: {
-      title: task?.title || '',
-      description: task?.description || '',
-      criteria: task?.criteria || '',
-      category: task?.category || '',
-      priority: task?.priority || undefined,
-      periodicity: task?.periodicity || 'daily',
-      assignedTo: task?.assignedTo || undefined,
-      assignedEntityId: task?.assignedEntityId || '',
+      title: '',
+      description: '',
+      criteria: '',
+      category: '',
+      priority: undefined,
+      periodicity: 'daily',
+      assignedTo: undefined,
+      assignedEntityId: '',
     },
   });
 
@@ -101,17 +99,17 @@ export function TaskForm({
      if(isOpen) {
         if (task) {
           form.reset({
-            title: task.title,
-            description: task.description,
-            criteria: task.criteria,
+            title: task.title || '',
+            description: task.description || '',
+            criteria: task.criteria || '',
             category: task.category || '',
             priority: task.priority || undefined,
-            periodicity: task.periodicity,
+            periodicity: task.periodicity || 'daily',
             assignedTo: task.assignedTo || undefined,
             assignedEntityId: task.assignedEntityId || '',
           });
         } else {
-           form.reset({
+           form.reset({ // Reset to default empty values for new task
              title: '',
              description: '',
              criteria: '',
@@ -129,13 +127,10 @@ export function TaskForm({
     setIsSaving(true);
     try {
       await onSave(data);
-      toast({
-        title: 'Sucesso!',
-        description: `Tarefa ${task ? 'atualizada' : 'criada'} com sucesso.`,
-      });
+      // Toast is handled in parent component
       setIsOpen(false);
     } catch (error) {
-       console.error("Failed to save task:", error);
+       console.error("Falha ao salvar tarefa:", error);
       toast({
         title: 'Erro!',
         description: `Falha ao ${task ? 'atualizar' : 'criar'} tarefa. Tente novamente.`,
@@ -146,28 +141,20 @@ export function TaskForm({
     }
   };
 
-  const TriggerComponent = children ? Slot : Button;
-  const triggerProps = children ? {} : {
-      children: task ? 'Editar Tarefa' : <><ClipboardList className="mr-2 h-4 w-4" />Adicionar Tarefa</>,
-      variant: task ? 'outline' : 'default',
-      size: task ? 'sm' : 'default',
-   };
-
+  // Trigger is handled in the parent component (TasksPage)
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-       <DialogTrigger asChild>
-          {children ? <Slot>{children}</Slot> : <Button {...triggerProps} />}
-       </DialogTrigger>
+       {/* <DialogTrigger asChild> ... </DialogTrigger> */}
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>{task ? 'Editar Tarefa' : 'Criar Nova Tarefa'}</DialogTitle>
           <DialogDescription>
-            {task ? 'Atualize os detalhes da tarefa.' : 'Preencha os detalhes da nova tarefa.'}
+            {task ? 'Atualize os detalhes da tarefa existente.' : 'Preencha os detalhes para criar uma nova tarefa.'}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
             <FormField
               control={form.control}
               name="title"
@@ -175,7 +162,7 @@ export function TaskForm({
                 <FormItem>
                   <FormLabel>Título da Tarefa</FormLabel>
                   <FormControl>
-                    <Input placeholder="Ex: Verificar Emails Diariamente" {...field} />
+                    <Input placeholder="Ex: Verificar pendências diárias" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -188,7 +175,7 @@ export function TaskForm({
                 <FormItem>
                   <FormLabel>Descrição Detalhada</FormLabel>
                   <FormControl>
-                    <Textarea placeholder="Descreva a tarefa em detalhes..." {...field} />
+                    <Textarea placeholder="Descreva os passos ou o objetivo da tarefa..." {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -201,10 +188,10 @@ export function TaskForm({
                 <FormItem>
                   <FormLabel>Critério de Cumprimento (Nota 10)</FormLabel>
                   <FormControl>
-                    <Textarea placeholder="Descreva o que significa cumprir a tarefa satisfatoriamente..." {...field} />
+                    <Textarea placeholder="O que define a execução perfeita desta tarefa?" {...field} />
                   </FormControl>
                    <FormDescription>
-                    Seja claro sobre as expectativas para a nota máxima.
+                    Seja claro e objetivo para a avaliação.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -219,8 +206,8 @@ export function TaskForm({
                     <FormItem>
                       <FormLabel>Categoria (Opcional)</FormLabel>
                       <FormControl>
-                        {/* TODO: Replace with Select or Combobox loading categories */}
-                        <Input placeholder="Ex: Vendas, Suporte" {...field} value={field.value ?? ''} />
+                        {/* TODO: Substituir por Select/Combobox que carrega categorias existentes */}
+                        <Input placeholder="Ex: Vendas, TI" {...field} value={field.value ?? ''} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -235,7 +222,7 @@ export function TaskForm({
                        <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Selecione a prioridade" />
+                            <SelectValue placeholder="Selecione..." />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -257,16 +244,16 @@ export function TaskForm({
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Selecione a periodicidade" />
+                            <SelectValue placeholder="Selecione..." />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
                           <SelectItem value="daily">Diária</SelectItem>
                           <SelectItem value="specific_days">Dias Específicos</SelectItem>
-                           <SelectItem value="specific_dates">Datas Específicas</SelectItem>
+                          <SelectItem value="specific_dates">Datas Específicas</SelectItem>
                         </SelectContent>
                       </Select>
-                       {/* TODO: Add conditional inputs for specific_days/dates */}
+                       {/* TODO: Adicionar inputs condicionais para specific_days/dates */}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -279,10 +266,14 @@ export function TaskForm({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Atribuído a (Opcional)</FormLabel>
-                       <Select onValueChange={field.onChange} value={field.value ?? ''} >
+                       <Select onValueChange={(value) => {
+                           field.onChange(value);
+                           // Clear entity ID when assignment type changes to avoid invalid state
+                           form.setValue('assignedEntityId', '');
+                       }} value={field.value ?? ''}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Global (Todos)" />
+                            <SelectValue placeholder="Global (Todos Colaboradores)" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -292,27 +283,35 @@ export function TaskForm({
                         </SelectContent>
                       </Select>
                        <FormDescription>
-                         Se não selecionado, a tarefa é global.
+                         Se não selecionado, a tarefa aplica-se a todos.
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                 {/* Conditional Input based on assignedTo */}
+                 {/* Input Condicional baseado em assignedTo */}
                  {form.watch('assignedTo') && (
                    <FormField
                      control={form.control}
                      name="assignedEntityId"
                      render={({ field }) => (
                        <FormItem>
-                         <FormLabel>ID da {
-                             form.watch('assignedTo') === 'role' ? 'Função' :
-                             form.watch('assignedTo') === 'department' ? 'Departamento' :
-                             'Colaborador'
-                          }</FormLabel>
+                         <FormLabel>
+                            { form.watch('assignedTo') === 'role' ? 'Nome da Função' :
+                             form.watch('assignedTo') === 'department' ? 'Nome do Departamento' :
+                             'Nome/ID do Colaborador' }
+                         </FormLabel>
                          <FormControl>
-                           {/* TODO: Replace with Combobox/Select loading appropriate entities */}
-                           <Input placeholder={`Digite o ID...`} {...field} value={field.value ?? ''}/>
+                           {/* TODO: Idealmente, substituir por Combobox/Select que busca entidades */}
+                           <Input
+                                placeholder={
+                                    form.watch('assignedTo') === 'role' ? 'Ex: Recrutadora' :
+                                    form.watch('assignedTo') === 'department' ? 'Ex: Engenharia' :
+                                    'Ex: Alice Silva (ID: 1)'
+                                }
+                                {...field}
+                                value={field.value ?? ''}
+                            />
                          </FormControl>
                          <FormMessage />
                        </FormItem>
@@ -323,7 +322,9 @@ export function TaskForm({
 
 
             <DialogFooter>
-               <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>Cancelar</Button>
+              <DialogClose asChild>
+                 <Button type="button" variant="outline">Cancelar</Button>
+              </DialogClose>
               <Button type="submit" disabled={isSaving}>
                 {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {task ? 'Salvar Alterações' : 'Criar Tarefa'}

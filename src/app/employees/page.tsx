@@ -31,70 +31,69 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { EmployeeForm } from '@/components/employee/employee-form'; // Import the form
-import type { Employee } from '@/types/employee'; // Import Employee type
-import { useToast } from '@/hooks/use-toast'; // Import toast hook
+import { EmployeeForm } from '@/components/employee/employee-form';
+import type { Employee } from '@/types/employee';
+import { useToast } from '@/hooks/use-toast';
 
-// Mock data - replace with API calls
+// Mock data (simulated API response) - Manter nomes em português para consistência
 const mockEmployees: Employee[] = [
-  { id: '1', name: 'Alice Silva', email: 'alice.silva@checkup.com', phone: '11987654321', department: 'RH', role: 'Recrutadora', admissionDate: '2023-01-15', isActive: true, photoUrl: 'https://picsum.photos/id/1027/40/40' },
-  { id: '2', name: 'Bob Santos', email: 'bob.santos@checkup.com', phone: '21912345678', department: 'Engenharia', role: 'Desenvolvedor Backend', admissionDate: '2022-08-20', isActive: true, photoUrl: 'https://picsum.photos/id/1005/40/40' },
-  { id: '3', name: 'Carla Mendes', email: 'carla.mendes@checkup.com', phone: '31999998888', department: 'Marketing', role: 'Analista de Marketing', admissionDate: '2023-05-10', isActive: false }, // Inactive example
-  { id: '4', name: 'David Costa', email: 'david.costa@checkup.com', phone: '41988887777', department: 'Vendas', role: 'Executivo de Contas', admissionDate: '2021-11-01', isActive: true, photoUrl: 'https://picsum.photos/id/338/40/40' },
-  { id: '5', name: 'Eva Pereira', email: 'eva.pereira@checkup.com', phone: '51977776666', department: 'Engenharia', role: 'Desenvolvedora Frontend', admissionDate: '2023-03-22', isActive: true },
+  { id: '1', name: 'Alice Silva', email: 'alice.silva@check2b.com', phone: '11987654321', department: 'RH', role: 'Recrutadora', admissionDate: '2023-01-15', isActive: true, photoUrl: 'https://picsum.photos/id/1027/40/40' },
+  { id: '2', name: 'Beto Santos', email: 'beto.santos@check2b.com', phone: '21912345678', department: 'Engenharia', role: 'Desenvolvedor Backend', admissionDate: '2022-08-20', isActive: true, photoUrl: 'https://picsum.photos/id/1005/40/40' },
+  { id: '3', name: 'Carla Mendes', email: 'carla.mendes@check2b.com', phone: '31999998888', department: 'Marketing', role: 'Analista de Marketing', admissionDate: '2023-05-10', isActive: false }, // Exemplo inativo
+  { id: '4', name: 'Davi Costa', email: 'davi.costa@check2b.com', phone: '41988887777', department: 'Vendas', role: 'Executivo de Contas', admissionDate: '2021-11-01', isActive: true, photoUrl: 'https://picsum.photos/id/338/40/40' },
+  { id: '5', name: 'Eva Pereira', email: 'eva.pereira@check2b.com', phone: '51977776666', department: 'Engenharia', role: 'Desenvolvedora Frontend', admissionDate: '2023-03-22', isActive: true },
 ];
 
-// Mock API functions - replace with actual API calls
+// Mock API functions
 const fetchEmployees = async (): Promise<Employee[]> => {
-  // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 500));
-  // In a real app, fetch from your backend API
-  return mockEmployees;
+  return [...mockEmployees]; // Return a copy to avoid direct mutation
 };
 
-const saveEmployee = async (employeeData: Omit<Employee, 'id'> | Employee): Promise<void> => {
-    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API delay
-    if ('id' in employeeData) {
-        // Update existing employee
+const saveEmployee = async (employeeData: Omit<Employee, 'id'> | Employee): Promise<Employee> => {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    if ('id' in employeeData && employeeData.id) {
         const index = mockEmployees.findIndex(emp => emp.id === employeeData.id);
         if (index !== -1) {
             mockEmployees[index] = { ...mockEmployees[index], ...employeeData };
-            console.log("Updated employee:", mockEmployees[index]);
+            console.log("Colaborador atualizado:", mockEmployees[index]);
+            return mockEmployees[index];
         } else {
-            throw new Error("Employee not found for update");
+            throw new Error("Colaborador não encontrado para atualização");
         }
     } else {
-        // Add new employee
         const newEmployee: Employee = {
-            id: String(Date.now()), // Simple ID generation for mock
+            id: String(Date.now()),
             ...employeeData,
+            isActive: employeeData.isActive !== undefined ? employeeData.isActive : true, // Default to active
         };
         mockEmployees.push(newEmployee);
-        console.log("Added new employee:", newEmployee);
+        console.log("Novo colaborador adicionado:", newEmployee);
+        return newEmployee;
     }
 };
 
 const deleteEmployee = async (employeeId: string): Promise<void> => {
-     await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API delay
+     await new Promise(resolve => setTimeout(resolve, 500));
     const index = mockEmployees.findIndex(emp => emp.id === employeeId);
     if (index !== -1) {
         mockEmployees.splice(index, 1);
-        console.log("Deleted employee with ID:", employeeId);
+        console.log("Colaborador removido com ID:", employeeId);
     } else {
-         throw new Error("Employee not found for deletion");
+         throw new Error("Colaborador não encontrado para remoção");
     }
 };
 
-const toggleEmployeeStatus = async (employeeId: string): Promise<void> => {
-    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API delay
+const toggleEmployeeStatus = async (employeeId: string): Promise<Employee | undefined> => {
+    await new Promise(resolve => setTimeout(resolve, 500));
     const index = mockEmployees.findIndex(emp => emp.id === employeeId);
     if (index !== -1) {
         mockEmployees[index].isActive = !mockEmployees[index].isActive;
-        console.log("Toggled status for employee:", mockEmployees[index]);
+        console.log("Status alterado para o colaborador:", mockEmployees[index]);
+        return mockEmployees[index];
     } else {
-         throw new Error("Employee not found for status toggle");
+         throw new Error("Colaborador não encontrado para alterar status");
     }
 };
 
@@ -105,8 +104,8 @@ export default function EmployeesPage() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [searchTerm, setSearchTerm] = React.useState('');
   const [selectedEmployee, setSelectedEmployee] = React.useState<Employee | null>(null);
-  const [isFormOpen, setIsFormOpen] = React.useState(false); // State for EmployeeForm dialog
-  const [isDeleting, setIsDeleting] = React.useState(false); // State for delete confirmation
+  const [isFormOpen, setIsFormOpen] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
   const [employeeToDelete, setEmployeeToDelete] = React.useState<Employee | null>(null);
 
   const { toast } = useToast();
@@ -116,9 +115,9 @@ export default function EmployeesPage() {
     try {
       const data = await fetchEmployees();
       setEmployees(data);
-      setFilteredEmployees(data); // Initialize filtered list
+      setFilteredEmployees(data);
     } catch (error) {
-      console.error("Failed to fetch employees:", error);
+      console.error("Falha ao carregar colaboradores:", error);
       toast({ title: "Erro", description: "Falha ao carregar colaboradores.", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -129,7 +128,6 @@ export default function EmployeesPage() {
     loadEmployees();
   }, [loadEmployees]);
 
-   // Filter employees based on search term
    React.useEffect(() => {
     const lowerCaseSearchTerm = searchTerm.toLowerCase();
     const filtered = employees.filter(emp =>
@@ -141,25 +139,38 @@ export default function EmployeesPage() {
     setFilteredEmployees(filtered);
   }, [searchTerm, employees]);
 
-  const handleSaveEmployee = async (data: any) => { // Use 'any' for mock, define proper type later
+ const handleSaveEmployee = async (data: any) => {
      const employeeDataToSave = selectedEmployee
-         ? { ...selectedEmployee, ...data } // Merge for update
-         : data; // Data for new employee
+         ? { ...selectedEmployee, ...data }
+         : data;
 
-     // Convert admissionDate back to string if needed by backend
+     // Ensure admissionDate is correctly formatted (string YYYY-MM-DD)
      const payload = {
          ...employeeDataToSave,
          admissionDate: employeeDataToSave.admissionDate instanceof Date
-             ? employeeDataToSave.admissionDate.toISOString().split('T')[0] // Format as YYYY-MM-DD string
-             : employeeDataToSave.admissionDate, // Assume it's already a string if not a Date
+             ? employeeDataToSave.admissionDate.toISOString().split('T')[0]
+             : employeeDataToSave.admissionDate,
      };
 
+    try {
+        await saveEmployee(payload);
+        setIsFormOpen(false);
+        setSelectedEmployee(null);
+        await loadEmployees(); // Refresh list
+         toast({
+             title: "Sucesso!",
+             description: `Colaborador ${selectedEmployee ? 'atualizado' : 'cadastrado'} com sucesso.`,
+         });
+    } catch (error) {
+        console.error("Erro ao salvar colaborador:", error);
+        toast({
+            title: "Erro!",
+            description: `Falha ao ${selectedEmployee ? 'atualizar' : 'cadastrar'} colaborador. Tente novamente.`,
+            variant: "destructive",
+        });
+    }
+ };
 
-    await saveEmployee(payload);
-    setIsFormOpen(false); // Close form dialog
-    setSelectedEmployee(null); // Reset selected employee
-    await loadEmployees(); // Refresh list
-  };
 
   const handleDeleteClick = (employee: Employee) => {
     setEmployeeToDelete(employee);
@@ -171,9 +182,9 @@ export default function EmployeesPage() {
        try {
         await deleteEmployee(employeeToDelete.id);
         toast({ title: "Sucesso", description: "Colaborador removido com sucesso." });
-        await loadEmployees(); // Refresh list
+        await loadEmployees();
       } catch (error) {
-         console.error("Failed to delete employee:", error);
+         console.error("Falha ao remover colaborador:", error);
          toast({ title: "Erro", description: "Falha ao remover colaborador.", variant: "destructive" });
       } finally {
          setIsDeleting(false);
@@ -185,25 +196,26 @@ export default function EmployeesPage() {
   const handleToggleStatus = async (employee: Employee) => {
       try {
         await toggleEmployeeStatus(employee.id);
-        toast({ title: "Sucesso", description: `Status do colaborador ${employee.isActive ? 'desativado' : 'ativado'} com sucesso.` });
-        await loadEmployees(); // Refresh list
+        toast({ title: "Sucesso", description: `Status do colaborador ${employee.name} foi ${employee.isActive ? 'desativado' : 'ativado'}.` });
+        await loadEmployees();
       } catch (error) {
-         console.error("Failed to toggle employee status:", error);
+         console.error("Falha ao alterar status do colaborador:", error);
          toast({ title: "Erro", description: "Falha ao alterar status do colaborador.", variant: "destructive" });
       }
   };
 
   const openEditForm = (employee: Employee) => {
     setSelectedEmployee(employee);
-    setIsFormOpen(true); // Trigger form opening manually
+    setIsFormOpen(true);
   };
 
    const openAddForm = () => {
-    setSelectedEmployee(null); // Ensure no employee is selected for adding
-    setIsFormOpen(true); // Trigger form opening manually
+    setSelectedEmployee(null);
+    setIsFormOpen(true);
   };
 
    const getInitials = (name: string) => {
+     if (!name) return '??';
      return name
         .split(' ')
         .map((n) => n[0])
@@ -214,7 +226,6 @@ export default function EmployeesPage() {
 
   return (
     <div className="flex flex-col h-full">
-       {/* Header with Search and Add Button */}
       <div className="flex items-center justify-between mb-4">
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -226,11 +237,13 @@ export default function EmployeesPage() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-         {/* Use EmployeeForm trigger directly for adding */}
-         <EmployeeForm onSave={handleSaveEmployee} />
+         {/* Trigger Adicionar Colaborador */}
+         <Button onClick={openAddForm}>
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Adicionar Colaborador
+         </Button>
       </div>
 
-      {/* Employee Table */}
       <div className="flex-grow overflow-auto rounded-md border">
         <Table>
           <TableHeader>
@@ -247,13 +260,13 @@ export default function EmployeesPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center">
+                <TableCell colSpan={7} className="text-center py-10">
                   Carregando colaboradores...
                 </TableCell>
               </TableRow>
             ) : filteredEmployees.length === 0 ? (
                <TableRow>
-                  <TableCell colSpan={7} className="text-center">
+                  <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
                     Nenhum colaborador encontrado.
                   </TableCell>
               </TableRow>
@@ -271,7 +284,7 @@ export default function EmployeesPage() {
                   <TableCell>{employee.department}</TableCell>
                   <TableCell>{employee.role}</TableCell>
                   <TableCell>
-                    <Badge variant={employee.isActive ? 'default' : 'secondary'} className={employee.isActive ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}>
+                    <Badge variant={employee.isActive ? 'default' : 'secondary'} className={employee.isActive ? 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/50 dark:text-green-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'}>
                       {employee.isActive ? 'Ativo' : 'Inativo'}
                     </Badge>
                   </TableCell>
@@ -290,13 +303,8 @@ export default function EmployeesPage() {
                           Visualizar Perfil
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => openEditForm(employee)}>
-                           {/* Use EmployeeForm trigger for editing */}
-                           <EmployeeForm employee={employee} onSave={handleSaveEmployee}>
-                               <span className="flex items-center w-full cursor-pointer">
-                                  <Edit className="mr-2 h-4 w-4" />
-                                  Editar
-                               </span>
-                          </EmployeeForm>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Editar
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleToggleStatus(employee)}>
                           {employee.isActive ? <UserX className="mr-2 h-4 w-4" /> : <UserCheck className="mr-2 h-4 w-4" />}
@@ -317,7 +325,15 @@ export default function EmployeesPage() {
         </Table>
       </div>
 
-       {/* Delete Confirmation Dialog */}
+       {/* Formulário de Colaborador (Dialog) */}
+       <EmployeeForm
+            employee={selectedEmployee}
+            onSave={handleSaveEmployee}
+            open={isFormOpen}
+            onOpenChange={setIsFormOpen}
+        />
+
+       {/* Confirmação de Remoção (AlertDialog) */}
        <AlertDialog open={isDeleting} onOpenChange={setIsDeleting}>
             <AlertDialogContent>
                 <AlertDialogHeader>

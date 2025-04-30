@@ -12,12 +12,12 @@ export default function DepartmentsPage() {
             <Building className="h-5 w-5" />
             Gerenciamento de Departamentos
           </CardTitle>
-          <CardDescription>Crie, edite ou remova departamentos dentro da organização.</CardDescription>
+          <CardDescription>Crie, edite ou remova departamentos na organização.</CardDescription>
         </CardHeader>
         <CardContent>
-          {/* TODO: Implement Department management UI (list, add, edit, remove) */}
+          {/* TODO: Implementar UI de gerenciamento de Departamentos (listar, adicionar, editar, remover) */}
           <p className="text-muted-foreground">Funcionalidade de gerenciamento de departamentos ainda não implementada.</p>
-           <Button variant="default" className="mt-4">
+           <Button variant="default" className="mt-4" disabled> {/* Botão desabilitado até implementação */}
                  <Building className="mr-2 h-4 w-4" />
                  Adicionar Departamento
            </Button>

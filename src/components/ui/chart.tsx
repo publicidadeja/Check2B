@@ -1,7 +1,14 @@
 "use client"
 
 import * as React from "react"
-import * as RechartsPrimitive from "recharts"
+// Use named imports for specific Recharts components
+import {
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip, // Alias Tooltip to avoid name clash
+  Legend as RechartsLegend,
+  TooltipProps,
+  LegendProps,
+} from "recharts"
 
 import { cn } from "@/lib/utils"
 
@@ -38,9 +45,7 @@ const ChartContainer = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div"> & {
     config: ChartConfig
-    children: React.ComponentProps<
-      typeof RechartsPrimitive.ResponsiveContainer
-    >["children"]
+    children: React.ReactNode // Use React.ReactNode for children type
   }
 >(({ id, className, children, config, ...props }, ref) => {
   const uniqueId = React.useId()
@@ -58,9 +63,8 @@ const ChartContainer = React.forwardRef<
         {...props}
       >
         <ChartStyle id={chartId} config={config} />
-        <RechartsPrimitive.ResponsiveContainer>
-          {children}
-        </RechartsPrimitive.ResponsiveContainer>
+        {/* Use ResponsiveContainer directly */}
+        <ResponsiveContainer>{children}</ResponsiveContainer>
       </div>
     </ChartContext.Provider>
   )
@@ -100,18 +104,23 @@ ${colorConfig
   )
 }
 
-const ChartTooltip = RechartsPrimitive.Tooltip
+// Use the aliased RechartsTooltip
+const ChartTooltip = RechartsTooltip
+
+// Define the props for ChartTooltipContent based on Recharts TooltipProps
+interface ChartTooltipContentProps extends TooltipProps<number, string>, React.ComponentProps<"div"> {
+    hideLabel?: boolean
+    hideIndicator?: boolean
+    indicator?: "line" | "dot" | "dashed"
+    nameKey?: string
+    labelKey?: string
+    labelClassName?: string
+}
+
 
 const ChartTooltipContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
-    React.ComponentProps<"div"> & {
-      hideLabel?: boolean
-      hideIndicator?: boolean
-      indicator?: "line" | "dot" | "dashed"
-      nameKey?: string
-      labelKey?: string
-    }
+  ChartTooltipContentProps // Use the defined interface
 >(
   (
     {
@@ -139,14 +148,15 @@ const ChartTooltipContent = React.forwardRef<
       }
 
       const [item] = payload
-      const key = `${labelKey || item.dataKey || item.name || "value"}`
+      // Ensure item.name and item.dataKey are treated as strings
+      const key = `${labelKey || item.dataKey?.toString() || item.name?.toString() || "value"}`
       const itemConfig = getPayloadConfigFromPayload(config, item, key)
       const value =
         !labelKey && typeof label === "string"
           ? config[label as keyof typeof config]?.label || label
           : itemConfig?.label
 
-      if (labelFormatter) {
+      if (labelFormatter && value !== undefined && payload) {
         return (
           <div className={cn("font-medium", labelClassName)}>
             {labelFormatter(value, payload)}
@@ -186,19 +196,20 @@ const ChartTooltipContent = React.forwardRef<
         {!nestLabel ? tooltipLabel : null}
         <div className="grid gap-1.5">
           {payload.map((item, index) => {
-            const key = `${nameKey || item.name || item.dataKey || "value"}`
+            // Ensure item.name and item.dataKey are treated as strings
+             const key = `${nameKey || item.name?.toString() || item.dataKey?.toString() || "value"}`
             const itemConfig = getPayloadConfigFromPayload(config, item, key)
             const indicatorColor = color || item.payload.fill || item.color
 
             return (
               <div
-                key={item.dataKey}
+                key={item.dataKey?.toString() ?? index} // Use dataKey or index as key
                 className={cn(
                   "flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5 [&>svg]:text-muted-foreground",
                   indicator === "dot" && "items-center"
                 )}
               >
-                {formatter && item?.value !== undefined && item.name ? (
+                {formatter && item?.value !== undefined && item.name !== undefined ? (
                   formatter(item.value, item.name, item, index, item.payload)
                 ) : (
                   <>
@@ -238,7 +249,7 @@ const ChartTooltipContent = React.forwardRef<
                           {itemConfig?.label || item.name}
                         </span>
                       </div>
-                      {item.value && (
+                      {item.value !== undefined && item.value !== null && (
                         <span className="font-mono font-medium tabular-nums text-foreground">
                           {item.value.toLocaleString()}
                         </span>
@@ -254,17 +265,21 @@ const ChartTooltipContent = React.forwardRef<
     )
   }
 )
-ChartTooltipContent.displayName = "ChartTooltip"
+ChartTooltipContent.displayName = "ChartTooltipContent" // Corrected display name
 
-const ChartLegend = RechartsPrimitive.Legend
+// Use the aliased RechartsLegend
+const ChartLegend = RechartsLegend
+
+// Define props for ChartLegendContent based on Recharts LegendProps
+interface ChartLegendContentProps extends React.ComponentProps<"div">, Pick<LegendProps, "payload" | "verticalAlign"> {
+    hideIcon?: boolean
+    nameKey?: string
+}
+
 
 const ChartLegendContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div"> &
-    Pick<RechartsPrimitive.LegendProps, "payload" | "verticalAlign"> & {
-      hideIcon?: boolean
-      nameKey?: string
-    }
+  ChartLegendContentProps // Use the defined interface
 >(
   (
     { className, hideIcon = false, payload, verticalAlign = "bottom", nameKey },
@@ -286,12 +301,17 @@ const ChartLegendContent = React.forwardRef<
         )}
       >
         {payload.map((item) => {
-          const key = `${nameKey || item.dataKey || "value"}`
-          const itemConfig = getPayloadConfigFromPayload(config, item, key)
+          const key = `${nameKey || item.dataKey?.toString() || "value"}`
+           const itemConfig = getPayloadConfigFromPayload(config, item, key);
+           // Check if itemConfig exists and has a label before rendering
+          if (!itemConfig || !itemConfig.label) {
+            return null; // Skip rendering if no label is configured
+          }
+
 
           return (
             <div
-              key={item.value}
+              key={item.value?.toString() ?? key} // Use value or key as the React key
               className={cn(
                 "flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground"
               )}
@@ -314,14 +334,14 @@ const ChartLegendContent = React.forwardRef<
     )
   }
 )
-ChartLegendContent.displayName = "ChartLegend"
+ChartLegendContent.displayName = "ChartLegendContent"
 
 // Helper to extract item config from a payload.
 function getPayloadConfigFromPayload(
-  config: ChartConfig,
-  payload: unknown,
-  key: string
-) {
+    config: ChartConfig,
+    payload: unknown,
+    key: string
+): ChartConfig[string] | undefined { // Return type clarified
   if (typeof payload !== "object" || payload === null) {
     return undefined
   }
@@ -337,17 +357,15 @@ function getPayloadConfigFromPayload(
 
   if (
     key in payload &&
-    typeof payload[key as keyof typeof payload] === "string"
+    typeof (payload as any)[key] === "string" // Type assertion for safety
   ) {
-    configLabelKey = payload[key as keyof typeof payload] as string
+    configLabelKey = (payload as any)[key] as string
   } else if (
     payloadPayload &&
     key in payloadPayload &&
-    typeof payloadPayload[key as keyof typeof payloadPayload] === "string"
+    typeof (payloadPayload as any)[key] === "string" // Type assertion for safety
   ) {
-    configLabelKey = payloadPayload[
-      key as keyof typeof payloadPayload
-    ] as string
+    configLabelKey = (payloadPayload as any)[key] as string
   }
 
   return configLabelKey in config
@@ -363,3 +381,9 @@ export {
   ChartLegendContent,
   ChartStyle,
 }
+// Export necessary Recharts types if needed elsewhere
+export type { Payload } from "recharts";
+// Export core Recharts components if needed
+export { BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
+
+      

@@ -10,6 +10,7 @@ import {
   type ControllerProps,
   type FieldPath,
   type FieldValues,
+  type FieldError, // Import FieldError type
 } from "react-hook-form"
 
 import { cn } from "@/lib/utils"
@@ -51,6 +52,11 @@ const useFormField = () => {
   if (!fieldContext) {
     throw new Error("useFormField should be used within <FormField>")
   }
+
+   if (!itemContext) {
+      throw new Error("useFormField should be used within <FormItem>");
+   }
+
 
   const { id } = itemContext
 
@@ -147,7 +153,9 @@ const FormMessage = React.forwardRef<
   React.HTMLAttributes<HTMLParagraphElement>
 >(({ className, children, ...props }, ref) => {
   const { error, formMessageId } = useFormField()
-  const body = error ? String(error?.message ?? "") : children
+  // Assert error type to FieldError to access message property safely
+   const body = error ? String((error as FieldError)?.message || "") : children
+
 
   if (!body) {
     return null

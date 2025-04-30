@@ -1,22 +1,18 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Inter } from 'next/font/google'; // Using Inter as Geist fonts might not be standard
 import './globals.css';
 import { MainLayout } from '@/components/layout/main-layout'; // Import the MainLayout
 import { Toaster } from '@/components/ui/toaster'; // Import Toaster for notifications
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
+// Using Inter font as a common, well-supported alternative
+const inter = Inter({
   subsets: ['latin'],
-});
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
+  variable: '--font-sans', // Using a standard variable name
 });
 
 export const metadata: Metadata = {
-  title: 'CheckUp - Daily Evaluation System', // Updated title
-  description: 'Manage daily employee evaluations with CheckUp', // Updated description
+  title: 'Check2B - Sistema de Avaliação Diária', // Updated title
+  description: 'Gerencie avaliações diárias de colaboradores com Check2B', // Updated description
 };
 
 export default function RootLayout({
@@ -25,8 +21,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+    <html lang="pt-BR"> {/* Set language to Portuguese */}
+      <body className={`${inter.variable} font-sans antialiased`}> {/* Apply font variable */}
         <MainLayout>{children}</MainLayout>
         <Toaster /> {/* Add Toaster component here */}
       </body>
