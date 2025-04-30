@@ -9,8 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
-import { Loader2, TrendingUp, TrendingDown, Minus, Filter, Trophy, Medal, AlertTriangle, Info } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton'; // Ensure Skeleton is imported
+import { Loader2, TrendingUp, TrendingDown, Minus, Filter, Trophy, Medal, AlertTriangle, Info, Users } from 'lucide-react'; // Added Users icon
 import { useToast } from "@/hooks/use-toast";
 import type { RankingEntry } from '@/services/ranking';
 import { getRanking } from '@/services/ranking';
@@ -19,6 +19,7 @@ import { getAllDepartments } from '@/services/department';
 import { format, subMonths, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button'; // Import Button
+import { cn } from '@/lib/utils'; // Import cn for conditional class names
 
 export default function RankingPage() {
     const [ranking, setRanking] = useState<RankingEntry[]>([]);
@@ -46,17 +47,17 @@ export default function RankingPage() {
         setIsLoading(true);
         console.log(`Loading ranking for period ${selectedPeriod} and department ${selectedDepartment}`);
         try {
-            // Buscar departamentos apenas uma vez ou se necessário
+            // Fetch departments only if needed
             if (departments.length === 0) {
                 const fetchedDepartments = await getAllDepartments();
                 setDepartments(fetchedDepartments);
             }
-            // Buscar ranking
+            // Fetch ranking
             const fetchedRanking = await getRanking(selectedPeriod, selectedDepartment === "Todos" ? undefined : selectedDepartment);
             setRanking(fetchedRanking);
-        } catch (error) {
+        } catch (error: any) {
             console.error("Falha ao carregar ranking:", error);
-            toast({ title: "Erro", description: "Falha ao carregar dados do ranking.", variant: "destructive" });
+            toast({ title: "Erro ao Carregar Ranking", description: error.message || "Falha ao carregar dados do ranking.", variant: "destructive" });
             setRanking([]); // Limpar ranking em caso de erro
         } finally {
             setIsLoading(false);
@@ -74,7 +75,7 @@ export default function RankingPage() {
         return <span className="text-xs font-medium text-muted-foreground w-5 text-center">{rank}</span>;
     };
 
-     // Exemplo de como pegar os Top 3
+     // Extract Top 3 performers after loading and filtering
      const topPerformers = ranking.slice(0, 3);
 
     return (
@@ -113,29 +114,38 @@ export default function RankingPage() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    {/* Opcional: Cards para Top Performers */}
+                    {/* Optional: Cards for Top Performers */}
                      {isLoading ? (
                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                             {[1,2,3].map(i => <Skeleton key={i} className="h-24 rounded-lg" />)}
                          </div>
-                     ) : topPerformers.length > 0 && selectedDepartment === "Todos" && selectedPeriod === format(startOfMonth(new Date()), 'yyyy-MM') ? ( // Mostrar apenas no mês atual e sem filtro de depto
+                     ) : (
+                        topPerformers.length > 0 &&
+                        selectedDepartment === "Todos" &&
+                        selectedPeriod === format(startOfMonth(new Date()), 'yyyy-MM')
+                      ) ? ( // Show only on current month & without dept filter
                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                              {topPerformers.map((performer, index) => (
-                                 <Card key={performer.employeeId} className={`border-2 ${index === 0 ? 'border-yellow-500' : index === 1 ? 'border-slate-400' : 'border-orange-600'} shadow-md`}>
+                                 <Card key={performer.employeeId} className={cn(
+                                        "border-2 shadow-md",
+                                        index === 0 && 'border-yellow-500',
+                                        index === 1 && 'border-slate-400',
+                                        index === 2 && 'border-orange-600'
+                                    )}>
                                      <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                          <div className="flex items-center gap-2">
-                                              <Avatar className="h-8 w-8">
+                                          <div className="flex items-center gap-2 overflow-hidden"> {/* Added overflow-hidden */}
+                                              <Avatar className="h-8 w-8 flex-shrink-0"> {/* Added flex-shrink-0 */}
                                                    <AvatarImage src={`https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(performer.employeeName)}`} alt={performer.employeeName} />
                                                    <AvatarFallback>{performer.employeeName.substring(0, 1)}</AvatarFallback>
                                               </Avatar>
-                                              <CardTitle className="text-base font-medium">{performer.employeeName}</CardTitle>
+                                              <CardTitle className="text-base font-medium truncate">{performer.employeeName}</CardTitle> {/* Added truncate */}
                                           </div>
-                                          <div className="flex items-center gap-1 text-lg font-bold">
+                                          <div className="flex items-center gap-1 text-lg font-bold flex-shrink-0"> {/* Added flex-shrink-0 */}
                                               {getMedal(performer.rank)}
                                           </div>
                                      </CardHeader>
                                      <CardContent className="pt-0">
-                                          <p className="text-xs text-muted-foreground">{performer.department}</p>
+                                          <p className="text-xs text-muted-foreground truncate">{performer.department}</p> {/* Added truncate */}
                                           <div className="flex items-center justify-between mt-2">
                                               <span className="text-sm font-semibold">{performer.averagePercentage}%</span>
                                               <Badge variant={performer.zerosCount > 0 ? "destructive" : "outline"} className="text-xs">
@@ -150,77 +160,83 @@ export default function RankingPage() {
                      ) : null}
 
 
-                    {/* Tabela de Ranking */}
+                    {/* Ranking Table */}
+                    <h3 className="text-lg font-semibold mb-3 flex items-center gap-2"><Users className="h-5 w-5"/> Ranking Geral</h3>
                     {isLoading ? (
                         <div className="flex justify-center items-center p-10">
                             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                         </div>
-                    ) : ranking.length === 0 ? (
-                        <p className="text-center text-muted-foreground p-6">
-                           Nenhum dado de ranking encontrado para o período e departamento selecionados.
-                        </p>
+                    ) : ranking.length === 0 ? ( // Check if ranking array is empty AFTER loading
+                        <div className="text-center p-6 border rounded-md bg-muted/50">
+                             <p className="text-muted-foreground">
+                                Nenhum dado de ranking encontrado para o período e departamento selecionados.
+                             </p>
+                             <p className="text-xs text-muted-foreground mt-1">
+                                Verifique se existem colaboradores cadastrados e avaliações registradas para este período.
+                             </p>
+                         </div>
                     ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead className="w-[50px]">Pos.</TableHead>
-                                    <TableHead>Colaborador</TableHead>
-                                    <TableHead className="hidden md:table-cell">Departamento</TableHead>
-                                    <TableHead className="text-center">% Média</TableHead>
-                                    <TableHead className="text-center">Zeros</TableHead>
-                                    <TableHead className="text-center hidden sm:table-cell">Progresso</TableHead>
-                                    <TableHead className="text-center">Bônus</TableHead>
-                                    {/* <TableHead className="text-center hidden lg:table-cell">Tendência</TableHead> */}
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {ranking.map((entry) => (
-                                    <TableRow key={entry.employeeId}>
-                                        <TableCell className="font-bold text-center">{getMedal(entry.rank)}</TableCell>
-                                        <TableCell>
-                                            <div className="flex items-center gap-3">
-                                                <Avatar className="h-9 w-9 hidden sm:flex">
-                                                     <AvatarImage src={`https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(entry.employeeName)}`} alt={entry.employeeName} />
-                                                     <AvatarFallback>{entry.employeeName.substring(0, 1)}</AvatarFallback>
-                                                </Avatar>
-                                                <span className="font-medium">{entry.employeeName}</span>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="hidden md:table-cell text-muted-foreground">{entry.department}</TableCell>
-                                        <TableCell className="text-center font-semibold">{entry.averagePercentage}%</TableCell>
-                                        <TableCell className="text-center">
-                                            <Badge variant={entry.zerosCount > 0 ? "destructive" : "outline"} title={`${entry.zerosCount} nota(s) zero recebida(s) no período`}>
-                                                {entry.zerosCount}
-                                            </Badge>
-                                        </TableCell>
-                                         <TableCell className="text-center hidden sm:table-cell">
-                                            <Progress value={entry.averagePercentage} className="h-2" />
-                                        </TableCell>
-                                        <TableCell className="text-center">
-                                             {entry.isEligibleForBonus ? (
-                                                 <Badge variant="default" className="bg-accent text-accent-foreground">Elegível</Badge>
-                                             ) : (
-                                                <Badge variant="secondary" className="flex items-center gap-1" title={`Não elegível devido a ${entry.zerosCount} zero(s) (limite configurado: ?).`}> {/* TODO: Buscar limite de zeros das settings */}
-                                                    <AlertTriangle className="h-3 w-3" /> Não Elegível
-                                                </Badge>
-                                             )}
-                                        </TableCell>
-                                        {/* <TableCell className="text-center hidden lg:table-cell">
-                                            {entry.trend === undefined || entry.trend === 0 ? <Minus className="h-4 w-4 mx-auto text-muted-foreground"/> :
-                                             entry.trend > 0 ? <TrendingUp className="h-4 w-4 mx-auto text-green-600"/> :
-                                             <TrendingDown className="h-4 w-4 mx-auto text-red-600"/> }
-                                        </TableCell> */}
+                        <>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead className="w-[50px]">Pos.</TableHead>
+                                        <TableHead>Colaborador</TableHead>
+                                        <TableHead className="hidden md:table-cell">Departamento</TableHead>
+                                        <TableHead className="text-center">% Média</TableHead>
+                                        <TableHead className="text-center">Zeros</TableHead>
+                                        <TableHead className="text-center hidden sm:table-cell">Progresso</TableHead>
+                                        <TableHead className="text-center">Bônus</TableHead>
+                                        {/* <TableHead className="text-center hidden lg:table-cell">Tendência</TableHead> */}
                                     </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                                </TableHeader>
+                                <TableBody>
+                                    {ranking.map((entry) => (
+                                        <TableRow key={entry.employeeId}>
+                                            <TableCell className="font-bold text-center">{getMedal(entry.rank)}</TableCell>
+                                            <TableCell>
+                                                <div className="flex items-center gap-3">
+                                                    <Avatar className="h-9 w-9 hidden sm:flex">
+                                                        <AvatarImage src={`https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(entry.employeeName)}`} alt={entry.employeeName} />
+                                                        <AvatarFallback>{entry.employeeName.substring(0, 1)}</AvatarFallback>
+                                                    </Avatar>
+                                                    <span className="font-medium">{entry.employeeName}</span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="hidden md:table-cell text-muted-foreground">{entry.department}</TableCell>
+                                            <TableCell className="text-center font-semibold">{entry.averagePercentage}%</TableCell>
+                                            <TableCell className="text-center">
+                                                <Badge variant={entry.zerosCount > 0 ? "destructive" : "outline"} title={`${entry.zerosCount} nota(s) zero recebida(s) no período`}>
+                                                    {entry.zerosCount}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-center hidden sm:table-cell">
+                                                <Progress value={entry.averagePercentage} className="h-2" />
+                                            </TableCell>
+                                            <TableCell className="text-center">
+                                                {entry.isEligibleForBonus ? (
+                                                    <Badge variant="default" className="bg-accent text-accent-foreground">Elegível</Badge>
+                                                ) : (
+                                                    <Badge variant="secondary" className="flex items-center gap-1" title={`Não elegível devido a ${entry.zerosCount} zero(s).`}>
+                                                        <AlertTriangle className="h-3 w-3" /> Não Elegível
+                                                    </Badge>
+                                                )}
+                                            </TableCell>
+                                            {/* <TableCell className="text-center hidden lg:table-cell">
+                                                {entry.trend === undefined || entry.trend === 0 ? <Minus className="h-4 w-4 mx-auto text-muted-foreground"/> :
+                                                entry.trend > 0 ? <TrendingUp className="h-4 w-4 mx-auto text-green-600"/> :
+                                                <TrendingDown className="h-4 w-4 mx-auto text-red-600"/> }
+                                            </TableCell> */}
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                            <p className="text-xs text-muted-foreground mt-4 pl-1 flex items-center gap-1">
+                               <Info className="h-3 w-3" />
+                               O ranking considera a média de pontos do checklist e pontos de desafios. Desempate: menor nº de zeros, nome.
+                           </p>
+                        </>
                     )}
-                     {!isLoading && ranking.length > 0 && (
-                       <p className="text-xs text-muted-foreground mt-4 pl-1 flex items-center gap-1">
-                           <Info className="h-3 w-3" />
-                           O ranking é calculado com base na média percentual de pontos obtidos nas tarefas avaliadas no período. Desempate: menor nº de zeros, seguido por ordem alfabética.
-                       </p>
-                     )}
                 </CardContent>
             </Card>
         </div>

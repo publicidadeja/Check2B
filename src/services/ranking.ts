@@ -57,7 +57,7 @@ export async function invalidateRankingCache(yearMonth?: string): Promise<void> 
         });
     } else {
         console.log("Invalidating all ranking cache.");
-        rankingCache = {};
+        rankingCache = {}; // Clear the entire cache object
     }
 }
 
@@ -86,9 +86,12 @@ export async function getRanking(yearMonth: string, department?: string): Promis
         // 1. Fetch Settings (needed for bonus eligibility)
         const settings = await getSettings(); // Fetch latest settings
 
-        // 2. Fetch Employees (filter by department later if needed)
+        // 2. Fetch Employees
         const allEmployees = await getAllEmployees(); // Fetch all employees
-        if (allEmployees.length === 0) return []; // No employees, empty ranking
+        if (allEmployees.length === 0) {
+             console.log("No employees found. Returning empty ranking.");
+             return []; // No employees, empty ranking
+        }
 
         const employeeIds = allEmployees.map(e => e.id);
 
@@ -97,12 +100,19 @@ export async function getRanking(yearMonth: string, department?: string): Promis
         if (!isValid(targetMonthDate)) {
             throw new Error(`Invalid yearMonth format: ${yearMonth}. Use YYYY-MM.`);
         }
-        const monthStart = startOfMonth(targetMonthDate);
-        const monthEnd = endOfMonth(targetMonthDate);
+        // Dates are not used directly for querying in the evaluation service anymore, but keep for context
+        // const monthStart = startOfMonth(targetMonthDate);
+        // const monthEnd = endOfMonth(targetMonthDate);
 
         // 4. Fetch Evaluations for all employees for the period
-        // This function needs to be efficient (e.g., using collectionGroup query)
         const evaluationsByEmployee = await getEvaluationsForMultipleEmployeesByMonth(employeeIds, yearMonth);
+
+        // Check if there are any evaluations at all for the period
+        if (Object.keys(evaluationsByEmployee).length === 0) {
+            console.log(`No evaluations found for any employee in ${yearMonth}. Returning ranking with zero scores.`);
+            // Still proceed to create ranking entries, but they will all have 0 score/count
+        }
+
 
         // 5. Process evaluations and calculate scores for each employee
         const rankingData: Omit<RankingEntry, 'rank'>[] = [];
@@ -117,20 +127,26 @@ export async function getRanking(yearMonth: string, department?: string): Promis
             // Iterate through tasks evaluated for this employee in the period
             for (const taskId in employeeEvaluationsMap) {
                 const evaluationsForTask = employeeEvaluationsMap[taskId];
-                // Since getEvaluationsForMultipleEmployeesByMonth already filters by month,
-                // we just process the scores found for this employee.
+                // Process scores found for this employee within the month
                 evaluationsForTask.forEach(evaluation => {
-                    totalScore += evaluation.score;
-                    evaluatedTasksCount++; // Count each evaluation record
-                    if (evaluation.score === 0) {
-                        zerosCount++;
-                    }
+                    // Ensure the evaluation date actually falls within the target month
+                    // (getEvaluationsForMultipleEmployeesByMonth should already handle this, but double-check)
+                    // This check might be redundant if the fetching function is correct
+                    // const evalDate = parse(evaluation.evaluationDate, 'yyyy-MM-dd', new Date());
+                    // if (isValid(evalDate) && isWithinInterval(evalDate, { start: monthStart, end: monthEnd })) {
+                        totalScore += evaluation.score;
+                        evaluatedTasksCount++; // Count each evaluation record
+                        if (evaluation.score === 0) {
+                            zerosCount++;
+                        }
+                    // }
                 });
             }
 
+             // Calculate average percentage safely
             const averagePercentage = evaluatedTasksCount > 0
                 ? Math.round((totalScore / (evaluatedTasksCount * 10)) * 100)
-                : 0;
+                : 0; // Default to 0 if no tasks were evaluated
 
             const isEligible = zerosCount <= settings.maxZerosThreshold;
 
@@ -182,6 +198,7 @@ export async function getRanking(yearMonth: string, department?: string): Promis
         rankingCache[cacheKey] = { timestamp: now, data: filteredRanking };
         // Cache the full ranking as well if not already cached
         const fullCacheKey = `${yearMonth}_Todos`;
+         // Update full cache only if it's stale or doesn't exist
         if (!rankingCache[fullCacheKey] || now - rankingCache[fullCacheKey].timestamp >= CACHE_DURATION_MS) {
              rankingCache[fullCacheKey] = { timestamp: now, data: finalRankingWithRank };
         }
@@ -191,8 +208,10 @@ export async function getRanking(yearMonth: string, department?: string): Promis
 
     } catch (error) {
          console.error("Error calculating ranking:", error);
-         // Retornar vazio ou lançar erro?
-         throw new Error("Falha ao calcular o ranking."); // Throw to indicate failure
+         // Return empty array on error to avoid crashing the UI
+         return [];
+         // Or rethrow if the error should propagate:
+         // throw new Error("Falha ao calcular o ranking.");
     }
 }
 
@@ -218,9 +237,10 @@ export async function getEmployeeRankingHistory(employeeId: string): Promise<{ p
     console.log(`Getting ranking history (Firestore TODO) for employee ${employeeId}...`);
     // Firestore Logic: Query an 'archivedRankings' collection or similar,
     // filtering by employeeId and ordering by period.
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise(resolve => setTimeout(resolve, 200)); // Simulate async operation
     // Placeholder data:
     return [
+        // Example data structure - replace with actual fetched data
         // { period: '2024-07', rank: 3, averagePercentage: 95 },
         // { period: '2024-06', rank: 5, averagePercentage: 92 },
         // { period: '2024-05', rank: 2, averagePercentage: 98 },
@@ -248,5 +268,5 @@ export async function confirmRewardWinners(rewardId: string, period: string, win
     //    docId could be `${rewardId}_${period}`
     //    Data: { rewardId, period, winnerIds, confirmedAt: Timestamp.now(), confirmedBy: adminId, notes: adminNotes }
     // 2. Potentially update the Reward document itself to mark the period as awarded.
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise(resolve => setTimeout(resolve, 300)); // Simulate async operation
 }
