@@ -83,7 +83,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'; // Import Tooltip components
 
 // --- Mock Data ---
-const mockChallenges: Challenge[] = [
+let mockChallenges: Challenge[] = [
     { id: 'c1', title: 'Engajamento Total', description: 'Participar de todas as reuniões da semana e enviar resumo.', category: 'Comunicação', periodStartDate: '2024-08-05', periodEndDate: '2024-08-09', points: 50, difficulty: 'Médio', participationType: 'Opcional', eligibility: { type: 'all' }, evaluationMetrics: 'Presença confirmada e resumo enviado', status: 'completed' },
     { id: 'c2', title: 'Zero Bugs Críticos', description: 'Entregar a feature X sem nenhum bug crítico reportado na primeira semana.', category: 'Qualidade', periodStartDate: '2024-08-12', periodEndDate: '2024-08-16', points: 150, difficulty: 'Difícil', participationType: 'Obrigatório', eligibility: { type: 'department', entityIds: ['Engenharia'] }, evaluationMetrics: 'Relatório de QA e Jira', status: 'active' },
     { id: 'c3', title: 'Semana da Documentação', description: 'Documentar todas as APIs desenvolvidas no período.', category: 'Documentação', periodStartDate: '2024-08-19', periodEndDate: '2024-08-23', points: 75, difficulty: 'Médio', participationType: 'Obrigatório', eligibility: { type: 'role', entityIds: ['Desenvolvedor Backend', 'Desenvolvedora Frontend'] }, evaluationMetrics: 'Links para documentação no Confluence', status: 'scheduled' },
@@ -105,7 +105,7 @@ interface ChallengeParticipation {
     feedback?: string;
 }
 
-const mockParticipants: ChallengeParticipation[] = [
+let mockParticipants: ChallengeParticipation[] = [
     { id: 'p1', challengeId: 'c2', employeeId: '2', employeeName: 'Beto Santos', status: 'submitted', submission: 'Feature entregue e testada.', submittedAt: new Date(2024, 7, 15) }, // Aug 15
     { id: 'p2', challengeId: 'c2', employeeId: '5', employeeName: 'Eva Pereira', status: 'pending' }, // Didn't participate / submit
     { id: 'p3', challengeId: 'c1', employeeId: '1', employeeName: 'Alice Silva', status: 'approved', score: 50, feedback: 'Ótimo resumo!', submittedAt: new Date(2024, 7, 9) }, // Aug 9
@@ -124,12 +124,59 @@ const mockEmployeesSimple = [
     { id: '5', name: 'Eva Pereira', role: 'Desenvolvedora Frontend', department: 'Engenharia' },
 ];
 
+
+// --- Utility Functions (Moved to top level) ---
+
+const getStatusText = (status: Challenge['status']): string => {
+    const map: Record<Challenge['status'], string> = {
+        active: 'Ativo',
+        scheduled: 'Agendado',
+        evaluating: 'Em Avaliação',
+        completed: 'Concluído',
+        draft: 'Rascunho',
+        archived: 'Arquivado'
+    };
+    return map[status] || status;
+}
+
+const getStatusBadgeVariant = (status: Challenge['status']): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" => {
+    const map: Record<Challenge['status'], "default" | "secondary" | "destructive" | "outline" | "success" | "warning"> = {
+        active: 'success',       // Green for active
+        scheduled: 'secondary',  // Grey for scheduled
+        evaluating: 'warning',   // Yellow/Orange for evaluating
+        completed: 'default',    // Blue/Default for completed
+        draft: 'outline',        // Outline for draft
+        archived: 'destructive', // Red for archived
+    };
+    // Add custom styles for success/warning if needed or map to existing variants
+     if (status === 'active') return 'success'; // Use custom variant
+     if (status === 'evaluating') return 'warning'; // Use custom variant
+     return map[status] || 'outline';
+}
+
+// Define custom badge variants if not present in globals.css or tailwind config
+// This requires adding styles to globals.css or extending tailwind config.
+// For demonstration, we assume 'success' and 'warning' variants exist or map them.
+// Let's adjust the mapping if they don't exist:
+const getSafeStatusBadgeVariant = (status: Challenge['status']): "default" | "secondary" | "destructive" | "outline" => {
+    const map: Record<Challenge['status'], "default" | "secondary" | "destructive" | "outline"> = {
+        active: 'default',       // Use default (Teal accent) for active
+        scheduled: 'secondary',  // Grey for scheduled
+        evaluating: 'outline',   // Use outline for evaluating
+        completed: 'secondary',    // Use secondary for completed
+        draft: 'outline',        // Outline for draft
+        archived: 'destructive', // Red for archived
+    };
+    return map[status] || 'outline';
+}
+
 // --- Mock API Functions ---
 const fetchChallenges = async (): Promise<Challenge[]> => {
     await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
     console.log("Fetching challenges...");
     return [...mockChallenges]; // Return a copy to prevent mutation
 };
+
 
 const saveChallenge = async (challengeData: Omit<Challenge, 'id' | 'status'> | Challenge): Promise<Challenge> => {
     await new Promise(resolve => setTimeout(resolve, 600));
@@ -222,51 +269,6 @@ const fetchChallengeDetails = async (challengeId: string): Promise<{ challenge: 
 }
 
 
-// --- Utility Functions (Moved to top level) ---
-
-const getStatusText = (status: Challenge['status']): string => {
-    const map: Record<Challenge['status'], string> = {
-        active: 'Ativo',
-        scheduled: 'Agendado',
-        evaluating: 'Em Avaliação',
-        completed: 'Concluído',
-        draft: 'Rascunho',
-        archived: 'Arquivado'
-    };
-    return map[status] || status;
-}
-
-const getStatusBadgeVariant = (status: Challenge['status']): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" => {
-    const map: Record<Challenge['status'], "default" | "secondary" | "destructive" | "outline" | "success" | "warning"> = {
-        active: 'success',       // Green for active
-        scheduled: 'secondary',  // Grey for scheduled
-        evaluating: 'warning',   // Yellow/Orange for evaluating
-        completed: 'default',    // Blue/Default for completed
-        draft: 'outline',        // Outline for draft
-        archived: 'destructive', // Red for archived
-    };
-    // Add custom styles for success/warning if needed or map to existing variants
-     if (status === 'active') return 'success'; // Use custom variant
-     if (status === 'evaluating') return 'warning'; // Use custom variant
-     return map[status] || 'outline';
-}
-
-// Define custom badge variants if not present in globals.css or tailwind config
-// This requires adding styles to globals.css or extending tailwind config.
-// For demonstration, we assume 'success' and 'warning' variants exist or map them.
-// Let's adjust the mapping if they don't exist:
-const getSafeStatusBadgeVariant = (status: Challenge['status']): "default" | "secondary" | "destructive" | "outline" => {
-    const map: Record<Challenge['status'], "default" | "secondary" | "destructive" | "outline"> = {
-        active: 'default',       // Use default (Teal accent) for active
-        scheduled: 'secondary',  // Grey for scheduled
-        evaluating: 'outline',   // Use outline for evaluating
-        completed: 'secondary',    // Use secondary for completed
-        draft: 'outline',        // Outline for draft
-        archived: 'destructive', // Red for archived
-    };
-    return map[status] || 'outline';
-}
-
 
 // --- Component Sections ---
 
@@ -318,11 +320,13 @@ const ManageChallenges = () => {
             ? { ...selectedChallenge, ...data, id: selectedChallenge.id } // Ensure ID is kept for update
             : data;
 
+        setIsLoading(true); // Indicate loading state
+
         try {
             await saveChallenge(challengeDataToSave);
             setIsFormOpen(false);
             setSelectedChallenge(null);
-            await loadChallenges();
+            await loadChallenges(); // Refresh the list after saving
             toast({
                 title: "Sucesso!",
                 description: `Desafio ${selectedChallenge ? 'atualizado' : 'criado'} com sucesso.`,
@@ -334,6 +338,8 @@ const ManageChallenges = () => {
                 description: `Falha ao ${selectedChallenge ? 'atualizar' : 'criar'} desafio. Tente novamente.`,
                 variant: "destructive",
             });
+        } finally {
+             setIsLoading(false); // End loading state
         }
     };
 
@@ -345,14 +351,16 @@ const ManageChallenges = () => {
 
      const confirmDelete = async () => {
         if (challengeToDelete) {
+             setIsLoading(true); // Indicate loading state for deletion
             try {
                 await deleteChallenge(challengeToDelete.id);
                 toast({ title: "Sucesso", description: "Desafio removido com sucesso." });
-                await loadChallenges();
+                await loadChallenges(); // Refresh list
             } catch (error: any) {
                 console.error("Falha ao remover desafio:", error);
                 toast({ title: "Erro", description: error.message || "Falha ao remover desafio.", variant: "destructive" });
             } finally {
+                 setIsLoading(false); // End loading state
                 setIsDeleting(false);
                 setChallengeToDelete(null);
             }
@@ -368,25 +376,31 @@ const ManageChallenges = () => {
              // New challenges from duplication start as draft
              eligibility: { ...challengeData.eligibility }, // Deep copy eligibility if needed
         };
+         setIsLoading(true); // Indicate loading state
         try {
             // Save without id and status
             await saveChallenge(duplicatedChallengeData as Omit<Challenge, 'id' | 'status'>);
             toast({ title: "Sucesso", description: "Desafio duplicado com sucesso." });
-            await loadChallenges();
+            await loadChallenges(); // Refresh list
         } catch (error) {
             console.error("Falha ao duplicar desafio:", error);
             toast({ title: "Erro", description: "Falha ao duplicar desafio.", variant: "destructive" });
+        } finally {
+             setIsLoading(false); // End loading state
         }
     };
 
     const handleStatusChange = async (challenge: Challenge, newStatus: Challenge['status']) => {
+          setIsLoading(true); // Indicate loading state
          try {
             await updateChallengeStatus(challenge.id, newStatus);
              toast({ title: "Sucesso", description: `Status do desafio "${challenge.title}" alterado para ${getStatusText(newStatus)}.` });
-             await loadChallenges();
+             await loadChallenges(); // Refresh list
          } catch (error) {
              console.error("Falha ao alterar status:", error);
              toast({ title: "Erro", description: "Falha ao alterar status do desafio.", variant: "destructive" });
+         } finally {
+             setIsLoading(false); // End loading state
          }
     }
 
@@ -652,7 +666,8 @@ const ChallengeDashboard = () => {
               </div>
         </CardContent>
         <CardFooter>
-            <Button variant="outline" onClick={() => alert("Relatórios Detalhados não implementados.")} disabled>Ver Relatórios Detalhados</Button>
+             {/* Placeholder for a future action button */}
+            <Button variant="outline" disabled>Ver Relatórios Detalhados</Button>
         </CardFooter>
       </Card>
     );
@@ -802,7 +817,7 @@ const ChallengeEvaluation = () => {
                              ) : (
                                 challengesToEvaluate.map(challenge => (
                                     <SelectItem key={challenge.id} value={challenge.id}>
-                                        {challenge.title} ({format(parseISO(challenge.periodEndDate), 'dd/MM/yy')})
+                                        {challenge.title} ({format(parseISO(challenge.periodEndDate), 'dd/MM/yy')}) - {getStatusText(challenge.status)}
                                     </SelectItem>
                                 ))
                              )}
@@ -997,30 +1012,31 @@ const ChallengeDetailsDialog = ({ challengeId, open, onOpenChange }: ChallengeDe
                          {/* Column 2: Participants List */}
                          <div className="md:col-span-2 space-y-3">
                             <h4 className="font-semibold text-base">Participantes ({details.participants.length})</h4>
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Colaborador</TableHead>
-                                        <TableHead>Status</TableHead>
-                                        <TableHead>Pontos</TableHead>
-                                        <TableHead>Feedback</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {details.participants.length === 0 ? (
-                                        <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground">Nenhum participante registrado.</TableCell></TableRow>
-                                    ) : (
-                                         details.participants.map(p => (
-                                            <TableRow key={p.id}>
-                                                <TableCell className="font-medium">{p.employeeName}</TableCell>
-                                                <TableCell><Badge variant={getSafeParticipantStatusVariant(p.status)}>{getParticipantStatusText(p.status)}</Badge></TableCell>
-                                                <TableCell className="text-center">{p.score ?? '-'}</TableCell>
-                                                 <TableCell className="text-xs max-w-[200px] truncate" title={p.feedback}>{p.feedback || '-'}</TableCell>
-                                            </TableRow>
-                                         ))
-                                    )}
-                                </TableBody>
-                            </Table>
+                             {details.participants.length > 0 ? (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Colaborador</TableHead>
+                                            <TableHead>Status</TableHead>
+                                            <TableHead>Pontos</TableHead>
+                                            <TableHead>Feedback</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                         {details.participants.map(p => (
+                                                <TableRow key={p.id}>
+                                                    <TableCell className="font-medium">{p.employeeName}</TableCell>
+                                                    <TableCell><Badge variant={getSafeParticipantStatusVariant(p.status)}>{getParticipantStatusText(p.status)}</Badge></TableCell>
+                                                    <TableCell className="text-center">{p.score ?? '-'}</TableCell>
+                                                    <TableCell className="text-xs max-w-[200px] truncate" title={p.feedback}>{p.feedback || '-'}</TableCell>
+                                                </TableRow>
+                                             ))
+                                        }
+                                    </TableBody>
+                                </Table>
+                             ) : (
+                                <p className="text-center text-muted-foreground py-4">Nenhum participante registrado para este desafio.</p>
+                             )}
                          </div>
                      </div>
                  ) : (
@@ -1359,3 +1375,5 @@ export default function ChallengesPage() {
     </div>
   );
 }
+
+    
