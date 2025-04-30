@@ -22,7 +22,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">{/* Set language to Portuguese */}
-      <body className={`${inter.variable} font-sans antialiased`}> {/* Apply font variable */}
+      <body className={`${inter.variable} font-sans antialiased`}>{/* Apply font variable */}
         <MainLayout>{children}</MainLayout>
         <Toaster /> {/* Add Toaster component here */}
       </body>
