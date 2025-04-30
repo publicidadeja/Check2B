@@ -38,7 +38,12 @@ This is a Next.js application for managing daily employee evaluations using a ch
     # GOOGLE_GENAI_API_KEY=YOUR_GOOGLE_AI_API_KEY
     ```
 
-3.  **Run the Development Server:**
+3.  **Create Users in Firebase Authentication:**
+    *   **CRUCIAL:** For users to be able to log in, they **MUST** be created manually in the Firebase Console. Go to your Firebase project -> Authentication -> Users -> Add user.
+    *   Use the email address intended for login (e.g., `admin@check2b.com`, `leocorax@gmail.com`) and set the password you want them to use.
+    *   The "Add Colaborador" feature in the admin panel **only adds mock data** for display; it **does not create authentication users**.
+
+4.  **Run the Development Server:**
     ```bash
     npm run dev
     # or
@@ -67,12 +72,17 @@ This is a Next.js application for managing daily employee evaluations using a ch
 
 ## Key Features
 
-*   **Employee Management:** Add, edit, manage, and view employee information. Activate/deactivate accounts.
+*   **Employee Management:** Add, edit, manage, and view employee information. Activate/deactivate accounts. *(Note: Creates mock data only, Firebase Auth user management is separate)*
 *   **Task Management:** Create, categorize, assign (global, by role, department, or individual), and manage daily tasks. Includes criteria for evaluation.
 *   **Daily Evaluations:** Admins evaluate task completion (10 or 0) with justifications and optional evidence upload.
 *   **Ranking & Awards:** System to rank employees based on performance (checklist + challenges). Admins can configure and manage recurring or specific monthly awards.
 *   **Challenges:** Admins create weekly challenges (optional/mandatory) with points, eligibility rules, and evaluation metrics. Employees can view, accept, and submit challenges.
 *   **Department & Role Management:** Admins can define and manage departments and roles within the organization.
 *   **Separate Interfaces:** Dedicated dashboards and views for Admins and Employees, enforced by middleware.
-*   **Authentication:** Secure login with role-based access control, password management (reset by admin), and admin user management. Uses Firebase Auth and JWT cookies.
+*   **Authentication:** Secure login with role-based access control, password management (reset by admin), and admin user management. Uses Firebase Auth and JWT cookies. *(Requires manual user creation in Firebase Console)*
 *   **Settings:** Configure general system parameters (bonus, zero limits), manage admin users, and handle basic backup/restore operations (simulated).
+
+```
+  </change>
+  <change>
+    <file>docs/important_notes.md
