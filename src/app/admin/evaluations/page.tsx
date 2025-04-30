@@ -16,14 +16,13 @@ import type { Employee } from '@/services/employee';
 import type { Task } from '@/services/task';
 import { getAllEmployees } from '@/services/employee';
 import { getTasksForDepartmentEvaluation } from '@/services/task'; // Use the correct function
-import { submitEvaluation, type EvaluationScore } from '@/services/evaluation'; // Assuming API function exists
+import { submitDailyEvaluations, type EvaluationScore } from '@/services/evaluation'; // Fix: Import submitDailyEvaluations instead of submitEvaluation
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils"; // Adicionado cn
 
 
-interface EvaluationItem extends EvaluationScore {
+interface EvaluationItem {
   taskId: string;
-  // Score and justification are now part of EvaluationScore
   score: 0 | 10 | null; // Allow null for unevaluated state
   justification: string; // Keep justification, even if score is 10 (might clear later)
 }
@@ -173,24 +172,9 @@ export default function EvaluationsPage() {
 
     setIsSubmitting(true);
     try {
-      // Submit all evaluations in parallel (or sequentially if API requires)
-      const submissionPromises = evaluationsToSubmit.map(ev => {
-          if (ev.score === null) {
-              // This case should be prevented by the check above, but as a safeguard:
-              console.warn(`Skipping submission for task ${ev.taskId} with null score.`);
-              return Promise.resolve(); // Or reject if needed
-          }
-           const scoreData: EvaluationScore = {
-                score: ev.score,
-                // Send empty string if score is 10, otherwise send the justification
-                justification: ev.score === 0 ? ev.justification.trim() : '',
-            };
-            // Pass justification separately only if needed by API, otherwise it's in scoreData
-           // A função submitEvaluation espera 3 args, o 4º (justification) não é necessário aqui pois já está em scoreData
-           return submitEvaluation(ev.taskId, selectedEmployeeId, scoreData);
-      });
-
-      await Promise.all(submissionPromises);
+      // Use the correct function name: submitDailyEvaluations
+      const evaluationDate = new Date().toISOString().split('T')[0]; // Get current date in YYYY-MM-DD
+      await submitDailyEvaluations(selectedEmployeeId, evaluationDate, evaluationsToSubmit);
 
       toast({
         title: "Avaliação Enviada",
@@ -383,4 +367,3 @@ export default function EvaluationsPage() {
     </div>
   );
 }
-
