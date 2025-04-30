@@ -13,7 +13,8 @@ import {
   LogOut,
   Briefcase,
   Building,
-  Trophy, // Icon for Ranking
+  Trophy,
+  Target, // Added icon for Challenges
 } from 'lucide-react';
 
 import {
@@ -45,7 +46,8 @@ const navItems = [
   { href: '/employees', label: 'Colaboradores', icon: Users },
   { href: '/tasks', label: 'Tarefas', icon: ClipboardList },
   { href: '/evaluations', label: 'Avaliações', icon: ClipboardCheck },
-  { href: '/ranking', label: 'Ranking', icon: Trophy }, // Added Ranking
+  { href: '/challenges', label: 'Desafios', icon: Target }, // Added Challenges link
+  { href: '/ranking', label: 'Ranking', icon: Trophy },
 ];
 
 const adminTools = [
@@ -132,7 +134,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                  </div>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => alert('Logout não implementado')}>
                         <LogOut className="h-4 w-4" />
                          <span className="sr-only">Sair</span>
                       </Button>
@@ -143,7 +145,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=offcanvas]:hidden group-data-[state=expanded]:hidden hidden justify-center p-2">
                  <Tooltip>
                     <TooltipTrigger asChild>
-                       <Button variant="ghost" size="icon" className="h-8 w-8">
+                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => alert('Logout não implementado')}>
                          <LogOut className="h-4 w-4" />
                          <span className="sr-only">Sair</span>
                        </Button>
@@ -158,7 +160,7 @@ export function MainLayout({ children }: MainLayoutProps) {
             <SidebarTrigger className="md:hidden" /> {/* Mobile trigger */}
             <h1 className="text-lg font-semibold">
                {/* Dynamically set based on current page/route */}
-               {[...navItems, ...adminTools].find(item => item.href === pathname)?.label ||
+               {[...navItems, ...adminTools].find(item => pathname?.startsWith(item.href) && (item.href !== '/' || pathname === '/'))?.label || // Match start for nested routes, exact for '/'
                 'Check2B'}
             </h1>
             {/* Add any header actions here if needed */}
