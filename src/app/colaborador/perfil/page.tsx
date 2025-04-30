@@ -17,6 +17,7 @@ import { useForm } from 'react-hook-form';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { format, parseISO } from 'date-fns'; // Added parseISO
 import { ptBR } from 'date-fns/locale'; // Added ptBR
+import EmployeeLayout from '../layout'; // Import EmployeeLayout
 
 // Import types (assuming Employee type exists)
 import type { Employee } from '@/types/employee';
@@ -196,242 +197,244 @@ export default function EmployeeProfilePage() {
     };
 
     if (isLoading) {
-        return <div className="flex justify-center items-center h-full py-20"><Loader2 className="h-16 w-16 animate-spin text-primary" /></div>;
+        return <EmployeeLayout><div className="flex justify-center items-center h-full py-20"><Loader2 className="h-16 w-16 animate-spin text-primary" /></div></EmployeeLayout>;
     }
 
     if (!employee) {
-        return <div className="text-center text-muted-foreground py-20">Erro ao carregar perfil.</div>;
+        return <EmployeeLayout><div className="text-center text-muted-foreground py-20">Erro ao carregar perfil.</div></EmployeeLayout>;
     }
 
     return (
-        <div className="space-y-6">
-             <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
-                <User className="h-6 w-6 sm:h-7 sm:w-7" /> Meu Perfil
-            </h1>
+        <EmployeeLayout> {/* Wrap content with EmployeeLayout */}
+            <div className="space-y-6">
+                 <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+                    <User className="h-6 w-6 sm:h-7 sm:w-7" /> Meu Perfil
+                </h1>
 
-            {/* Profile Info Card */}
-            <Card>
-                 <Form {...profileForm}>
-                    <form onSubmit={profileForm.handleSubmit(onProfileSubmit)}>
-                        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                            <div>
-                                <CardTitle className="text-xl flex items-center gap-2">Informações Pessoais</CardTitle>
-                                <CardDescription>Seus dados de perfil e contato.</CardDescription>
-                            </div>
-                            {!isEditingProfile ? (
-                                <Button type="button" variant="outline" size="sm" onClick={() => setIsEditingProfile(true)} className="self-end sm:self-auto">
-                                    <Edit className="mr-2 h-4 w-4" /> Editar
-                                </Button>
-                             ) : (
-                                <div className="flex gap-2 self-end sm:self-auto">
-                                     <Button type="button" variant="ghost" size="sm" onClick={() => { setIsEditingProfile(false); profileForm.reset({ name: employee.name, phone: employee.phone || '', photoUrl: employee.photoUrl || '' }); }}>Cancelar</Button>
-                                     <Button type="submit" size="sm" disabled={isSavingProfile}>
-                                        {isSavingProfile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                        Salvar
-                                    </Button>
+                {/* Profile Info Card */}
+                <Card>
+                     <Form {...profileForm}>
+                        <form onSubmit={profileForm.handleSubmit(onProfileSubmit)}>
+                            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                                <div>
+                                    <CardTitle className="text-xl flex items-center gap-2">Informações Pessoais</CardTitle>
+                                    <CardDescription>Seus dados de perfil e contato.</CardDescription>
                                 </div>
-                            )}
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                             <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4">
-                                <Avatar className="h-20 w-20 sm:h-24 sm:w-24">
-                                    <AvatarImage src={profileForm.watch('photoUrl') || employee.photoUrl} alt={employee.name} />
-                                    <AvatarFallback className="text-3xl">{getInitials(employee.name)}</AvatarFallback>
-                                </Avatar>
-                                <div className="w-full sm:flex-1 space-y-2">
-                                     <FormField
+                                {!isEditingProfile ? (
+                                    <Button type="button" variant="outline" size="sm" onClick={() => setIsEditingProfile(true)} className="self-end sm:self-auto">
+                                        <Edit className="mr-2 h-4 w-4" /> Editar
+                                    </Button>
+                                 ) : (
+                                    <div className="flex gap-2 self-end sm:self-auto">
+                                         <Button type="button" variant="ghost" size="sm" onClick={() => { setIsEditingProfile(false); profileForm.reset({ name: employee.name, phone: employee.phone || '', photoUrl: employee.photoUrl || '' }); }}>Cancelar</Button>
+                                         <Button type="submit" size="sm" disabled={isSavingProfile}>
+                                            {isSavingProfile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                            Salvar
+                                        </Button>
+                                    </div>
+                                )}
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                 <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4">
+                                    <Avatar className="h-20 w-20 sm:h-24 sm:w-24">
+                                        <AvatarImage src={profileForm.watch('photoUrl') || employee.photoUrl} alt={employee.name} />
+                                        <AvatarFallback className="text-3xl">{getInitials(employee.name)}</AvatarFallback>
+                                    </Avatar>
+                                    <div className="w-full sm:flex-1 space-y-2">
+                                         <FormField
+                                            control={profileForm.control}
+                                            name="photoUrl"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>URL da Foto</FormLabel>
+                                                    <FormControl>
+                                                         <Input placeholder="https://..." {...field} readOnly={!isEditingProfile} />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                            />
+                                     </div>
+                                </div>
+                                 <Separator className="my-4" />
+                                 {/* Read Only Fields */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <Label>Nome</Label>
+                                        <Input value={employee.name} readOnly disabled className="bg-muted/50"/>
+                                    </div>
+                                    <div>
+                                        <Label>Email Corporativo</Label>
+                                        <Input id="email" value={employee.email} readOnly disabled className="bg-muted/50"/>
+                                    </div>
+                                    <FormField
                                         control={profileForm.control}
-                                        name="photoUrl"
+                                        name="phone"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>URL da Foto</FormLabel>
+                                                <FormLabel>Telefone</FormLabel>
                                                 <FormControl>
-                                                     <Input placeholder="https://..." {...field} readOnly={!isEditingProfile} />
+                                                     <Input type="tel" placeholder="(XX) XXXXX-XXXX" {...field} readOnly={!isEditingProfile} />
                                                 </FormControl>
                                                 <FormMessage />
                                             </FormItem>
                                         )}
-                                        />
-                                 </div>
-                            </div>
-                             <Separator className="my-4" />
-                             {/* Read Only Fields */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <Label>Nome</Label>
-                                    <Input value={employee.name} readOnly disabled className="bg-muted/50"/>
+                                    />
+                                    <div>
+                                        <Label>Departamento</Label>
+                                        <Input value={employee.department} readOnly disabled className="bg-muted/50"/>
+                                    </div>
+                                    <div>
+                                        <Label>Função</Label>
+                                        <Input value={employee.role} readOnly disabled className="bg-muted/50"/>
+                                    </div>
+                                    <div>
+                                        <Label>Data de Admissão</Label>
+                                        <Input value={format(parseISO(employee.admissionDate + 'T00:00:00'), 'dd/MM/yyyy', { locale: ptBR })} readOnly disabled className="bg-muted/50"/>
+                                    </div>
                                 </div>
-                                <div>
-                                    <Label>Email Corporativo</Label>
-                                    <Input id="email" value={employee.email} readOnly disabled className="bg-muted/50"/>
-                                </div>
+                            </CardContent>
+                        </form>
+                     </Form>
+                </Card>
+
+                {/* Password Change Card */}
+                <Card>
+                     <Form {...passwordForm}>
+                        <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}>
+                            <CardHeader>
+                                <CardTitle className="text-xl flex items-center gap-2"><ShieldCheck className="h-5 w-5" /> Alterar Senha</CardTitle>
+                                <CardDescription>Mantenha sua conta segura.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
                                 <FormField
-                                    control={profileForm.control}
-                                    name="phone"
+                                    control={passwordForm.control}
+                                    name="currentPassword"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Telefone</FormLabel>
-                                            <FormControl>
-                                                 <Input type="tel" placeholder="(XX) XXXXX-XXXX" {...field} readOnly={!isEditingProfile} />
-                                            </FormControl>
+                                            <FormLabel>Senha Atual</FormLabel>
+                                             <FormControl>
+                                                 <div className="relative">
+                                                     <Input type={showCurrentPassword ? 'text' : 'password'} placeholder="********" {...field} />
+                                                     <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1 h-7 w-7" onClick={() => setShowCurrentPassword(!showCurrentPassword)}>
+                                                         {showCurrentPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
+                                                         <span className="sr-only">{showCurrentPassword ? 'Ocultar' : 'Mostrar'} senha</span>
+                                                     </Button>
+                                                 </div>
+                                             </FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )}
                                 />
-                                <div>
-                                    <Label>Departamento</Label>
-                                    <Input value={employee.department} readOnly disabled className="bg-muted/50"/>
-                                </div>
-                                <div>
-                                    <Label>Função</Label>
-                                    <Input value={employee.role} readOnly disabled className="bg-muted/50"/>
-                                </div>
-                                <div>
-                                    <Label>Data de Admissão</Label>
-                                    <Input value={format(parseISO(employee.admissionDate + 'T00:00:00'), 'dd/MM/yyyy', { locale: ptBR })} readOnly disabled className="bg-muted/50"/>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </form>
-                 </Form>
-            </Card>
+                                 <FormField
+                                    control={passwordForm.control}
+                                    name="newPassword"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Nova Senha</FormLabel>
+                                             <FormControl>
+                                                 <div className="relative">
+                                                     <Input type={showNewPassword ? 'text' : 'password'} placeholder="Pelo menos 8 caracteres" {...field} />
+                                                     <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1 h-7 w-7" onClick={() => setShowNewPassword(!showNewPassword)}>
+                                                         {showNewPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
+                                                          <span className="sr-only">{showNewPassword ? 'Ocultar' : 'Mostrar'} senha</span>
+                                                     </Button>
+                                                 </div>
+                                             </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={passwordForm.control}
+                                    name="confirmPassword"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Confirmar Nova Senha</FormLabel>
+                                             <FormControl>
+                                                 <div className="relative">
+                                                    <Input type={showConfirmPassword ? 'text' : 'password'} placeholder="Repita a nova senha" {...field} />
+                                                    <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1 h-7 w-7" onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
+                                                        {showConfirmPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
+                                                        <span className="sr-only">{showConfirmPassword ? 'Ocultar' : 'Mostrar'} senha</span>
+                                                    </Button>
+                                                 </div>
+                                             </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </CardContent>
+                            <CardFooter>
+                                 <Button type="submit" disabled={isChangingPassword}>
+                                    {isChangingPassword && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Alterar Senha
+                                </Button>
+                            </CardFooter>
+                        </form>
+                     </Form>
+                </Card>
 
-            {/* Password Change Card */}
-            <Card>
-                 <Form {...passwordForm}>
-                    <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}>
-                        <CardHeader>
-                            <CardTitle className="text-xl flex items-center gap-2"><ShieldCheck className="h-5 w-5" /> Alterar Senha</CardTitle>
-                            <CardDescription>Mantenha sua conta segura.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <FormField
-                                control={passwordForm.control}
-                                name="currentPassword"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Senha Atual</FormLabel>
-                                         <FormControl>
-                                             <div className="relative">
-                                                 <Input type={showCurrentPassword ? 'text' : 'password'} placeholder="********" {...field} />
-                                                 <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1 h-7 w-7" onClick={() => setShowCurrentPassword(!showCurrentPassword)}>
-                                                     {showCurrentPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
-                                                     <span className="sr-only">{showCurrentPassword ? 'Ocultar' : 'Mostrar'} senha</span>
-                                                 </Button>
-                                             </div>
-                                         </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                             <FormField
-                                control={passwordForm.control}
-                                name="newPassword"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Nova Senha</FormLabel>
-                                         <FormControl>
-                                             <div className="relative">
-                                                 <Input type={showNewPassword ? 'text' : 'password'} placeholder="Pelo menos 8 caracteres" {...field} />
-                                                 <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1 h-7 w-7" onClick={() => setShowNewPassword(!showNewPassword)}>
-                                                     {showNewPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
-                                                      <span className="sr-only">{showNewPassword ? 'Ocultar' : 'Mostrar'} senha</span>
-                                                 </Button>
-                                             </div>
-                                         </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                            <FormField
-                                control={passwordForm.control}
-                                name="confirmPassword"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Confirmar Nova Senha</FormLabel>
-                                         <FormControl>
-                                             <div className="relative">
-                                                <Input type={showConfirmPassword ? 'text' : 'password'} placeholder="Repita a nova senha" {...field} />
-                                                <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1 h-7 w-7" onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
-                                                    {showConfirmPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
-                                                    <span className="sr-only">{showConfirmPassword ? 'Ocultar' : 'Mostrar'} senha</span>
-                                                </Button>
-                                             </div>
-                                         </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                        </CardContent>
-                        <CardFooter>
-                             <Button type="submit" disabled={isChangingPassword}>
-                                {isChangingPassword && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Alterar Senha
-                            </Button>
-                        </CardFooter>
-                    </form>
-                 </Form>
-            </Card>
-
-             {/* Notification Settings Card */}
-             <Card>
-                 <Form {...notificationForm}>
-                     <form onSubmit={notificationForm.handleSubmit(onNotificationSubmit)}>
-                        <CardHeader>
-                            <CardTitle className="text-xl flex items-center gap-2"><Bell className="h-5 w-5" /> Preferências de Notificação</CardTitle>
-                            <CardDescription>Escolha quais notificações push você deseja receber.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                             <FormField
-                                control={notificationForm.control}
-                                name="newEvaluation"
-                                render={({ field }) => (
-                                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                                        <FormLabel className="font-normal">Receber notificação de novas avaliações</FormLabel>
-                                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                    </FormItem>
-                                )}
-                            />
-                            <FormField
-                                control={notificationForm.control}
-                                name="challengeUpdates"
-                                render={({ field }) => (
-                                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                                        <FormLabel className="font-normal">Receber notificações sobre desafios (novos, prazos)</FormLabel>
-                                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                    </FormItem>
-                                )}
-                             />
-                             <FormField
-                                control={notificationForm.control}
-                                name="rankingChanges"
-                                render={({ field }) => (
-                                     <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                                        <FormLabel className="font-normal">Receber notificações sobre mudanças no ranking</FormLabel>
-                                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                    </FormItem>
-                                )}
-                            />
-                            <FormField
-                                control={notificationForm.control}
-                                name="systemAnnouncements"
-                                render={({ field }) => (
-                                     <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                                        <FormLabel className="font-normal">Receber anúncios importantes do sistema</FormLabel>
-                                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                    </FormItem>
-                                )}
-                            />
-                        </CardContent>
-                        <CardFooter>
-                             <Button type="submit" disabled={isSavingNotifications}>
-                                {isSavingNotifications && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Salvar Preferências
-                            </Button>
-                        </CardFooter>
-                    </form>
-                 </Form>
-            </Card>
-        </div>
+                 {/* Notification Settings Card */}
+                 <Card>
+                     <Form {...notificationForm}>
+                         <form onSubmit={notificationForm.handleSubmit(onNotificationSubmit)}>
+                            <CardHeader>
+                                <CardTitle className="text-xl flex items-center gap-2"><Bell className="h-5 w-5" /> Preferências de Notificação</CardTitle>
+                                <CardDescription>Escolha quais notificações push você deseja receber.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                 <FormField
+                                    control={notificationForm.control}
+                                    name="newEvaluation"
+                                    render={({ field }) => (
+                                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                            <FormLabel className="font-normal">Receber notificação de novas avaliações</FormLabel>
+                                            <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={notificationForm.control}
+                                    name="challengeUpdates"
+                                    render={({ field }) => (
+                                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                            <FormLabel className="font-normal">Receber notificações sobre desafios (novos, prazos)</FormLabel>
+                                            <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                        </FormItem>
+                                    )}
+                                 />
+                                 <FormField
+                                    control={notificationForm.control}
+                                    name="rankingChanges"
+                                    render={({ field }) => (
+                                         <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                            <FormLabel className="font-normal">Receber notificações sobre mudanças no ranking</FormLabel>
+                                            <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={notificationForm.control}
+                                    name="systemAnnouncements"
+                                    render={({ field }) => (
+                                         <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                            <FormLabel className="font-normal">Receber anúncios importantes do sistema</FormLabel>
+                                            <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                        </FormItem>
+                                    )}
+                                />
+                            </CardContent>
+                            <CardFooter>
+                                 <Button type="submit" disabled={isSavingNotifications}>
+                                    {isSavingNotifications && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Salvar Preferências
+                                </Button>
+                            </CardFooter>
+                        </form>
+                     </Form>
+                </Card>
+            </div>
+        </EmployeeLayout>
     );
 }

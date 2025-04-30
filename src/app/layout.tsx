@@ -1,7 +1,8 @@
+
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google'; // Using Inter as Geist fonts might not be standard
 import './globals.css';
-import { MainLayout } from '@/components/layout/main-layout'; // Import the MainLayout
+// Removed MainLayout import - it will be applied conditionally
 import { Toaster } from '@/components/ui/toaster'; // Import Toaster for notifications
 
 // Using Inter font as a common, well-supported alternative
@@ -23,7 +24,8 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body className={`${inter.variable} font-sans antialiased`}>{/* Apply font variable */}
-        <MainLayout>{children}</MainLayout>
+        {/* MainLayout removed - children will now include layout based on route */}
+        {children}
         <Toaster /> {/* Add Toaster component here */}
       </body>
     </html>

@@ -14,6 +14,7 @@ import { DataTable } from '@/components/ui/data-table'; // Assuming DataTable ex
 import type { ColumnDef } from "@tanstack/react-table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Separator } from '@/components/ui/separator';
+import EmployeeLayout from '../layout'; // Import EmployeeLayout
 
 // Import Types
 import type { RankingEntry } from '@/app/ranking/page'; // Reuse admin type if suitable
@@ -154,128 +155,130 @@ export default function EmployeeRankingPage() {
     }
 
     return (
-        <TooltipProvider>
-            <div className="space-y-6">
-                 {/* Header and Month Navigation */}
-                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div>
-                        <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2"> {/* Responsive title */}
-                            <Trophy className="h-6 w-6 sm:h-7 sm:w-7" /> Meu Ranking
-                        </h1>
-                        <p className="text-muted-foreground text-sm sm:text-base">Acompanhe sua posição e o desempenho geral.</p> {/* Responsive description */}
-                    </div>
-                    <div className="flex items-center gap-2 self-end sm:self-center"> {/* Align buttons */}
-                         <Button variant="outline" size="icon" onClick={handlePreviousMonth} aria-label="Mês anterior">
-                             <ChevronLeft className="h-4 w-4" />
-                         </Button>
-                         <span className="text-base sm:text-lg font-semibold w-28 sm:w-32 text-center"> {/* Responsive text */}
-                             {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
-                         </span>
-                         <Button variant="outline" size="icon" onClick={handleNextMonth} disabled={isCurrentDisplayMonth} aria-label="Próximo mês">
-                             <ChevronRight className="h-4 w-4" />
-                         </Button>
-                     </div>
-                 </div>
-
-
-                {/* User's Position Card */}
-                <Card className="bg-gradient-to-r from-primary/10 via-background to-background border-primary/30">
-                    <CardHeader>
-                        <CardTitle>Sua Posição Atual</CardTitle>
-                        <CardDescription>Seu desempenho neste período.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex flex-col sm:flex-row items-center gap-4">
-                         <div className="flex flex-col items-center">
-                            <span className="text-5xl sm:text-6xl font-bold text-primary"> {/* Responsive font size */}
-                                {currentUserEntry?.rank ?? '-'}º
+         <EmployeeLayout> {/* Wrap content with EmployeeLayout */}
+            <TooltipProvider>
+                <div className="space-y-6">
+                     {/* Header and Month Navigation */}
+                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                            <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2"> {/* Responsive title */}
+                                <Trophy className="h-6 w-6 sm:h-7 sm:w-7" /> Meu Ranking
+                            </h1>
+                            <p className="text-muted-foreground text-sm sm:text-base">Acompanhe sua posição e o desempenho geral.</p> {/* Responsive description */}
+                        </div>
+                        <div className="flex items-center gap-2 self-end sm:self-center"> {/* Align buttons */}
+                             <Button variant="outline" size="icon" onClick={handlePreviousMonth} aria-label="Mês anterior">
+                                 <ChevronLeft className="h-4 w-4" />
+                             </Button>
+                             <span className="text-base sm:text-lg font-semibold w-28 sm:w-32 text-center"> {/* Responsive text */}
+                                 {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
                              </span>
-                             <span className="text-muted-foreground text-sm">Lugar</span>
+                             <Button variant="outline" size="icon" onClick={handleNextMonth} disabled={isCurrentDisplayMonth} aria-label="Próximo mês">
+                                 <ChevronRight className="h-4 w-4" />
+                             </Button>
                          </div>
-                        <Separator orientation="vertical" className="h-16 hidden sm:block"/>
-                        <Separator orientation="horizontal" className="w-full block sm:hidden"/>
-                         <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                             <div className="font-medium">Pontuação Total:</div>
-                            <div className="text-right font-semibold">{currentUserEntry?.score ?? '-'}</div>
-                            <div className="font-medium">Zeros Acumulados:</div>
-                            <div className={`text-right font-semibold ${currentUserEntry?.zeros && currentUserEntry.zeros > 0 ? 'text-destructive' : ''}`}>{currentUserEntry?.zeros ?? '-'}</div>
-                             <div className="font-medium">Departamento:</div>
-                            <div className="text-right">{currentUserEntry?.department ?? '-'}</div>
-                             <div className="font-medium">Função:</div>
-                            <div className="text-right">{currentUserEntry?.role ?? '-'}</div>
-                         </div>
-                    </CardContent>
-                     <CardFooter className="text-xs text-muted-foreground">
-                        <Info className="h-3 w-3 mr-1 flex-shrink-0"/> O ranking é atualizado diariamente com base nas avaliações e desafios concluídos.
-                    </CardFooter>
-                </Card>
+                     </div>
 
 
-                {/* Current Award Card */}
-                {currentAward && (
+                    {/* User's Position Card */}
+                    <Card className="bg-gradient-to-r from-primary/10 via-background to-background border-primary/30">
+                        <CardHeader>
+                            <CardTitle>Sua Posição Atual</CardTitle>
+                            <CardDescription>Seu desempenho neste período.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="flex flex-col sm:flex-row items-center gap-4">
+                             <div className="flex flex-col items-center">
+                                <span className="text-5xl sm:text-6xl font-bold text-primary"> {/* Responsive font size */}
+                                    {currentUserEntry?.rank ?? '-'}º
+                                 </span>
+                                 <span className="text-muted-foreground text-sm">Lugar</span>
+                             </div>
+                            <Separator orientation="vertical" className="h-16 hidden sm:block"/>
+                            <Separator orientation="horizontal" className="w-full block sm:hidden"/>
+                             <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                 <div className="font-medium">Pontuação Total:</div>
+                                <div className="text-right font-semibold">{currentUserEntry?.score ?? '-'}</div>
+                                <div className="font-medium">Zeros Acumulados:</div>
+                                <div className={`text-right font-semibold ${currentUserEntry?.zeros && currentUserEntry.zeros > 0 ? 'text-destructive' : ''}`}>{currentUserEntry?.zeros ?? '-'}</div>
+                                 <div className="font-medium">Departamento:</div>
+                                <div className="text-right">{currentUserEntry?.department ?? '-'}</div>
+                                 <div className="font-medium">Função:</div>
+                                <div className="text-right">{currentUserEntry?.role ?? '-'}</div>
+                             </div>
+                        </CardContent>
+                         <CardFooter className="text-xs text-muted-foreground">
+                            <Info className="h-3 w-3 mr-1 flex-shrink-0"/> O ranking é atualizado diariamente com base nas avaliações e desafios concluídos.
+                        </CardFooter>
+                    </Card>
+
+
+                    {/* Current Award Card */}
+                    {currentAward && (
+                        <Card>
+                            <CardHeader>
+                                 <CardTitle className="flex items-center gap-2"><Award className="h-5 w-5 text-yellow-500"/> Premiação Vigente</CardTitle>
+                                 <CardDescription>Prêmio para os melhores colocados neste período ({currentAward.period === 'recorrente' ? 'Recorrente' : format(parseISO(currentAward.period + '-01'), 'MMMM yyyy', { locale: ptBR })}).</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-2">
+                                 <h4 className="font-semibold">{currentAward.title}</h4>
+                                 <p className="text-sm text-muted-foreground">{currentAward.description}</p>
+                                <div className="text-sm">
+                                    <strong>Ganhadores:</strong> {currentAward.winnerCount}º Lugar{currentAward.winnerCount > 1 ? 'es' : ''}
+                                 </div>
+                                {currentAward.winnerCount === 1 ? (
+                                    <div className="text-sm"><strong>Prêmio (1º Lugar):</strong> {getPrizeDescription(currentAward, 1)}</div>
+                                ) : (
+                                     <ul className="text-sm list-disc list-inside">
+                                        {Array.from({ length: currentAward.winnerCount }).map((_, i) => (
+                                             <li key={i}><strong>{i + 1}º Lugar:</strong> {getPrizeDescription(currentAward, i + 1)}</li>
+                                         ))}
+                                    </ul>
+                                )}
+                                 <div className="text-xs text-muted-foreground pt-2">
+                                    <strong>Elegíveis:</strong> {currentAward.eligibleDepartments.includes('all') ? 'Todos os departamentos' : currentAward.eligibleDepartments.join(', ')}
+                                    {currentAward.eligibilityCriteria ? ' (Requer 0 zeros no mês)' : ''}
+                                 </div>
+                             </CardContent>
+                        </Card>
+                     )}
+
+
+                    {/* Ranking Table Card */}
                     <Card>
                         <CardHeader>
-                             <CardTitle className="flex items-center gap-2"><Award className="h-5 w-5 text-yellow-500"/> Premiação Vigente</CardTitle>
-                             <CardDescription>Prêmio para os melhores colocados neste período ({currentAward.period === 'recorrente' ? 'Recorrente' : format(parseISO(currentAward.period + '-01'), 'MMMM yyyy', { locale: ptBR })}).</CardDescription>
+                            <CardTitle>Ranking Geral - {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}</CardTitle>
+                             <CardDescription>Veja a classificação completa dos colaboradores.</CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-2">
-                             <h4 className="font-semibold">{currentAward.title}</h4>
-                             <p className="text-sm text-muted-foreground">{currentAward.description}</p>
-                            <div className="text-sm">
-                                <strong>Ganhadores:</strong> {currentAward.winnerCount}º Lugar{currentAward.winnerCount > 1 ? 'es' : ''}
-                             </div>
-                            {currentAward.winnerCount === 1 ? (
-                                <div className="text-sm"><strong>Prêmio (1º Lugar):</strong> {getPrizeDescription(currentAward, 1)}</div>
+                        <CardContent>
+                             {isLoading ? (
+                                <div className="flex justify-center items-center py-10">
+                                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                 </div>
                             ) : (
-                                 <ul className="text-sm list-disc list-inside">
-                                    {Array.from({ length: currentAward.winnerCount }).map((_, i) => (
-                                         <li key={i}><strong>{i + 1}º Lugar:</strong> {getPrizeDescription(currentAward, i + 1)}</li>
-                                     ))}
-                                </ul>
-                            )}
-                             <div className="text-xs text-muted-foreground pt-2">
-                                <strong>Elegíveis:</strong> {currentAward.eligibleDepartments.includes('all') ? 'Todos os departamentos' : currentAward.eligibleDepartments.join(', ')}
-                                {currentAward.eligibilityCriteria ? ' (Requer 0 zeros no mês)' : ''}
-                             </div>
-                         </CardContent>
+                                <DataTable columns={rankingColumns} data={rankingData} />
+                             )}
+                        </CardContent>
+                        <CardFooter className="text-xs text-muted-foreground justify-end">
+                             Atualizado em: {format(new Date(), 'dd/MM/yyyy HH:mm')}
+                        </CardFooter>
                     </Card>
-                 )}
 
+                     {/* How Scoring Works (Optional Help Section) */}
+                     <Card className="border-dashed">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-base">
+                                 <HelpCircle className="h-4 w-4" /> Como funciona a Pontuação?
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="text-sm text-muted-foreground space-y-1">
+                             <p>Sua pontuação é calculada com base nas avaliações diárias (nota 10 = pontos positivos) e nos desafios concluídos.</p>
+                             <p>Receber nota 0 em uma tarefa impacta negativamente sua pontuação final.</p>
+                             <p>Consulte a seção "Minhas Avaliações" para detalhes diários.</p>
+                        </CardContent>
+                    </Card>
 
-                {/* Ranking Table Card */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Ranking Geral - {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}</CardTitle>
-                         <CardDescription>Veja a classificação completa dos colaboradores.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                         {isLoading ? (
-                            <div className="flex justify-center items-center py-10">
-                                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                             </div>
-                        ) : (
-                            <DataTable columns={rankingColumns} data={rankingData} />
-                         )}
-                    </CardContent>
-                    <CardFooter className="text-xs text-muted-foreground justify-end">
-                         Atualizado em: {format(new Date(), 'dd/MM/yyyy HH:mm')}
-                    </CardFooter>
-                </Card>
-
-                 {/* How Scoring Works (Optional Help Section) */}
-                 <Card className="border-dashed">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-base">
-                             <HelpCircle className="h-4 w-4" /> Como funciona a Pontuação?
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="text-sm text-muted-foreground space-y-1">
-                         <p>Sua pontuação é calculada com base nas avaliações diárias (nota 10 = pontos positivos) e nos desafios concluídos.</p>
-                         <p>Receber nota 0 em uma tarefa impacta negativamente sua pontuação final.</p>
-                         <p>Consulte a seção "Minhas Avaliações" para detalhes diários.</p>
-                    </CardContent>
-                </Card>
-
-            </div>
-        </TooltipProvider>
+                </div>
+            </TooltipProvider>
+        </EmployeeLayout>
     );
 }

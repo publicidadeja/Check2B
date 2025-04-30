@@ -39,6 +39,7 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import EmployeeLayout from '../layout'; // Import EmployeeLayout
 
 // Import types
 import type { Evaluation } from '@/types/evaluation';
@@ -153,130 +154,132 @@ export default function EmployeeEvaluationsPage() {
     const isFutureMonth = startOfMonth(addMonths(currentMonth, 1)) > startOfMonth(new Date());
 
     return (
-        <TooltipProvider>
-            <div className="space-y-6">
-                <Card>
-                    <CardHeader>
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                             <div>
-                                <CardTitle className="flex items-center gap-2">
-                                    <CalendarIcon className="h-5 w-5" /> Histórico de Avaliações
-                                </CardTitle>
-                                <CardDescription>Visualize seu desempenho diário no checklist.</CardDescription>
-                             </div>
-                             <div className="flex items-center gap-2">
-                                <Button variant="outline" size="icon" onClick={goToPreviousMonth} aria-label="Mês anterior">
-                                    <ChevronLeft className="h-4 w-4" />
-                                </Button>
-                                <span className="text-lg font-semibold w-32 text-center">
-                                    {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
-                                </span>
-                                <Button variant="outline" size="icon" onClick={goToNextMonth} disabled={isFutureMonth} aria-label="Próximo mês">
-                                    <ChevronRight className="h-4 w-4" />
-                                </Button>
+        <EmployeeLayout> {/* Wrap content with EmployeeLayout */}
+            <TooltipProvider>
+                <div className="space-y-6">
+                    <Card>
+                        <CardHeader>
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                 <div>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <CalendarIcon className="h-5 w-5" /> Histórico de Avaliações
+                                    </CardTitle>
+                                    <CardDescription>Visualize seu desempenho diário no checklist.</CardDescription>
+                                 </div>
+                                 <div className="flex items-center gap-2">
+                                    <Button variant="outline" size="icon" onClick={goToPreviousMonth} aria-label="Mês anterior">
+                                        <ChevronLeft className="h-4 w-4" />
+                                    </Button>
+                                    <span className="text-lg font-semibold w-32 text-center">
+                                        {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
+                                    </span>
+                                    <Button variant="outline" size="icon" onClick={goToNextMonth} disabled={isFutureMonth} aria-label="Próximo mês">
+                                        <ChevronRight className="h-4 w-4" />
+                                    </Button>
+                                </div>
                             </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        {isLoading ? (
-                            <div className="flex justify-center items-center h-60">
-                                <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-7 gap-1 text-center text-xs">
-                                {/* Calendar Header */}
-                                {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => (
-                                    <div key={day} className="font-semibold text-muted-foreground p-2">{day}</div>
-                                ))}
-                                {/* Calendar Days */}
-                                {evaluations.map((daySummary) => (
-                                    <Tooltip key={daySummary.date.toISOString()}>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                onClick={() => handleDayClick(daySummary)}
-                                                disabled={daySummary.score === -1}
-                                                className={cn(
-                                                    "relative flex items-center justify-center h-10 w-full sm:h-12 rounded-md border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2", // Adjusted height for responsiveness
-                                                    daySummary.score === 10 && "bg-green-100 dark:bg-green-900/50 border-green-200 dark:border-green-800 hover:bg-green-200 dark:hover:bg-green-800/60",
-                                                    daySummary.score === 0 && "bg-red-100 dark:bg-red-900/50 border-red-200 dark:border-red-800 hover:bg-red-200 dark:hover:bg-red-800/60",
-                                                    daySummary.score === -1 && "bg-muted/50 border-dashed text-muted-foreground cursor-not-allowed",
-                                                    isSameDay(daySummary.date, new Date()) && "ring-2 ring-primary" // Highlight today
-                                                )}
-                                            >
-                                                <span>{format(daySummary.date, 'd')}</span>
-                                                {daySummary.score === 10 && <CheckCircle className="absolute top-1 right-1 h-3 w-3 text-green-600 dark:text-green-400" />}
-                                                {daySummary.score === 0 && <XCircle className="absolute top-1 right-1 h-3 w-3 text-red-600 dark:text-red-400" />}
-                                            </button>
-                                        </TooltipTrigger>
-                                         <TooltipContent>
-                                            {daySummary.score === 10 && <p>Desempenho: Excelente</p>}
-                                            {daySummary.score === 0 && <p>Desempenho: Requer Atenção</p>}
-                                            {daySummary.score === -1 && <p>Sem Avaliação</p>}
-                                            <p>{format(daySummary.date, 'PPP', { locale: ptBR })}</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                        </CardHeader>
+                        <CardContent>
+                            {isLoading ? (
+                                <div className="flex justify-center items-center h-60">
+                                    <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-7 gap-1 text-center text-xs">
+                                    {/* Calendar Header */}
+                                    {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => (
+                                        <div key={day} className="font-semibold text-muted-foreground p-2">{day}</div>
+                                    ))}
+                                    {/* Calendar Days */}
+                                    {evaluations.map((daySummary) => (
+                                        <Tooltip key={daySummary.date.toISOString()}>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    onClick={() => handleDayClick(daySummary)}
+                                                    disabled={daySummary.score === -1}
+                                                    className={cn(
+                                                        "relative flex items-center justify-center h-10 w-full sm:h-12 rounded-md border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2", // Adjusted height for responsiveness
+                                                        daySummary.score === 10 && "bg-green-100 dark:bg-green-900/50 border-green-200 dark:border-green-800 hover:bg-green-200 dark:hover:bg-green-800/60",
+                                                        daySummary.score === 0 && "bg-red-100 dark:bg-red-900/50 border-red-200 dark:border-red-800 hover:bg-red-200 dark:hover:bg-red-800/60",
+                                                        daySummary.score === -1 && "bg-muted/50 border-dashed text-muted-foreground cursor-not-allowed",
+                                                        isSameDay(daySummary.date, new Date()) && "ring-2 ring-primary" // Highlight today
+                                                    )}
+                                                >
+                                                    <span>{format(daySummary.date, 'd')}</span>
+                                                    {daySummary.score === 10 && <CheckCircle className="absolute top-1 right-1 h-3 w-3 text-green-600 dark:text-green-400" />}
+                                                    {daySummary.score === 0 && <XCircle className="absolute top-1 right-1 h-3 w-3 text-red-600 dark:text-red-400" />}
+                                                </button>
+                                            </TooltipTrigger>
+                                             <TooltipContent>
+                                                {daySummary.score === 10 && <p>Desempenho: Excelente</p>}
+                                                {daySummary.score === 0 && <p>Desempenho: Requer Atenção</p>}
+                                                {daySummary.score === -1 && <p>Sem Avaliação</p>}
+                                                <p>{format(daySummary.date, 'PPP', { locale: ptBR })}</p>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    ))}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
 
-                {/* Evaluation Details Modal */}
-                <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                    <DialogContent className="sm:max-w-lg">
-                        <DialogHeader>
-                            <DialogTitle>Detalhes da Avaliação - {selectedDayDetails ? format(selectedDayDetails.date, 'PPP', { locale: ptBR }) : ''}</DialogTitle>
-                            <DialogDescription>
-                                Veja o resultado de cada tarefa avaliada neste dia.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <ScrollArea className="max-h-[60vh] pr-4">
-                            <div className="py-4 space-y-4">
-                                {selectedDayDetails?.details?.map((evaluation) => {
-                                    const task = getTaskDetails(evaluation.taskId);
-                                    return (
-                                        <div key={evaluation.id} className="border p-3 rounded-md bg-card">
-                                            <div className="flex justify-between items-center mb-2">
-                                                <span className="font-semibold">{task?.title || 'Tarefa Desconhecida'}</span>
-                                                {evaluation.score === 10 ? (
-                                                    <Badge variant="default" className="bg-green-600 hover:bg-green-700">Nota 10</Badge>
-                                                ) : (
-                                                    <Badge variant="destructive">Nota 0</Badge>
+                    {/* Evaluation Details Modal */}
+                    <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+                        <DialogContent className="sm:max-w-lg">
+                            <DialogHeader>
+                                <DialogTitle>Detalhes da Avaliação - {selectedDayDetails ? format(selectedDayDetails.date, 'PPP', { locale: ptBR }) : ''}</DialogTitle>
+                                <DialogDescription>
+                                    Veja o resultado de cada tarefa avaliada neste dia.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <ScrollArea className="max-h-[60vh] pr-4">
+                                <div className="py-4 space-y-4">
+                                    {selectedDayDetails?.details?.map((evaluation) => {
+                                        const task = getTaskDetails(evaluation.taskId);
+                                        return (
+                                            <div key={evaluation.id} className="border p-3 rounded-md bg-card">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <span className="font-semibold">{task?.title || 'Tarefa Desconhecida'}</span>
+                                                    {evaluation.score === 10 ? (
+                                                        <Badge variant="default" className="bg-green-600 hover:bg-green-700">Nota 10</Badge>
+                                                    ) : (
+                                                        <Badge variant="destructive">Nota 0</Badge>
+                                                    )}
+                                                </div>
+                                                {evaluation.justification && (
+                                                    <div className="mt-2 p-2 bg-muted/50 rounded text-sm">
+                                                        <p className="font-medium flex items-center gap-1"><MessageSquare className="h-4 w-4" /> Justificativa:</p>
+                                                        <p className="text-muted-foreground ml-5">{evaluation.justification}</p>
+                                                    </div>
+                                                )}
+                                                 {task?.criteria && (
+                                                     <div className="mt-2 text-xs text-muted-foreground border-t pt-2">
+                                                        <p><strong>Critério (Nota 10):</strong> {task.criteria}</p>
+                                                    </div>
+                                                 )}
+                                                {evaluation.evidenceUrl && (
+                                                     <div className="mt-2">
+                                                        {/* In a real app, clicking this would open the evidence */}
+                                                        <Button variant="link" size="sm" className="p-0 h-auto text-accent" onClick={() => alert('Visualização de evidência não implementada.')}>
+                                                            <FileText className="mr-1 h-3 w-3"/> Ver Evidência Anexada
+                                                        </Button>
+                                                    </div>
                                                 )}
                                             </div>
-                                            {evaluation.justification && (
-                                                <div className="mt-2 p-2 bg-muted/50 rounded text-sm">
-                                                    <p className="font-medium flex items-center gap-1"><MessageSquare className="h-4 w-4" /> Justificativa:</p>
-                                                    <p className="text-muted-foreground ml-5">{evaluation.justification}</p>
-                                                </div>
-                                            )}
-                                             {task?.criteria && (
-                                                 <div className="mt-2 text-xs text-muted-foreground border-t pt-2">
-                                                    <p><strong>Critério (Nota 10):</strong> {task.criteria}</p>
-                                                </div>
-                                             )}
-                                            {evaluation.evidenceUrl && (
-                                                 <div className="mt-2">
-                                                    {/* In a real app, clicking this would open the evidence */}
-                                                    <Button variant="link" size="sm" className="p-0 h-auto text-accent" onClick={() => alert('Visualização de evidência não implementada.')}>
-                                                        <FileText className="mr-1 h-3 w-3"/> Ver Evidência Anexada
-                                                    </Button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                                {(!selectedDayDetails || !selectedDayDetails.details || selectedDayDetails.details.length === 0) && (
-                                     <p className="text-muted-foreground text-center">Nenhum detalhe de avaliação encontrado para este dia.</p>
-                                )}
-                            </div>
-                        </ScrollArea>
-                         <DialogClose asChild>
-                             <Button type="button" variant="secondary" className="mt-4">Fechar</Button>
-                         </DialogClose>
-                    </DialogContent>
-                </Dialog>
-            </div>
-        </TooltipProvider>
+                                        );
+                                    })}
+                                    {(!selectedDayDetails || !selectedDayDetails.details || selectedDayDetails.details.length === 0) && (
+                                         <p className="text-muted-foreground text-center">Nenhum detalhe de avaliação encontrado para este dia.</p>
+                                    )}
+                                </div>
+                            </ScrollArea>
+                             <DialogClose asChild>
+                                 <Button type="button" variant="secondary" className="mt-4">Fechar</Button>
+                             </DialogClose>
+                        </DialogContent>
+                    </Dialog>
+                </div>
+            </TooltipProvider>
+        </EmployeeLayout>
     );
 }

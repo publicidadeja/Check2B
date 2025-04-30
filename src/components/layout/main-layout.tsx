@@ -1,9 +1,10 @@
+
 'use client';
 
 import type { ReactNode } from 'react';
 import * as React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation'; // Import usePathname
+import { usePathname, useRouter } from 'next/navigation'; // Import usePathname and useRouter
 import {
   Users,
   ClipboardList,
@@ -36,6 +37,8 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'; // Ensure TooltipProvider is imported
+import { logoutUser } from '@/lib/auth'; // Import logout function
+import { useToast } from '@/hooks/use-toast'; // Import useToast
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -59,6 +62,20 @@ const adminTools = [
 export function MainLayout({ children }: MainLayoutProps) {
   const isMobile = useIsMobile();
   const pathname = usePathname(); // Use the hook to get the current path
+  const router = useRouter(); // Initialize router
+  const { toast } = useToast(); // Initialize toast
+
+   const handleLogout = async () => {
+    try {
+        await logoutUser();
+        toast({ title: "Logout", description: "Você saiu com sucesso." });
+        router.push('/login'); // Redirect to login page after logout
+    } catch (error) {
+        console.error("Erro ao fazer logout:", error);
+        toast({ title: "Erro", description: "Falha ao fazer logout.", variant: "destructive" });
+    }
+  };
+
 
   return (
     // Ensure TooltipProvider wraps the entire layout content if tooltips are used anywhere within
@@ -134,7 +151,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                  </div>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => alert('Logout não implementado')}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleLogout}> {/* Call handleLogout */}
                         <LogOut className="h-4 w-4" />
                          <span className="sr-only">Sair</span>
                       </Button>
@@ -145,7 +162,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=offcanvas]:hidden group-data-[state=expanded]:hidden hidden justify-center p-2">
                  <Tooltip>
                     <TooltipTrigger asChild>
-                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => alert('Logout não implementado')}>
+                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleLogout}> {/* Call handleLogout */}
                          <LogOut className="h-4 w-4" />
                          <span className="sr-only">Sair</span>
                        </Button>

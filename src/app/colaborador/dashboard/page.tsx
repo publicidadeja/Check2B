@@ -30,6 +30,7 @@ import { useToast } from '@/hooks/use-toast';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import Link from 'next/link'; // Import Link
+import EmployeeLayout from '../layout'; // Import EmployeeLayout
 
 // Import necessary types
 import type { Evaluation } from '@/types/evaluation';
@@ -44,7 +45,8 @@ const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
 // Reuse existing mock data definitions if possible
 import { mockEmployees } from '@/app/employees/page'; // Assuming exported
 import { mockTasks as allAdminTasks } from '@/app/tasks/page'; // Assuming exported
-import { mockChallenges as allAdminChallenges } from '@/app/challenges/page'; // Assuming exported
+// Assuming mockChallenges is exported from challenges page
+import { mockChallenges as allAdminChallenges, mockParticipants } from '@/app/challenges/page';
 
 // Mock evaluations for the current employee
 const mockEvaluations: Evaluation[] = [
@@ -135,7 +137,8 @@ const fetchEmployeeDashboardData = async (employeeId: string): Promise<EmployeeD
     const recentNotifications = [
         { id: 'n1', message: `Sua avaliação de ${format(new Date(Date.now() - 86400000), 'dd/MM')} foi registrada.`, date: new Date(Date.now() - 3600000), type: 'success' as const },
         { id: 'n2', message: `Você tem ${zerosThisMonth} zero(s) este mês. Limite: ${ZERO_LIMIT}.`, date: new Date(), type: zerosThisMonth >= ZERO_LIMIT ? 'warning' as const : 'info' as const },
-        { id: 'n3', message: `Novo desafio opcional disponível: "${activeChallenges[0]?.title || 'Desafio Exemplo'}"`, date: new Date(Date.now() - 2 * 3600000), type: 'info' as const },
+        // Ensure activeChallenges[0] exists before accessing its title
+        ...(activeChallenges.length > 0 ? [{ id: 'n3', message: `Novo desafio opcional disponível: "${activeChallenges[0]?.title}"`, date: new Date(Date.now() - 2 * 3600000), type: 'info' as const }] : []),
     ];
 
 
@@ -188,191 +191,197 @@ export default function EmployeeDashboardPage() {
 
     if (isLoading) {
         return (
-            <div className="flex justify-center items-center h-full py-20"> {/* Added padding */}
-                <Loader2 className="h-16 w-16 animate-spin text-primary" />
-            </div>
+             <EmployeeLayout> {/* Wrap loading state */}
+                <div className="flex justify-center items-center h-full py-20"> {/* Added padding */}
+                    <Loader2 className="h-16 w-16 animate-spin text-primary" />
+                </div>
+            </EmployeeLayout>
         );
     }
 
     if (!data) {
         return (
-            <div className="text-center text-muted-foreground py-20"> {/* Added padding */}
-                Não foi possível carregar os dados do dashboard. Tente novamente mais tarde.
-            </div>
+            <EmployeeLayout> {/* Wrap error state */}
+                <div className="text-center text-muted-foreground py-20"> {/* Added padding */}
+                    Não foi possível carregar os dados do dashboard. Tente novamente mais tarde.
+                </div>
+            </EmployeeLayout>
         );
     }
 
     const zeroProgress = (data.zerosThisMonth / ZERO_LIMIT) * 100;
 
     return (
-        <TooltipProvider>
-            <div className="grid gap-4 md:gap-6 lg:grid-cols-3"> {/* Responsive grid */}
-                {/* Left Column */}
-                <div className="lg:col-span-2 space-y-4 md:space-y-6">
-                    {/* Status Card */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                                <span>Status do Dia ({format(new Date(), 'dd/MM/yyyy', { locale: ptBR })})</span>
-                                <Badge variant={data.todayStatus === 'evaluated' ? 'default' : 'secondary'}>
-                                    {data.todayStatus === 'evaluated' ? 'Avaliado' : 'Pendente'}
-                                </Badge>
-                            </CardTitle>
-                            <CardDescription>Resumo do seu desempenho e projeção mensal.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div>
-                                <div className="flex justify-between items-center mb-1">
-                                    <span className="text-sm font-medium">Zeros Acumulados (Mês)</span>
-                                    <span className={`font-semibold ${data.zerosThisMonth > ZERO_LIMIT ? 'text-destructive' : ''}`}>
-                                        {data.zerosThisMonth} / {ZERO_LIMIT}
-                                    </span>
-                                </div>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Progress value={Math.min(zeroProgress, 100)} aria-label={`${data.zerosThisMonth} de ${ZERO_LIMIT} zeros permitidos`} className="h-2" />
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>{data.zerosThisMonth > ZERO_LIMIT ? 'Limite de zeros excedido para bônus máximo.' : `${ZERO_LIMIT - data.zerosThisMonth} zero(s) restantes para o bônus máximo.`}</p>
-                                    </TooltipContent>
-                                </Tooltip>
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-sm font-medium">Projeção de Bônus Mensal</span>
-                                <span className="text-lg font-bold text-green-600">R$ {data.projectedBonus.toFixed(2)}</span>
-                            </div>
-                        </CardContent>
-                        <CardFooter>
-                             <p className="text-xs text-muted-foreground">A projeção é baseada no desempenho atual e pode mudar. O bônus final é calculado no fechamento do mês.</p>
-                        </CardFooter>
-                    </Card>
-
-                    {/* Tasks for Today */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2"><CalendarCheck className="h-5 w-5" /> Tarefas de Hoje</CardTitle>
-                            <CardDescription>Suas tarefas do checklist para avaliação hoje.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            {data.tasksToday.length > 0 ? (
-                                <ul className="space-y-2 text-sm text-muted-foreground">
-                                    {data.tasksToday.map(task => (
-                                         <li key={task.id} className="flex items-center justify-between p-2 border rounded-md bg-muted/30">
-                                             <span>{task.title}</span>
-                                             <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                     <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground">
-                                                        <Info className="h-4 w-4" />
-                                                    </Button>
-                                                </TooltipTrigger>
-                                                <TooltipContent side="top" className="max-w-[250px]">
-                                                    <p className="font-semibold">Critério (Nota 10):</p>
-                                                    <p className="text-xs">{task.criteria}</p>
-                                                </TooltipContent>
-                                             </Tooltip>
-                                         </li>
-                                    ))}
-                                </ul>
-                            ) : (
-                                <p className="text-sm text-muted-foreground text-center py-4">Nenhuma tarefa específica do checklist para você hoje.</p>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    {/* Active Challenges */}
-                     <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5" /> Desafios Ativos</CardTitle>
-                            <CardDescription>Participe e ganhe pontos extras!</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            {data.activeChallenges.length > 0 ? (
-                                <ul className="space-y-3">
-                                    {data.activeChallenges.map(challenge => (
-                                        <li key={challenge.id} className="border rounded-md p-3 hover:bg-muted/30 transition-colors">
-                                            <div className="flex justify-between items-start mb-1">
-                                                <h4 className="font-semibold">{challenge.title}</h4>
-                                                <Badge variant="outline">{challenge.points} pts</Badge>
-                                            </div>
-                                            <p className="text-xs text-muted-foreground mb-2">{challenge.description.substring(0, 80)}...</p>
-                                            <div className="flex justify-between items-center text-xs text-muted-foreground">
-                                                <span>Termina em: {format(parseISO(challenge.periodEndDate), 'dd/MM/yyyy')}</span>
-                                                {/* Link to challenge details page */}
-                                                <Link href="/colaborador/desafios" passHref>
-                                                   <Button variant="link" size="sm" className="p-0 h-auto text-accent">Ver Detalhes</Button>
-                                                </Link>
-                                            </div>
-                                        </li>
-                                    ))}
-                                </ul>
-                            ) : (
-                                <p className="text-sm text-muted-foreground text-center py-4">Nenhum desafio ativo para você no momento.</p>
-                            )}
-                        </CardContent>
-                         <CardFooter>
-                             {/* Link to challenges page */}
-                             <Link href="/colaborador/desafios" passHref>
-                                <Button variant="secondary" size="sm">Ver Todos Desafios</Button>
-                             </Link>
-                        </CardFooter>
-                    </Card>
-                </div>
-
-                {/* Right Column */}
-                <div className="lg:col-span-1 space-y-4 md:space-y-6">
-                    {/* Notifications Card */}
-                    <Card className="max-h-[400px] flex flex-col"> {/* Limit height */}
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" /> Notificações Recentes</CardTitle>
-                        </CardHeader>
-                        <CardContent className="flex-grow overflow-hidden p-0"> {/* Allow content to grow and hide overflow */}
-                            {data.recentNotifications.length > 0 ? (
-                                 <ScrollArea className="h-full px-6 pb-6"> {/* Scroll area for content */}
-                                    <div className="space-y-4">
-                                        {data.recentNotifications.map(notification => (
-                                            <div key={notification.id} className="flex items-start gap-3">
-                                                 <div className="flex-shrink-0 pt-0.5">
-                                                    {getNotificationIcon(notification.type)}
-                                                </div>
-                                                <div className="flex-grow">
-                                                    <p className="text-sm">{notification.message}</p>
-                                                    <p className="text-xs text-muted-foreground">{format(notification.date, 'dd/MM HH:mm', { locale: ptBR })}</p>
-                                                </div>
-                                            </div>
-                                        ))}
+        <EmployeeLayout> {/* Wrap main content */}
+            <TooltipProvider>
+                <div className="grid gap-4 md:gap-6 lg:grid-cols-3"> {/* Responsive grid */}
+                    {/* Left Column */}
+                    <div className="lg:col-span-2 space-y-4 md:space-y-6">
+                        {/* Status Card */}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                                    <span>Status do Dia ({format(new Date(), 'dd/MM/yyyy', { locale: ptBR })})</span>
+                                    <Badge variant={data.todayStatus === 'evaluated' ? 'default' : 'secondary'}>
+                                        {data.todayStatus === 'evaluated' ? 'Avaliado' : 'Pendente'}
+                                    </Badge>
+                                </CardTitle>
+                                <CardDescription>Resumo do seu desempenho e projeção mensal.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div>
+                                    <div className="flex justify-between items-center mb-1">
+                                        <span className="text-sm font-medium">Zeros Acumulados (Mês)</span>
+                                        <span className={`font-semibold ${data.zerosThisMonth > ZERO_LIMIT ? 'text-destructive' : ''}`}>
+                                            {data.zerosThisMonth} / {ZERO_LIMIT}
+                                        </span>
                                     </div>
-                                </ScrollArea>
-                            ) : (
-                                <div className="h-full flex items-center justify-center px-6 pb-6">
-                                    <p className="text-sm text-muted-foreground">Nenhuma notificação recente.</p>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Progress value={Math.min(zeroProgress, 100)} aria-label={`${data.zerosThisMonth} de ${ZERO_LIMIT} zeros permitidos`} className="h-2" />
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                            <p>{data.zerosThisMonth > ZERO_LIMIT ? 'Limite de zeros excedido para bônus máximo.' : `${ZERO_LIMIT - data.zerosThisMonth} zero(s) restantes para o bônus máximo.`}</p>
+                                        </TooltipContent>
+                                    </Tooltip>
                                 </div>
-                            )}
-                        </CardContent>
-                         <CardFooter className="border-t pt-4">
-                            {/* TODO: Implement link/modal to see all notifications */}
-                            <Button variant="ghost" size="sm" className="w-full" disabled>Ver Todas Notificações</Button>
-                        </CardFooter>
-                    </Card>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm font-medium">Projeção de Bônus Mensal</span>
+                                    <span className="text-lg font-bold text-green-600">R$ {data.projectedBonus.toFixed(2)}</span>
+                                </div>
+                            </CardContent>
+                            <CardFooter>
+                                 <p className="text-xs text-muted-foreground">A projeção é baseada no desempenho atual e pode mudar. O bônus final é calculado no fechamento do mês.</p>
+                            </CardFooter>
+                        </Card>
 
-                    {/* Quick Links / Actions */}
-                     <Card>
-                         <CardHeader>
-                            <CardTitle>Ações Rápidas</CardTitle>
-                         </CardHeader>
-                        <CardContent className="grid gap-2">
-                             {/* Link to history page */}
-                            <Link href="/colaborador/avaliacoes" passHref>
-                                <Button variant="outline" className="w-full">Ver Meu Histórico Completo</Button>
-                            </Link>
-                             {/* Link to ranking page */}
-                            <Link href="/colaborador/ranking" passHref>
-                                <Button variant="outline" className="w-full">Consultar Meu Ranking</Button>
-                            </Link>
-                            {/* Add more relevant actions */}
-                        </CardContent>
-                    </Card>
+                        {/* Tasks for Today */}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2"><CalendarCheck className="h-5 w-5" /> Tarefas de Hoje</CardTitle>
+                                <CardDescription>Suas tarefas do checklist para avaliação hoje.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                {data.tasksToday.length > 0 ? (
+                                    <ul className="space-y-2 text-sm text-muted-foreground">
+                                        {data.tasksToday.map(task => (
+                                             <li key={task.id} className="flex items-center justify-between p-2 border rounded-md bg-muted/30">
+                                                 <span>{task.title}</span>
+                                                 <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                         <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground">
+                                                            <Info className="h-4 w-4" />
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="top" className="max-w-[250px]">
+                                                        <p className="font-semibold">Critério (Nota 10):</p>
+                                                        <p className="text-xs">{task.criteria}</p>
+                                                    </TooltipContent>
+                                                 </Tooltip>
+                                             </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground text-center py-4">Nenhuma tarefa específica do checklist para você hoje.</p>
+                                )}
+                            </CardContent>
+                        </Card>
+
+                        {/* Active Challenges */}
+                         <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2"><Target className="h-5 w-5" /> Desafios Ativos</CardTitle>
+                                <CardDescription>Participe e ganhe pontos extras!</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                {data.activeChallenges.length > 0 ? (
+                                    <ul className="space-y-3">
+                                        {data.activeChallenges.map(challenge => (
+                                            <li key={challenge.id} className="border rounded-md p-3 hover:bg-muted/30 transition-colors">
+                                                <div className="flex justify-between items-start mb-1">
+                                                    <h4 className="font-semibold">{challenge.title}</h4>
+                                                    <Badge variant="outline">{challenge.points} pts</Badge>
+                                                </div>
+                                                <p className="text-xs text-muted-foreground mb-2">{challenge.description.substring(0, 80)}...</p>
+                                                <div className="flex justify-between items-center text-xs text-muted-foreground">
+                                                    <span>Termina em: {format(parseISO(challenge.periodEndDate), 'dd/MM/yyyy')}</span>
+                                                    {/* Link to challenge details page */}
+                                                    <Link href="/colaborador/desafios" passHref>
+                                                       <Button variant="link" size="sm" className="p-0 h-auto text-accent">Ver Detalhes</Button>
+                                                    </Link>
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground text-center py-4">Nenhum desafio ativo para você no momento.</p>
+                                )}
+                            </CardContent>
+                             <CardFooter>
+                                 {/* Link to challenges page */}
+                                 <Link href="/colaborador/desafios" passHref>
+                                    <Button variant="secondary" size="sm">Ver Todos Desafios</Button>
+                                 </Link>
+                            </CardFooter>
+                        </Card>
+                    </div>
+
+                    {/* Right Column */}
+                    <div className="lg:col-span-1 space-y-4 md:space-y-6">
+                        {/* Notifications Card */}
+                        <Card className="max-h-[400px] flex flex-col"> {/* Limit height */}
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" /> Notificações Recentes</CardTitle>
+                            </CardHeader>
+                            <CardContent className="flex-grow overflow-hidden p-0"> {/* Allow content to grow and hide overflow */}
+                                {data.recentNotifications.length > 0 ? (
+                                     <ScrollArea className="h-full px-6 pb-6"> {/* Scroll area for content */}
+                                        <div className="space-y-4">
+                                            {data.recentNotifications.map(notification => (
+                                                <div key={notification.id} className="flex items-start gap-3">
+                                                     <div className="flex-shrink-0 pt-0.5">
+                                                        {getNotificationIcon(notification.type)}
+                                                    </div>
+                                                    <div className="flex-grow">
+                                                        <p className="text-sm">{notification.message}</p>
+                                                        <p className="text-xs text-muted-foreground">{format(notification.date, 'dd/MM HH:mm', { locale: ptBR })}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </ScrollArea>
+                                ) : (
+                                    <div className="h-full flex items-center justify-center px-6 pb-6">
+                                        <p className="text-sm text-muted-foreground">Nenhuma notificação recente.</p>
+                                    </div>
+                                )}
+                            </CardContent>
+                             <CardFooter className="border-t pt-4">
+                                {/* TODO: Implement link/modal to see all notifications */}
+                                <Button variant="ghost" size="sm" className="w-full" disabled>Ver Todas Notificações</Button>
+                            </CardFooter>
+                        </Card>
+
+                        {/* Quick Links / Actions */}
+                         <Card>
+                             <CardHeader>
+                                <CardTitle>Ações Rápidas</CardTitle>
+                             </CardHeader>
+                            <CardContent className="grid gap-2">
+                                 {/* Link to history page */}
+                                <Link href="/colaborador/avaliacoes" passHref>
+                                    <Button variant="outline" className="w-full">Ver Meu Histórico Completo</Button>
+                                </Link>
+                                 {/* Link to ranking page */}
+                                <Link href="/colaborador/ranking" passHref>
+                                    <Button variant="outline" className="w-full">Consultar Meu Ranking</Button>
+                                </Link>
+                                {/* Add more relevant actions */}
+                            </CardContent>
+                        </Card>
+                    </div>
                 </div>
-            </div>
-        </TooltipProvider>
+            </TooltipProvider>
+        </EmployeeLayout>
     );
 }
