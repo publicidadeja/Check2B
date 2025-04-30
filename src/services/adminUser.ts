@@ -15,9 +15,9 @@ export interface AdminUser {
 
 // In-memory store for mock data (replace with actual database interactions)
 let mockAdmins: AdminUser[] = [
-    { id: 'admin1', name: 'Admin Principal', email: 'admin@checkinbonus.com', isActive: true, lastLogin: '2024-07-27 10:00' },
-    { id: 'admin2', name: 'Supervisor RH', email: 'rh.supervisor@checkinbonus.com', isActive: true },
-    { id: 'admin3', name: 'Gerente Vendas', email: 'vendas.gerente@checkinbonus.com', isActive: false },
+    { id: 'admin1', name: 'Admin Principal', email: 'admin@check2b.com', isActive: true, lastLogin: '2024-07-27 10:00' },
+    { id: 'admin2', name: 'Supervisor RH', email: 'rh.supervisor@check2b.com', isActive: true },
+    { id: 'admin3', name: 'Gerente Vendas', email: 'vendas.gerente@check2b.com', isActive: false },
 ];
 
 // --- Mock API Functions ---

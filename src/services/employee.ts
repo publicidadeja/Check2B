@@ -41,7 +41,7 @@ let mockEmployees: Employee[] = [
       name: 'João Silva',
       department: 'Engenharia',
       role: 'Engenheiro de Software Pleno',
-      email: 'joao.silva@checkinbonus.com',
+      email: 'joao.silva@check2b.com',
       admissionDate: '2023-05-20'
     },
     {
@@ -49,7 +49,7 @@ let mockEmployees: Employee[] = [
       name: 'Maria Oliveira',
       department: 'Vendas',
       role: 'Executiva de Contas',
-      email: 'maria.oliveira@checkinbonus.com',
+      email: 'maria.oliveira@check2b.com',
       admissionDate: '2022-11-10'
     },
      {
@@ -64,7 +64,7 @@ let mockEmployees: Employee[] = [
       name: 'Ana Costa',
       department: 'RH',
       role: 'Analista de Recrutamento',
-       email: 'ana.costa@checkinbonus.com',
+       email: 'ana.costa@check2b.com',
     },
 ];
 

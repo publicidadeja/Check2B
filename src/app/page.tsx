@@ -7,7 +7,7 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-24">
-      <h1 className="text-4xl font-bold">CheckInBonus</h1>
+      <h1 className="text-4xl font-bold">Check2B</h1>
       <p className="mt-4 text-lg text-muted-foreground">
         Sistema de Avaliação por Checklist Diário
       </p>
