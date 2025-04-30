@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Eye, UserX, UserCheck } from 'lucide-react';
+import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Eye, UserX, UserCheck, Loader2 } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -35,6 +35,8 @@ import {
 import { EmployeeForm } from '@/components/employee/employee-form';
 import type { Employee } from '@/types/employee';
 import { useToast } from '@/hooks/use-toast';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'; // Import Card components
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog'; // Import Dialog components
 
 // Mock data (simulated API response) - Manter nomes em português para consistência
 const mockEmployees: Employee[] = [
@@ -98,6 +100,68 @@ const toggleEmployeeStatus = async (employeeId: string): Promise<Employee | unde
 };
 
 
+// --- Employee Profile View Component ---
+interface EmployeeProfileViewProps {
+    employee: Employee | null;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+}
+
+function EmployeeProfileView({ employee, open, onOpenChange }: EmployeeProfileViewProps) {
+    if (!employee) return null;
+
+    const getInitials = (name: string) => {
+        if (!name) return '??';
+        return name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase();
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-[500px]">
+                <DialogHeader className="items-center text-center">
+                     <Avatar className="h-24 w-24 mb-3">
+                       <AvatarImage src={employee.photoUrl} alt={employee.name} />
+                       <AvatarFallback className="text-3xl">{getInitials(employee.name)}</AvatarFallback>
+                     </Avatar>
+                    <DialogTitle className="text-2xl">{employee.name}</DialogTitle>
+                    <DialogDescription>{employee.role} - {employee.department}</DialogDescription>
+                    <Badge variant={employee.isActive ? 'default' : 'secondary'} className={`mt-1 ${employee.isActive ? 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/50 dark:text-green-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'}`}>
+                        {employee.isActive ? 'Ativo' : 'Inativo'}
+                    </Badge>
+                </DialogHeader>
+                <div className="py-4 space-y-3 px-6">
+                    <div className="flex justify-between">
+                        <span className="text-muted-foreground">Email:</span>
+                        <span className="font-medium">{employee.email}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-muted-foreground">Telefone:</span>
+                        <span className="font-medium">{employee.phone || '-'}</span>
+                    </div>
+                     <div className="flex justify-between">
+                        <span className="text-muted-foreground">Admissão:</span>
+                        <span className="font-medium">
+                            {employee.admissionDate ? new Date(employee.admissionDate + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
+                        </span>
+                    </div>
+                    {/* Add more profile details here - performance, history links etc. */}
+                     <div className="pt-4 text-center">
+                        {/* Placeholder for actions like 'View Performance History' */}
+                        <Button variant="outline" size="sm" disabled>Ver Histórico de Desempenho</Button>
+                    </div>
+                </div>
+                 <DialogFooter className="sm:justify-center">
+                     <DialogClose asChild>
+                        <Button type="button" variant="secondary">Fechar</Button>
+                    </DialogClose>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+
+// --- Main Page Component ---
 export default function EmployeesPage() {
   const [employees, setEmployees] = React.useState<Employee[]>([]);
   const [filteredEmployees, setFilteredEmployees] = React.useState<Employee[]>([]);
@@ -107,6 +171,9 @@ export default function EmployeesPage() {
   const [isFormOpen, setIsFormOpen] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [employeeToDelete, setEmployeeToDelete] = React.useState<Employee | null>(null);
+  const [isProfileViewOpen, setIsProfileViewOpen] = React.useState(false);
+  const [employeeToView, setEmployeeToView] = React.useState<Employee | null>(null);
+
 
   const { toast } = useToast();
 
@@ -144,7 +211,6 @@ export default function EmployeesPage() {
          ? { ...selectedEmployee, ...data }
          : data;
 
-     // Ensure admissionDate is correctly formatted (string YYYY-MM-DD)
      const payload = {
          ...employeeDataToSave,
          admissionDate: employeeDataToSave.admissionDate instanceof Date
@@ -156,7 +222,7 @@ export default function EmployeesPage() {
         await saveEmployee(payload);
         setIsFormOpen(false);
         setSelectedEmployee(null);
-        await loadEmployees(); // Refresh list
+        await loadEmployees();
          toast({
              title: "Sucesso!",
              description: `Colaborador ${selectedEmployee ? 'atualizado' : 'cadastrado'} com sucesso.`,
@@ -214,6 +280,11 @@ export default function EmployeesPage() {
     setIsFormOpen(true);
   };
 
+    const openProfileView = (employee: Employee) => {
+        setEmployeeToView(employee);
+        setIsProfileViewOpen(true);
+    };
+
    const getInitials = (name: string) => {
      if (!name) return '??';
      return name
@@ -226,104 +297,115 @@ export default function EmployeesPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between mb-4">
-        <div className="relative w-full max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Buscar por nome, email, departamento..."
-            className="pl-8"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-         {/* Trigger Adicionar Colaborador */}
-         <Button onClick={openAddForm}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Adicionar Colaborador
-         </Button>
-      </div>
+        <Card>
+            <CardHeader>
+                 <CardTitle className="flex items-center gap-2">
+                     <Users className="h-5 w-5" /> Gestão de Colaboradores
+                 </CardTitle>
+                <CardDescription>Adicione, edite, visualize e gerencie os colaboradores da organização.</CardDescription>
+             </CardHeader>
+             <CardContent>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="relative w-full max-w-sm">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        type="search"
+                        placeholder="Buscar por nome, email, depto..."
+                        className="pl-8"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                    </div>
+                    <Button onClick={openAddForm}>
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Adicionar Colaborador
+                    </Button>
+                </div>
 
-      <div className="flex-grow overflow-auto rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[80px]">Foto</TableHead>
-              <TableHead>Nome</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Departamento</TableHead>
-              <TableHead>Função</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Ações</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center py-10">
-                  Carregando colaboradores...
-                </TableCell>
-              </TableRow>
-            ) : filteredEmployees.length === 0 ? (
-               <TableRow>
-                  <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
-                    Nenhum colaborador encontrado.
-                  </TableCell>
-              </TableRow>
-             ) : (
-              filteredEmployees.map((employee) => (
-                <TableRow key={employee.id}>
-                  <TableCell>
-                     <Avatar className="h-9 w-9">
-                       <AvatarImage src={employee.photoUrl} alt={employee.name} />
-                       <AvatarFallback>{getInitials(employee.name)}</AvatarFallback>
-                     </Avatar>
-                  </TableCell>
-                  <TableCell className="font-medium">{employee.name}</TableCell>
-                  <TableCell>{employee.email}</TableCell>
-                  <TableCell>{employee.department}</TableCell>
-                  <TableCell>{employee.role}</TableCell>
-                  <TableCell>
-                    <Badge variant={employee.isActive ? 'default' : 'secondary'} className={employee.isActive ? 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/50 dark:text-green-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'}>
-                      {employee.isActive ? 'Ativo' : 'Inativo'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                          <span className="sr-only">Abrir menu</span>
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                        <DropdownMenuItem onClick={() => alert(`Visualizar ${employee.name}`)}>
-                          <Eye className="mr-2 h-4 w-4" />
-                          Visualizar Perfil
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => openEditForm(employee)}>
-                          <Edit className="mr-2 h-4 w-4" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleToggleStatus(employee)}>
-                          {employee.isActive ? <UserX className="mr-2 h-4 w-4" /> : <UserCheck className="mr-2 h-4 w-4" />}
-                          {employee.isActive ? 'Desativar' : 'Ativar'}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => handleDeleteClick(employee)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Remover
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                <div className="rounded-md border">
+                    <Table>
+                    <TableHeader>
+                        <TableRow>
+                        <TableHead className="w-[80px]">Foto</TableHead>
+                        <TableHead>Nome</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Departamento</TableHead>
+                        <TableHead>Função</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {isLoading ? (
+                        <TableRow>
+                            <TableCell colSpan={7} className="text-center py-10">
+                                <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
+                                Carregando colaboradores...
+                            </TableCell>
+                        </TableRow>
+                        ) : filteredEmployees.length === 0 ? (
+                        <TableRow>
+                            <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                                Nenhum colaborador encontrado.
+                            </TableCell>
+                        </TableRow>
+                        ) : (
+                        filteredEmployees.map((employee) => (
+                            <TableRow key={employee.id}>
+                            <TableCell>
+                                <Avatar className="h-9 w-9">
+                                <AvatarImage src={employee.photoUrl} alt={employee.name} />
+                                <AvatarFallback>{getInitials(employee.name)}</AvatarFallback>
+                                </Avatar>
+                            </TableCell>
+                            <TableCell className="font-medium">{employee.name}</TableCell>
+                            <TableCell>{employee.email}</TableCell>
+                            <TableCell>{employee.department}</TableCell>
+                            <TableCell>{employee.role}</TableCell>
+                            <TableCell>
+                                <Badge variant={employee.isActive ? 'default' : 'secondary'} className={employee.isActive ? 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/50 dark:text-green-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'}>
+                                {employee.isActive ? 'Ativo' : 'Inativo'}
+                                </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                                <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" className="h-8 w-8 p-0">
+                                    <span className="sr-only">Abrir menu</span>
+                                    <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                                    <DropdownMenuItem onClick={() => openProfileView(employee)}>
+                                    <Eye className="mr-2 h-4 w-4" />
+                                    Visualizar Perfil
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => openEditForm(employee)}>
+                                    <Edit className="mr-2 h-4 w-4" />
+                                    Editar
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleToggleStatus(employee)}>
+                                    {employee.isActive ? <UserX className="mr-2 h-4 w-4" /> : <UserCheck className="mr-2 h-4 w-4" />}
+                                    {employee.isActive ? 'Desativar' : 'Ativar'}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => handleDeleteClick(employee)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Remover
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                                </DropdownMenu>
+                            </TableCell>
+                            </TableRow>
+                        ))
+                        )}
+                    </TableBody>
+                    </Table>
+                </div>
+            </CardContent>
+        </Card>
+
 
        {/* Formulário de Colaborador (Dialog) */}
        <EmployeeForm
@@ -333,19 +415,27 @@ export default function EmployeesPage() {
             onOpenChange={setIsFormOpen}
         />
 
+        {/* Visualização de Perfil (Dialog) */}
+        <EmployeeProfileView
+            employee={employeeToView}
+            open={isProfileViewOpen}
+            onOpenChange={setIsProfileViewOpen}
+        />
+
+
        {/* Confirmação de Remoção (AlertDialog) */}
        <AlertDialog open={isDeleting} onOpenChange={setIsDeleting}>
             <AlertDialogContent>
                 <AlertDialogHeader>
                 <AlertDialogTitle>Confirmar Remoção</AlertDialogTitle>
                 <AlertDialogDescription>
-                    Tem certeza que deseja remover o colaborador "{employeeToDelete?.name}"? Esta ação não pode ser desfeita.
+                    Tem certeza que deseja remover o colaborador "{employeeToDelete?.name}"? Esta ação não pode ser desfeita e removerá todos os dados associados.
                 </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                 <AlertDialogCancel onClick={() => setEmployeeToDelete(null)}>Cancelar</AlertDialogCancel>
                 <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                    Remover
+                    Remover Definitivamente
                 </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
