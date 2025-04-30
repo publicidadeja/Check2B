@@ -5,7 +5,7 @@ import { format } from 'date-fns'; // Import date-fns format
 import { ptBR } from 'date-fns/locale'; // Import ptBR locale
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
-import { Trophy, Cog, History, Award as AwardIcon, Crown, Medal, BarChartHorizontal, Loader2 } from "lucide-react";
+import { Trophy, Cog, History, Award as AwardIcon, Crown, Medal, BarChartHorizontal, Loader2, ListFilter } from "lucide-react";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,6 +22,16 @@ import { useForm, Controller } from 'react-hook-form'; // Import useForm and Con
 import { zodResolver } from '@hookform/resolvers/zod'; // Import zodResolver
 import * as z from 'zod'; // Import zod
 import type { ColumnDef } from "@tanstack/react-table"; // If using Tanstack Table
+import { Switch } from '@/components/ui/switch'; // Import Switch
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem, // Import FormItem
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 
 // Mock Data Types (replace with actual types)
 interface Award {
@@ -354,145 +364,204 @@ const AwardConfiguration = () => {
                     <Separator />
 
                     {/* Form to add new award using react-hook-form */}
-                    <h3 className="font-medium pt-4">Adicionar/Editar Premiação</h3>
-                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
-                        {/* Title */}
-                         <div className="space-y-1">
-                            <Label htmlFor="awardTitle">Título da Premiação</Label>
-                            <Input id="awardTitle" placeholder="Ex: Colaborador do Mês" {...register("title")} />
-                             {errors.title && <p className="text-sm text-destructive">{errors.title.message}</p>}
-                         </div>
-                         {/* Description */}
-                         <div className="space-y-1">
-                            <Label htmlFor="awardDesc">Descrição</Label>
-                            <Textarea id="awardDesc" placeholder="Detalhes da premiação..." {...register("description")} />
-                             {errors.description && <p className="text-sm text-destructive">{errors.description.message}</p>}
-                         </div>
-                         {/* Monetary and Non-Monetary Values */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                                <Label htmlFor="awardValue">Valor Monetário (R$)</Label>
-                                <Input id="awardValue" type="number" placeholder="Ex: 500.00" step="0.01" {...register("monetaryValue")} />
-                                {errors.monetaryValue && <p className="text-sm text-destructive">{errors.monetaryValue.message}</p>}
-                            </div>
-                            <div className="space-y-1">
-                                <Label htmlFor="awardNonValue">Prêmio Não-Monetário</Label>
-                                <Input id="awardNonValue" placeholder="Ex: Folga adicional, Troféu" {...register("nonMonetaryValue")} />
-                                {errors.nonMonetaryValue && <p className="text-sm text-destructive">{errors.nonMonetaryValue.message}</p>}
-                            </div>
-                        </div>
-                         {/* Image URL */}
-                        <div className="space-y-1">
-                            <Label htmlFor="imageUrl">URL da Imagem (Opcional)</Label>
-                            <Input id="imageUrl" placeholder="https://..." {...register("imageUrl")} />
-                            {errors.imageUrl && <p className="text-sm text-destructive">{errors.imageUrl.message}</p>}
-                        </div>
-
-                        {/* Period (Recurring / Specific Month) */}
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                             <Controller
-                                name="isRecurring"
+                     <Form {...form}>
+                        <h3 className="font-medium pt-4">Adicionar/Editar Premiação</h3>
+                        <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
+                            {/* Title */}
+                            <FormField
                                 control={control}
-                                render={({ field }) => (
-                                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm h-[40px]">
-                                        <Label htmlFor="isRecurringSwitch">É Recorrente Mensal?</Label>
-                                        <Switch
-                                            id="isRecurringSwitch"
-                                            checked={field.value}
-                                            onCheckedChange={field.onChange}
-                                        />
-                                    </FormItem>
-                                )}
-                            />
-                             {!isRecurring && (
-                                 <Controller
-                                    name="specificMonth"
-                                    control={control}
-                                    render={({ field }) => (
-                                         <FormItem className="flex flex-col">
-                                            <Label>Mês Específico</Label>
-                                                <DatePicker
-                                                    date={field.value}
-                                                    setDate={field.onChange}
-                                                    placeholder="Selecione o mês"
-                                                />
-                                            {errors.specificMonth && <p className="text-sm text-destructive">{errors.specificMonth.message}</p>}
-                                         </FormItem>
-                                    )}
-                                />
-                            )}
-                         </div>
-                          {/* Winner Count */}
-                          <div className="space-y-1">
-                                <Label htmlFor="awardWinners">Nº de Ganhadores</Label>
-                                <Input id="awardWinners" type="number" defaultValue="1" min="1" {...register("winnerCount")} />
-                                {errors.winnerCount && <p className="text-sm text-destructive">{errors.winnerCount.message}</p>}
-                                {/* TODO: Add fields for different values per position if winnerCount > 1 */}
-                            </div>
-
-                         {/* Eligibility Criteria */}
-                         <Controller
-                            name="eligibilityCriteria"
-                            control={control}
-                            render={({ field }) => (
-                                <FormItem className="flex flex-row items-center space-x-2 pt-2">
-                                    <Checkbox
-                                        id="eligibility"
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                    />
-                                    <Label htmlFor="eligibility" className="text-sm font-normal">Exigir avaliação de excelência para elegibilidade?</Label>
-                                </FormItem>
-                            )}
-                        />
-                         {/* Eligible Departments */}
-                          <Controller
-                                name="eligibleDepartments"
-                                control={control}
+                                name="title"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <Label>Departamentos Elegíveis</Label>
-                                        {/* This needs a multi-select component. Using Checkboxes for demo */}
-                                        <div className="flex flex-wrap gap-4 p-2 border rounded-md">
-                                            <div className="flex items-center space-x-2">
-                                                <Checkbox
-                                                    id="dept-all"
-                                                    checked={field.value?.includes('all')}
-                                                    onCheckedChange={(checked) => {
-                                                        field.onChange(checked ? ['all'] : []);
-                                                    }}
-                                                />
-                                                <Label htmlFor="dept-all" className="font-normal">Todos</Label>
-                                            </div>
-                                            {mockDepartments.map(dept => (
-                                                <div key={dept} className="flex items-center space-x-2">
-                                                    <Checkbox
-                                                        id={`dept-${dept}`}
-                                                        checked={field.value?.includes(dept)}
-                                                        onCheckedChange={(checked) => {
-                                                            const currentSelection = field.value?.filter(d => d !== 'all') || [];
-                                                            const newSelection = checked
-                                                                ? [...currentSelection, dept]
-                                                                : currentSelection.filter(d => d !== dept);
-                                                            field.onChange(newSelection.length === 0 ? [] : newSelection);
-                                                        }}
-                                                        disabled={field.value?.includes('all')}
-                                                    />
-                                                    <Label htmlFor={`dept-${dept}`} className="font-normal">{dept}</Label>
-                                                </div>
-                                            ))}
-                                        </div>
-                                         {errors.eligibleDepartments && <p className="text-sm text-destructive">{errors.eligibleDepartments.message}</p>}
+                                        <FormLabel>Título da Premiação</FormLabel>
+                                        <FormControl>
+                                            <Input placeholder="Ex: Colaborador do Mês" {...field} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                             {/* Description */}
+                            <FormField
+                                control={control}
+                                name="description"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Descrição</FormLabel>
+                                        <FormControl>
+                                            <Textarea placeholder="Detalhes da premiação..." {...field} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                             {/* Monetary and Non-Monetary Values */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                 <FormField
+                                    control={control}
+                                    name="monetaryValue"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Valor Monetário (R$)</FormLabel>
+                                            <FormControl>
+                                                <Input type="number" placeholder="Ex: 500.00" step="0.01" {...field} onChange={event => field.onChange(+event.target.value)} />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={control}
+                                    name="nonMonetaryValue"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Prêmio Não-Monetário</FormLabel>
+                                            <FormControl>
+                                                <Input placeholder="Ex: Folga adicional, Troféu" {...field} />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </div>
+                             {/* Image URL */}
+                             <FormField
+                                control={control}
+                                name="imageUrl"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>URL da Imagem (Opcional)</FormLabel>
+                                        <FormControl>
+                                            <Input placeholder="https://..." {...field} />
+                                        </FormControl>
+                                        <FormMessage />
                                     </FormItem>
                                 )}
                             />
 
+                            {/* Period (Recurring / Specific Month) */}
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                                 <FormField
+                                    control={control}
+                                    name="isRecurring"
+                                    render={({ field }) => (
+                                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm h-[40px]">
+                                            <Label htmlFor="isRecurringSwitch">É Recorrente Mensal?</Label>
+                                             <FormControl>
+                                                <Switch
+                                                    id="isRecurringSwitch"
+                                                    checked={field.value}
+                                                    onCheckedChange={field.onChange}
+                                                />
+                                            </FormControl>
+                                        </FormItem>
+                                    )}
+                                />
+                                 {!isRecurring && (
+                                     <FormField
+                                        control={control}
+                                        name="specificMonth"
+                                        render={({ field }) => (
+                                             <FormItem className="flex flex-col">
+                                                <FormLabel>Mês Específico</FormLabel>
+                                                <FormControl>
+                                                    <DatePicker
+                                                        date={field.value}
+                                                        setDate={field.onChange}
+                                                        placeholder="Selecione o mês"
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                             </FormItem>
+                                        )}
+                                    />
+                                )}
+                             </div>
+                              {/* Winner Count */}
+                              <FormField
+                                control={control}
+                                name="winnerCount"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Nº de Ganhadores</FormLabel>
+                                        <FormControl>
+                                            <Input type="number" defaultValue="1" min="1" {...field} onChange={event => field.onChange(+event.target.value)} />
+                                        </FormControl>
+                                        <FormMessage />
+                                        {/* TODO: Add fields for different values per position if winnerCount > 1 */}
+                                    </FormItem>
+                                )}
+                             />
 
-                         <Button type="submit" disabled={isSaving}>
-                            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            {isSaving ? 'Salvando...' : 'Salvar Premiação'}
-                         </Button>
-                    </form>
+                             {/* Eligibility Criteria */}
+                             <FormField
+                                control={control}
+                                name="eligibilityCriteria"
+                                render={({ field }) => (
+                                    <FormItem className="flex flex-row items-center space-x-2 pt-2">
+                                        <FormControl>
+                                            <Checkbox
+                                                id="eligibility"
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                            />
+                                        </FormControl>
+                                        <FormLabel htmlFor="eligibility" className="text-sm font-normal">Exigir avaliação de excelência para elegibilidade?</FormLabel>
+                                    </FormItem>
+                                )}
+                             />
+
+                             {/* Eligible Departments */}
+                              <FormField
+                                    control={control}
+                                    name="eligibleDepartments"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Departamentos Elegíveis</FormLabel>
+                                            {/* This needs a multi-select component. Using Checkboxes for demo */}
+                                            <FormControl>
+                                                <div className="flex flex-wrap gap-4 p-2 border rounded-md">
+                                                    <div className="flex items-center space-x-2">
+                                                        <Checkbox
+                                                            id="dept-all"
+                                                            checked={field.value?.includes('all')}
+                                                            onCheckedChange={(checked) => {
+                                                                field.onChange(checked ? ['all'] : []);
+                                                            }}
+                                                        />
+                                                        <Label htmlFor="dept-all" className="font-normal">Todos</Label>
+                                                    </div>
+                                                    {mockDepartments.map(dept => (
+                                                        <div key={dept} className="flex items-center space-x-2">
+                                                            <Checkbox
+                                                                id={`dept-${dept}`}
+                                                                checked={field.value?.includes(dept)}
+                                                                onCheckedChange={(checked) => {
+                                                                    const currentSelection = field.value?.filter(d => d !== 'all') || [];
+                                                                    const newSelection = checked
+                                                                        ? [...currentSelection, dept]
+                                                                        : currentSelection.filter(d => d !== dept);
+                                                                    field.onChange(newSelection.length === 0 ? [] : newSelection);
+                                                                }}
+                                                                disabled={field.value?.includes('all')}
+                                                            />
+                                                            <Label htmlFor={`dept-${dept}`} className="font-normal">{dept}</Label>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+
+                             <Button type="submit" disabled={isSaving}>
+                                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                {isSaving ? 'Salvando...' : 'Salvar Premiação'}
+                             </Button>
+                        </form>
+                    </Form>
 
                 </CardContent>
             </Card>
