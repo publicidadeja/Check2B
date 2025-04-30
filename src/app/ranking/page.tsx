@@ -1,7 +1,8 @@
+
 'use client';
 
 import * as React from 'react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns'; // Added parseISO
 import { ptBR } from 'date-fns/locale';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
@@ -146,6 +147,9 @@ const mockHistory: AwardHistoryEntry[] = [
     { id: 'hist2', period: '2024-06', awardTitle: 'Colaborador do Mês', winners: [{ rank: 1, employeeName: 'Alice Silva', prize: 'R$ 500,00' }], deliveryPhotoUrl: 'https://picsum.photos/seed/award6/200/100' },
 ];
 
+// Mock list of departments for the selector
+const mockDepartments = ['RH', 'Engenharia', 'Marketing', 'Vendas', 'Operações'];
+
 // Mock API functions (basic CRUD for Awards)
 const fetchAwards = async (): Promise<Award[]> => {
     await new Promise(resolve => setTimeout(resolve, 500));
@@ -189,6 +193,76 @@ const deleteAward = async (awardId: string): Promise<void> => {
     }
 }
 
+// Mock function to fetch ranking data (replace with actual API)
+const fetchRankingData = async (period: Date): Promise<RankingEntry[]> => {
+    await new Promise(resolve => setTimeout(resolve, 800));
+    // Simulate data changing slightly based on period (very basic simulation)
+    const monthFactor = period.getMonth() + 1;
+    return mockRanking.map(entry => ({
+        ...entry,
+        score: Math.max(800, entry.score + (monthFactor * 5 - 20)), // Simulate slight score change
+        zeros: Math.max(0, entry.zeros + (Math.random() > 0.7 ? 1 : 0) - (Math.random() > 0.8 ? 1 : 0)), // Simulate zero changes
+    })).sort((a, b) => b.score - a.score || a.zeros - b.zeros) // Sort by score desc, then zeros asc
+      .map((entry, index) => ({ ...entry, rank: index + 1 })); // Recalculate rank
+}
+
+// Mock function to fetch award history (replace with actual API)
+const fetchAwardHistory = async (): Promise<AwardHistoryEntry[]> => {
+     await new Promise(resolve => setTimeout(resolve, 600));
+     return [...mockHistory].sort((a, b) => parseISO(b.period + '-01').getTime() - parseISO(a.period + '-01').getTime()); // Sort by period desc
+}
+
+// Mock function to confirm winners (replace with actual API)
+const confirmWinners = async (period: string, awardId: string, winners: RankingEntry[]): Promise<AwardHistoryEntry> => {
+     await new Promise(resolve => setTimeout(resolve, 1000));
+     const award = mockAwards.find(a => a.id === awardId);
+     if (!award) throw new Error("Premiação não encontrada.");
+
+     const historyEntry: AwardHistoryEntry = {
+         id: `hist${Date.now()}`,
+         period: period,
+         awardTitle: award.title,
+         winners: winners.slice(0, award.winnerCount).map(winner => ({
+             rank: winner.rank,
+             employeeName: winner.employeeName,
+             prize: award.valuesPerPosition?.[winner.rank]?.monetary
+                 ? `R$ ${award.valuesPerPosition[winner.rank]?.monetary?.toFixed(2)}`
+                 : award.valuesPerPosition?.[winner.rank]?.nonMonetary
+                 ? award.valuesPerPosition[winner.rank]?.nonMonetary ?? ''
+                 : award.monetaryValue ? `R$ ${award.monetaryValue.toFixed(2)}` : award.nonMonetaryValue || 'Prêmio Indefinido'
+         })),
+     };
+     mockHistory.unshift(historyEntry); // Add to beginning
+     console.log("Vencedores confirmados e histórico atualizado:", historyEntry);
+     return historyEntry;
+}
+
+// Mock function to export data (replace with actual implementation)
+const exportData = (data: any[], filename: string) => {
+     if (data.length === 0) {
+        alert("Não há dados para exportar.");
+        return;
+     }
+     // Basic CSV export simulation
+     const header = Object.keys(data[0]).join(',');
+     const rows = data.map(row => Object.values(row).map(val => `"${String(val).replace(/"/g, '""')}"`).join(','));
+     const csvContent = `data:text/csv;charset=utf-8,${header}\n${rows.join('\n')}`;
+     const encodedUri = encodeURI(csvContent);
+     const link = document.createElement("a");
+     link.setAttribute("href", encodedUri);
+     link.setAttribute("download", `${filename}.csv`);
+     document.body.appendChild(link);
+     link.click();
+     document.body.removeChild(link);
+}
+
+
+// Helper: Get Initials
+const getInitials = (name?: string) => {
+    if (!name) return '??';
+    return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+}
+
 
 // DataTable Columns definition (for ranking)
 const rankingColumns: ColumnDef<RankingEntry>[] = [
@@ -213,7 +287,7 @@ const rankingColumns: ColumnDef<RankingEntry>[] = [
             <div className="flex items-center gap-2">
                 <Avatar className="h-8 w-8">
                     <AvatarImage src={row.original.employeePhotoUrl} alt={row.original.employeeName} />
-                    <AvatarFallback>{row.original.employeeName?.split(' ').map(n => n[0]).slice(0, 2).join('') || '??'}</AvatarFallback>
+                    <AvatarFallback>{getInitials(row.original.employeeName)}</AvatarFallback>
                 </Avatar>
                 <span className="font-medium">{row.original.employeeName}</span>
             </div>
@@ -320,23 +394,34 @@ const awardColumns: ColumnDef<Award>[] = [
 // --- Component Sections ---
 
 const RankingDashboard = () => {
-    const [rankingData, setRankingData] = React.useState(mockRanking);
-    const [currentMonth] = React.useState(new Date());
-    const [isLoading, setIsLoading] = React.useState(true); // Add loading state
+    const [rankingData, setRankingData] = React.useState<RankingEntry[]>([]);
+    const [currentMonth, setCurrentMonth] = React.useState(new Date()); // Start with current month
+    const [isLoading, setIsLoading] = React.useState(true);
+    const [isConfirmingWinners, setIsConfirmingWinners] = React.useState(false);
+    const { toast } = useToast();
 
-     // Simulate fetching ranking data
-     React.useEffect(() => {
-         const timer = setTimeout(() => {
-             // In real app, fetch data here
-             setRankingData(mockRanking);
-             setIsLoading(false);
-         }, 800); // Simulate network delay
-         return () => clearTimeout(timer);
-     }, []);
-
+    // Fetch ranking data based on selected month
+    React.useEffect(() => {
+        const loadRanking = async () => {
+             setIsLoading(true);
+             try {
+                 const data = await fetchRankingData(currentMonth);
+                 setRankingData(data);
+             } catch (error) {
+                 console.error("Falha ao carregar ranking:", error);
+                 toast({ title: "Erro", description: "Não foi possível carregar o ranking.", variant: "destructive" });
+             } finally {
+                 setIsLoading(false);
+             }
+        };
+        loadRanking();
+    }, [currentMonth, toast]); // Reload when month changes
 
     const calculateRemainingDays = () => {
         const today = new Date();
+        if (today.getMonth() !== currentMonth.getMonth() || today.getFullYear() !== currentMonth.getFullYear()) {
+            return 0; // No remaining days if viewing past month
+        }
         const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
         const diffTime = Math.abs(endOfMonth.getTime() - today.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -345,16 +430,59 @@ const RankingDashboard = () => {
 
     const remainingDays = calculateRemainingDays();
     const activeAward = mockAwards.find(a => a.status === 'active' && (a.isRecurring || (a.specificMonth && a.specificMonth.getMonth() === currentMonth.getMonth() && a.specificMonth.getFullYear() === currentMonth.getFullYear())));
+    const isCurrentMonth = new Date().getMonth() === currentMonth.getMonth() && new Date().getFullYear() === currentMonth.getFullYear();
+    const canConfirmWinners = !isCurrentMonth && activeAward && rankingData.length > 0; // Can only confirm past months with an award and data
+
+    const handlePreviousMonth = () => {
+        setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+    };
+
+    const handleNextMonth = () => {
+         setCurrentMonth(prev => {
+             const next = new Date(prev.getFullYear(), prev.getMonth() + 1, 1);
+             // Prevent going to future months beyond the current one
+             return next <= new Date() ? next : prev;
+         });
+    };
+
+    const handleConfirmWinners = async () => {
+        if (!canConfirmWinners || !activeAward) return;
+        setIsConfirmingWinners(true);
+        try {
+            const periodStr = format(currentMonth, 'yyyy-MM');
+            await confirmWinners(periodStr, activeAward.id, rankingData);
+             toast({ title: "Sucesso!", description: `Vencedores para ${format(currentMonth, 'MMMM yyyy', { locale: ptBR })} confirmados.` });
+             // Optionally, disable confirm button after success for this period or refresh state
+        } catch (error) {
+            console.error("Erro ao confirmar vencedores:", error);
+            toast({ title: "Erro", description: "Falha ao confirmar vencedores.", variant: "destructive" });
+        } finally {
+            setIsConfirmingWinners(false);
+        }
+    };
+
+    const handleExportRanking = () => {
+         exportData(rankingData, `ranking_${format(currentMonth, 'yyyy-MM')}`);
+    }
 
 
     return (
         <div className="space-y-6">
             <Card>
                 <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <Trophy className="h-5 w-5" /> Ranking Atual - {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
-                    </CardTitle>
-                    <CardDescription>Visualização do desempenho dos colaboradores no mês corrente.</CardDescription>
+                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                        <div>
+                            <CardTitle className="flex items-center gap-2">
+                                <Trophy className="h-5 w-5" /> Ranking - {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
+                            </CardTitle>
+                            <CardDescription>Visualização do desempenho dos colaboradores.</CardDescription>
+                        </div>
+                         {/* Month Navigation */}
+                        <div className="flex items-center gap-2">
+                             <Button variant="outline" size="sm" onClick={handlePreviousMonth}>Anterior</Button>
+                             <Button variant="outline" size="sm" onClick={handleNextMonth} disabled={isCurrentMonth}>Próximo</Button>
+                        </div>
+                     </div>
                 </CardHeader>
                 <CardContent>
                      {isLoading ? (
@@ -374,7 +502,7 @@ const RankingDashboard = () => {
                                         {index === 2 && <Medal className="h-6 w-6 text-yellow-700 flex-shrink-0" />}
                                         <Avatar className="h-10 w-10">
                                             <AvatarImage src={emp.employeePhotoUrl} />
-                                            <AvatarFallback>{emp.employeeName?.split(' ').map(n => n[0]).slice(0, 2).join('') || '??'}</AvatarFallback>
+                                            <AvatarFallback>{getInitials(emp.employeeName)}</AvatarFallback>
                                         </Avatar>
                                         <div className="flex-1 min-w-0">
                                             <CardTitle className="text-base truncate">{emp.employeeName}</CardTitle>
@@ -396,25 +524,25 @@ const RankingDashboard = () => {
 
                         {/* Data Table */}
                         <DataTable columns={rankingColumns} data={rankingData} filterColumn='employeeName' filterPlaceholder="Filtrar por colaborador..."/>
-                        <p className="text-xs text-muted-foreground mt-4">*Ranking baseado nas avaliações diárias. Zeros impactam negativamente.</p>
+                        <p className="text-xs text-muted-foreground mt-4">*Ranking baseado nas avaliações diárias e desafios. Zeros impactam negativamente.</p>
                     </>
                     )}
                 </CardContent>
-            </Card>
-             <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><BarChartHorizontal className="h-5 w-5" /> Status da Premiação</CardTitle>
-                </CardHeader>
-                 <CardContent className="text-sm text-muted-foreground space-y-1">
-                    <p><strong>Período de Apuração:</strong> {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}</p>
-                    <p><strong>Premiação Vigente:</strong> {activeAward?.title || 'Nenhuma definida para o período'}</p>
-                    <p><strong>Dias Restantes:</strong> {remainingDays}</p>
-                     <div className="mt-4 flex gap-2">
-                         <Button size="sm" variant="outline" onClick={() => alert("Funcionalidade Exportar Ranking não implementada.")}>Exportar Ranking</Button>
-                         {/* Link/Button to navigate to Award configuration */}
-                         {/* Consider using Tabs API to switch */}
+                <CardFooter className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                    <div className="text-sm text-muted-foreground space-y-1">
+                        <p><strong>Premiação Vigente:</strong> {activeAward?.title || (isCurrentMonth ? 'Nenhuma ativa' : 'Nenhuma definida para o período')}</p>
+                         {isCurrentMonth && <p><strong>Dias Restantes:</strong> {remainingDays}</p>}
                      </div>
-                 </CardContent>
+                    <div className="flex gap-2">
+                         <Button size="sm" variant="outline" onClick={handleExportRanking} disabled={isLoading || rankingData.length === 0}>Exportar Ranking</Button>
+                         {canConfirmWinners && (
+                             <Button size="sm" onClick={handleConfirmWinners} disabled={isConfirmingWinners || isLoading}>
+                                 {isConfirmingWinners && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                                 Confirmar Vencedores
+                             </Button>
+                         )}
+                     </div>
+                 </CardFooter>
             </Card>
         </div>
     );
@@ -470,9 +598,6 @@ const AwardConfiguration = () => {
     const { control, watch, setValue, handleSubmit, reset } = form;
     const isRecurring = watch('isRecurring');
     // const eligibilityType = watch('eligibilityType'); // Assuming you add this field later
-
-     // Mock list of departments for the selector
-    const mockDepartments = ['RH', 'Engenharia', 'Marketing', 'Vendas', 'Operações'];
 
 
     const openAddForm = () => {
@@ -670,7 +795,15 @@ const AwardConfiguration = () => {
                                 <FormField control={control} name="winnerCount" render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Nº de Ganhadores</FormLabel>
-                                        <FormControl><Input type="number" defaultValue={1} min="1" {...field} onChange={event => field.onChange(+event.target.value)} /></FormControl>
+                                        <FormControl>
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                {...field} // Use spread syntax for field props
+                                                // Handle onChange specifically for coercion to number
+                                                onChange={event => field.onChange(+event.target.value)}
+                                            />
+                                         </FormControl>
                                         <FormMessage />
                                          {/* TODO: Add fields for different values per position if winnerCount > 1 */}
                                     </FormItem>
@@ -783,18 +916,31 @@ const AwardConfiguration = () => {
 
 
 const AwardHistory = () => {
-     const [history, setHistory] = React.useState(mockHistory);
+     const [history, setHistory] = React.useState<AwardHistoryEntry[]>([]);
      const [isLoading, setIsLoading] = React.useState(true);
+     const { toast } = useToast();
 
       // Simulate fetching history data
      React.useEffect(() => {
-         const timer = setTimeout(() => {
-             // In real app, fetch data here
-             setHistory(mockHistory);
-             setIsLoading(false);
-         }, 600); // Simulate network delay
-         return () => clearTimeout(timer);
-     }, []);
+        const loadHistory = async () => {
+            setIsLoading(true);
+            try {
+                const data = await fetchAwardHistory();
+                setHistory(data);
+            } catch (error) {
+                 console.error("Falha ao carregar histórico:", error);
+                 toast({ title: "Erro", description: "Não foi possível carregar o histórico de premiações.", variant: "destructive" });
+            } finally {
+                 setIsLoading(false);
+            }
+        };
+        loadHistory();
+     }, [toast]);
+
+     const handleExportHistory = () => {
+        exportData(history, 'historico_premiacoes');
+        toast({ title: "Sucesso", description: "Histórico exportado como CSV." });
+     };
 
 
     return (
@@ -844,7 +990,7 @@ const AwardHistory = () => {
                     )}
                 </CardContent>
                  <CardFooter>
-                    <Button variant="outline" onClick={() => alert("Funcionalidade Exportar Histórico não implementada.")} disabled={history.length === 0}>
+                    <Button variant="outline" onClick={handleExportHistory} disabled={isLoading || history.length === 0}>
                         <FileClock className="mr-2 h-4 w-4"/> Exportar Histórico
                     </Button>
                  </CardFooter>
@@ -863,11 +1009,21 @@ const AdvancedSettings = () => {
      const [publicView, setPublicView] = React.useState(true);
      const [notificationLevel, setNotificationLevel] = React.useState('significant');
 
+     // Simulate fetching settings
+     React.useEffect(() => {
+         // Replace with actual API call
+         console.log("Fetching advanced settings...");
+         // Example: const loadedSettings = await fetchAdvancedSettingsAPI();
+         // setTieBreaker(loadedSettings.tieBreaker); ... etc
+     }, []);
+
+
      const handleSaveSettings = async () => {
          setIsSaving(true);
          // Simulate API call
          console.log("Salvando configs:", { tieBreaker, includeProbation, publicView, notificationLevel });
          await new Promise(resolve => setTimeout(resolve, 1000));
+         // Example: await saveAdvancedSettingsAPI({ ... });
          toast({ title: "Sucesso", description: "Configurações avançadas salvas." });
          setIsSaving(false);
      }
@@ -964,3 +1120,5 @@ export default function RankingPage() {
     </div>
   );
 }
+
+    
