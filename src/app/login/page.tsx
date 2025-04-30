@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
-import { LogIn, Loader2 } from 'lucide-react';
+import { LogIn, Loader2, User } from 'lucide-react'; // Added User icon
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,7 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter, // Added CardFooter
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -29,6 +30,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { loginUser, setAuthCookie } from '@/lib/auth'; // Assuming auth functions exist
 import type { UserCredential } from 'firebase/auth'; // Assuming Firebase
+import { Separator } from '@/components/ui/separator'; // Added Separator
 
 const loginSchema = z.object({
   email: z.string().email({ message: 'Por favor, insira um email válido.' }),
@@ -65,7 +67,7 @@ export default function LoginPage() {
 
         toast({
           title: 'Login bem-sucedido!',
-          description: `Bem-vindo(a) de volta!`,
+          description: `Bem-vindo(a) de volta! Redirecionando...`,
         });
 
         // Redirect based on role
@@ -81,11 +83,32 @@ export default function LoginPage() {
     } catch (error: any) {
       console.error('Erro no login:', error);
       let errorMessage = 'Falha no login. Verifique suas credenciais.';
-      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-          errorMessage = 'Email ou senha inválidos.';
-      } else if (error.code === 'auth/too-many-requests') {
-          errorMessage = 'Muitas tentativas de login. Tente novamente mais tarde.';
-      }
+       // Handle specific Firebase auth errors
+       if (error.code) {
+         switch (error.code) {
+           case 'auth/invalid-credential':
+           case 'auth/user-not-found':
+           case 'auth/wrong-password':
+             errorMessage = 'Email ou senha inválidos.';
+             break;
+           case 'auth/too-many-requests':
+             errorMessage = 'Muitas tentativas de login. Tente novamente mais tarde.';
+             break;
+           case 'auth/network-request-failed':
+               errorMessage = 'Erro de rede. Verifique sua conexão com a internet.';
+               break;
+           case 'auth/invalid-api-key':
+               errorMessage = 'Erro de configuração (chave inválida). Contate o suporte.';
+               console.error("FIREBASE AUTH ERROR: Invalid API Key. Check .env configuration.");
+               break;
+           default:
+             console.warn(`Unhandled Firebase Auth error code: ${error.code}`);
+         }
+       } else if (error.message === "Firebase Auth is not initialized. Check configuration.") {
+         // Catch the specific initialization error from auth.ts
+         errorMessage = "Erro de configuração do servidor de autenticação. Contate o suporte.";
+       }
+
        toast({
         title: 'Erro no Login',
         description: errorMessage,
@@ -101,6 +124,17 @@ export default function LoginPage() {
       // router.push('/forgot-password'); // Example navigation
       toast({ title: "Funcionalidade Pendente", description: "Recuperação de senha ainda não implementada." });
   }
+
+  // Handler for Guest Login
+  const handleGuestLogin = () => {
+      toast({
+          title: "Acesso como Convidado",
+          description: "Entrando no painel do colaborador...",
+          duration: 2000, // Shorter duration for guest login
+      });
+      router.push('/colaborador/dashboard');
+  };
+
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
@@ -149,11 +183,6 @@ export default function LoginPage() {
                   </FormItem>
                 )}
               />
-               {/* Add "Remember Me" Checkbox if needed */}
-               {/* <div className="flex items-center space-x-2">
-                    <Checkbox id="remember-me" />
-                    <Label htmlFor="remember-me" className="text-sm font-normal">Lembrar de mim</Label>
-               </div> */}
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -164,15 +193,20 @@ export default function LoginPage() {
               </Button>
             </form>
           </Form>
-          {/* Optional: Add SSO options (Google, Microsoft) if applicable */}
-          {/* <div className="mt-4 text-center text-sm">
-            Ou entre com
-             <div className="flex justify-center gap-4 mt-2">
-                <Button variant="outline" size="icon"><IconGoogle /></Button>
-                <Button variant="outline" size="icon"><IconMicrosoft /></Button>
-            </div>
-          </div> */}
         </CardContent>
+         {/* Guest Login Section */}
+        <CardFooter className="flex-col gap-4 pt-4">
+            <div className="relative w-full">
+                <Separator />
+                <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-xs text-muted-foreground">
+                    Ou
+                </span>
+            </div>
+             <Button variant="outline" className="w-full" onClick={handleGuestLogin} disabled={isLoading}>
+                <User className="mr-2 h-4 w-4"/>
+                Entrar como Convidado (Colaborador)
+             </Button>
+        </CardFooter>
       </Card>
     </div>
   );
