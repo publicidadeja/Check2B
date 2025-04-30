@@ -24,9 +24,44 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
+// --- Check for missing Firebase config ---
+const requiredConfigKeys: (keyof typeof firebaseConfig)[] = [
+    'apiKey',
+    'authDomain',
+    'projectId',
+    'storageBucket',
+    'messagingSenderId',
+    'appId',
+];
+
+const missingKeys = requiredConfigKeys.filter(key => !firebaseConfig[key]);
+
+if (missingKeys.length > 0 && typeof window !== 'undefined') { // Only throw error client-side
+  console.error(`Missing Firebase configuration keys in environment variables: ${missingKeys.join(', ')}. Please check your .env.local file.`);
+  // Optionally, throw an error to halt execution if config is crucial immediately
+  // throw new Error(`Missing Firebase configuration keys: ${missingKeys.join(', ')}`);
+}
+
+
 // --- Initialize Firebase ---
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const auth = getAuth(app);
+// Initialize Firebase only if config keys are present or on the server (where env vars might be set differently)
+let app;
+let auth: ReturnType<typeof getAuth>; // Declare auth variable
+
+if (missingKeys.length === 0 || typeof window === 'undefined') {
+  try {
+    app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+    auth = getAuth(app);
+  } catch (error) {
+    console.error("Firebase initialization failed:", error);
+    // Handle initialization error appropriately, maybe show a message to the user
+  }
+} else {
+    console.warn("Firebase initialization skipped due to missing configuration.");
+    // Assign a dummy or null value to auth if needed elsewhere, or handle conditionally
+    // auth = null; // Or handle appropriately
+}
+
 
 // --- Authentication Functions ---
 
@@ -37,6 +72,9 @@ const auth = getAuth(app);
  * @returns Promise resolving to UserCredential on success
  */
 export const loginUser = async (email: string, password: string): Promise<UserCredential> => {
+    if (!auth) {
+        throw new Error("Firebase Auth is not initialized. Check configuration.");
+    }
     // Set session persistence (optional, adjust as needed)
     await setPersistence(auth, browserSessionPersistence);
     return signInWithEmailAndPassword(auth, email, password);
@@ -47,6 +85,10 @@ export const loginUser = async (email: string, password: string): Promise<UserCr
  * @returns Promise resolving on successful logout
  */
 export const logoutUser = async (): Promise<void> => {
+    if (!auth) {
+        console.warn("Firebase Auth not initialized, cannot log out.");
+        return;
+    }
     await signOut(auth);
     // Remove the auth cookie on logout
     Cookies.remove('auth-token');
@@ -81,6 +123,10 @@ export const setAuthCookie = async (idToken: string): Promise<void> => {
  * @returns A promise that resolves with the current user or null.
  */
 export const getCurrentUser = (): Promise<User | null> => {
+    if (!auth) {
+        console.warn("Firebase Auth not initialized. Cannot get current user.");
+        return Promise.resolve(null);
+    }
     return new Promise((resolve, reject) => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             unsubscribe(); // Unsubscribe after getting the initial state
@@ -117,8 +163,13 @@ export const getUserRole = async (user: User | null): Promise<'admin' | 'colabor
  * @returns Unsubscribe function
  */
 export const onAuthChange = (callback: (user: User | null) => void) => {
+    if (!auth) {
+        console.warn("Firebase Auth not initialized. Cannot attach listener.");
+        return () => {}; // Return an empty unsubscribe function
+    }
     return onAuthStateChanged(auth, callback);
 };
 
 // Export auth instance if needed elsewhere
 export { auth };
+
