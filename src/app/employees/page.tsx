@@ -37,7 +37,7 @@ import {
 import { EmployeeForm } from '@/components/employee/employee-form';
 import type { Employee } from '@/types/employee';
 import { useToast } from '@/hooks/use-toast';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'; // Added CardFooter
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { DataTable } from '@/components/ui/data-table'; // Import DataTable
 import type { ColumnDef } from '@tanstack/react-table'; // Import ColumnDef
@@ -50,6 +50,7 @@ export const mockEmployees: Employee[] = [
   { id: '3', name: 'Carla Mendes', email: 'carla.mendes@check2b.com', phone: '31999998888', department: 'Marketing', role: 'Analista de Marketing', admissionDate: '2023-05-10', isActive: false }, // Exemplo inativo
   { id: '4', name: 'Davi Costa', email: 'davi.costa@check2b.com', phone: '41988887777', department: 'Vendas', role: 'Executivo de Contas', admissionDate: '2021-11-01', isActive: true, photoUrl: 'https://picsum.photos/id/338/40/40' },
   { id: '5', name: 'Eva Pereira', email: 'eva.pereira@check2b.com', phone: '51977776666', department: 'Engenharia', role: 'Desenvolvedora Frontend', admissionDate: '2023-03-22', isActive: true },
+  { id: '6', name: 'Leo Corax', email: 'leocorax@gmail.com', phone: '61988885555', department: 'Engenharia', role: 'Desenvolvedor Frontend', admissionDate: '2024-01-10', isActive: true }, // New User Added
 ];
 
 // Mock API functions
