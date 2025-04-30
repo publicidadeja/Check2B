@@ -1,8 +1,11 @@
+'use client'; // Add this directive
+
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Users, ClipboardList, CheckCircle, AlertCircle, BarChart3 } from "lucide-react";
 // Import necessary chart components directly from recharts or the custom wrapper
 import { BarChart, XAxis, YAxis, Bar } from "@/components/ui/chart"; // Import Recharts components from the wrapper
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"; // Import chart container and tooltip
+import type { ChartConfig } from "@/components/ui/chart"; // Import ChartConfig type
 
 // Mock data for the chart - replace with actual data fetching
 const chartData = [
@@ -19,7 +22,7 @@ const chartConfig = {
     label: "Total",
     color: "hsl(var(--chart-1))",
   },
-} satisfies import("@/components/ui/chart").ChartConfig;
+} satisfies ChartConfig;
 
 
 export default function DashboardPage() {
@@ -29,6 +32,9 @@ export default function DashboardPage() {
   const tarefasAtivas = 35; // Example value
   const avaliacoesHoje = 10; // Example value
   const alertasDesempenho = 2; // Example value
+
+  // Define tickFormatter function here since this is now a client component
+  const tickFormatter = (value: string) => value.slice(0, 3);
 
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -93,7 +99,7 @@ export default function DashboardPage() {
                     tickLine={false}
                     tickMargin={10}
                     axisLine={false}
-                    tickFormatter={(value) => value.slice(0, 3)}
+                    tickFormatter={tickFormatter} // Pass the function directly
                     />
                     <YAxis />
                     <ChartTooltip content={<ChartTooltipContent />} />
