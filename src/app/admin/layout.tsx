@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Bell, Gauge, Users, CheckSquare, Settings, LogOut, Building, UserPlus, Trophy, Award } from 'lucide-react'; // Importado Trophy e Award
+import { Bell, Gauge, Users, CheckSquare, Settings, LogOut, Building, UserPlus, Trophy, Award, Target, UserRoundCog, ListTodo } from 'lucide-react'; // Added Target, UserRoundCog, ListTodo
 import Link from 'next/link';
 
 interface AdminLayoutProps {
@@ -77,6 +77,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                  </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+             <SidebarMenuItem>
+              <SidebarMenuButton asChild>
+                 <Link href="/admin/challenges">
+                   <span className="flex items-center gap-2 w-full">
+                     <Target />
+                     <span>Desafios</span>
+                   </span>
+                 </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton asChild>
                  <Link href="/admin/rewards">
@@ -101,8 +111,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               <SidebarMenuButton asChild>
                  <Link href="/admin/roles">
                    <span className="flex items-center gap-2 w-full">
-                     {/* Using a generic icon for Role */}
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-user-round-cog"><path d="M2 18c.6.5 1.2 1 2.5 1s2.5-.5 3-1c.6-.5 1.2-1 2.5-1s2.5.5 3 1c.6.5 1.2 1 2.5 1s2.5-.5 3-1c.6-.5 1.2-1 2.5-1"/><path d="M10 6c0-1.1.9-2 2-2s2 .9 2 2v1"/><path d="M12 8a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M19.42 15a1.71 1.71 0 0 0-1.22-.53"/><path d="M22 18.5V17.5a2 2 0 0 0-2-2h-1a2 2 0 0 0-2 2v1a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-.5a2 2 0 1 0-4 0v.5"/><circle cx="19" cy="18.5" r=".5"/></svg>
+                     <UserRoundCog />
                       <span>Funções</span>
                    </span>
                 </Link>
@@ -112,7 +121,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               <SidebarMenuButton asChild>
                 <Link href="/admin/tasks">
                    <span className="flex items-center gap-2 w-full">
-                    <CheckSquare /> {/* Using CheckSquare as a placeholder, consider a more specific icon */}
+                    <ListTodo />
                     <span>Tarefas</span>
                    </span>
                 </Link>
