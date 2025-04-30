@@ -24,6 +24,10 @@ import {
   Link as LinkIcon,
   Archive, // For archiving
   CheckCircle, // For activating
+  FileClock, // For exporting history
+  BarChartHorizontal, // For status bar
+  AlertTriangle, // For warning
+  FileText, // For details
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -55,17 +59,28 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+    DialogClose
+} from '@/components/ui/dialog';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChallengeForm } from '@/components/challenge/challenge-form';
 import type { Challenge } from '@/types/challenge';
 import { useToast } from '@/hooks/use-toast';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, differenceInDays, isPast } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator'; // Added Separator
 import { Switch } from '@/components/ui/switch'; // Added Switch
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'; // Import Tooltip components
 
 // --- Mock Data ---
 const mockChallenges: Challenge[] = [
@@ -74,6 +89,7 @@ const mockChallenges: Challenge[] = [
     { id: 'c3', title: 'Semana da Documentação', description: 'Documentar todas as APIs desenvolvidas no período.', category: 'Documentação', periodStartDate: '2024-08-19', periodEndDate: '2024-08-23', points: 75, difficulty: 'Médio', participationType: 'Obrigatório', eligibility: { type: 'role', entityIds: ['Desenvolvedor Backend', 'Desenvolvedora Frontend'] }, evaluationMetrics: 'Links para documentação no Confluence', status: 'scheduled' },
     { id: 'c4', title: 'Feedback 360 Completo', description: 'Enviar feedback para todos os colegas designados.', category: 'Colaboração', periodStartDate: '2024-07-29', periodEndDate: '2024-08-02', points: 30, difficulty: 'Fácil', participationType: 'Obrigatório', eligibility: { type: 'all' }, evaluationMetrics: 'Confirmação no sistema de RH', status: 'evaluating' },
      { id: 'c5', title: 'Ideia Inovadora (Rascunho)', description: 'Propor uma melhoria significativa em algum processo.', category: 'Inovação', periodStartDate: '2024-09-02', periodEndDate: '2024-09-06', points: 100, difficulty: 'Médio', participationType: 'Opcional', eligibility: { type: 'all' }, evaluationMetrics: 'Apresentação da ideia e avaliação do comitê', status: 'draft' },
+     { id: 'c6', title: 'Organização do Código', description: 'Refatorar componente legado X.', category: 'Qualidade', periodStartDate: '2024-08-26', periodEndDate: '2024-08-30', points: 120, difficulty: 'Difícil', participationType: 'Obrigatório', eligibility: { type: 'individual', entityIds: ['2'] }, evaluationMetrics: 'Análise de código e PR aprovado', status: 'scheduled' },
 ];
 
 // Mock participation data (replace with actual fetching/relation)
@@ -90,10 +106,22 @@ interface ChallengeParticipation {
 }
 
 const mockParticipants: ChallengeParticipation[] = [
-    { id: 'p1', challengeId: 'c3', employeeId: '2', employeeName: 'Beto Santos', status: 'submitted', submission: 'Links dos PRs: ...', submittedAt: new Date(2024, 7, 17) },
-    { id: 'p2', challengeId: 'c3', employeeId: '5', employeeName: 'Eva Pereira', status: 'submitted', submission: 'Links: ...', submittedAt: new Date(2024, 7, 18) },
-    { id: 'p3', challengeId: 'c1', employeeId: '4', employeeName: 'Davi Costa', status: 'pending' },
-    { id: 'p4', challengeId: 'c4', employeeId: '1', employeeName: 'Alice Silva', status: 'submitted', submission: 'Feedbacks enviados via sistema', submittedAt: new Date(2024, 8, 1) }, // Corrected month (August = 7)
+    { id: 'p1', challengeId: 'c2', employeeId: '2', employeeName: 'Beto Santos', status: 'submitted', submission: 'Feature entregue e testada.', submittedAt: new Date(2024, 7, 15) }, // Aug 15
+    { id: 'p2', challengeId: 'c2', employeeId: '5', employeeName: 'Eva Pereira', status: 'pending' }, // Didn't participate / submit
+    { id: 'p3', challengeId: 'c1', employeeId: '1', employeeName: 'Alice Silva', status: 'approved', score: 50, feedback: 'Ótimo resumo!', submittedAt: new Date(2024, 7, 9) }, // Aug 9
+    { id: 'p4', challengeId: 'c1', employeeId: '4', employeeName: 'Davi Costa', status: 'rejected', feedback: 'Faltou o resumo da reunião de quinta.', submittedAt: new Date(2024, 7, 10) }, // Aug 10
+    { id: 'p5', challengeId: 'c4', employeeId: '1', employeeName: 'Alice Silva', status: 'submitted', submission: 'Feedbacks enviados via sistema RH', submittedAt: new Date(2024, 7, 1) }, // Aug 1
+    { id: 'p6', challengeId: 'c4', employeeId: '2', employeeName: 'Beto Santos', status: 'submitted', submission: 'OK', submittedAt: new Date(2024, 7, 2) }, // Aug 2
+    { id: 'p7', challengeId: 'c4', employeeId: '4', employeeName: 'Davi Costa', status: 'approved', score: 30, feedback: 'Completo.', submittedAt: new Date(2024, 7, 1) }, // Aug 1
+    { id: 'p8', challengeId: 'c4', employeeId: '5', employeeName: 'Eva Pereira', status: 'approved', score: 30, feedback: 'Obrigado!', submittedAt: new Date(2024, 7, 2) }, // Aug 2
+];
+
+// Mock Employee Data (minimal for details view)
+const mockEmployeesSimple = [
+    { id: '1', name: 'Alice Silva', role: 'Recrutadora', department: 'RH' },
+    { id: '2', name: 'Beto Santos', role: 'Desenvolvedor Backend', department: 'Engenharia' },
+    { id: '4', name: 'Davi Costa', role: 'Executivo de Contas', department: 'Vendas' },
+    { id: '5', name: 'Eva Pereira', role: 'Desenvolvedora Frontend', department: 'Engenharia' },
 ];
 
 // --- Mock API Functions ---
@@ -120,7 +148,7 @@ const saveChallenge = async (challengeData: Omit<Challenge, 'id' | 'status'> | C
         const newChallenge: Challenge = {
             id: `c${Date.now()}`, // Simple ID generation
             status: 'draft', // New challenges start as draft
-            ...(challengeData as Omit<Challenge, 'id'>), // Type assertion needed here
+            ...(challengeData as Omit<Challenge, 'id' | 'status'>), // Type assertion needed here
         };
         mockChallenges.push(newChallenge);
         console.log("New challenge created:", newChallenge);
@@ -136,6 +164,8 @@ const deleteChallenge = async (challengeId: string): Promise<void> => {
         if (['active', 'evaluating'].includes(mockChallenges[index].status)) {
             throw new Error("Não é possível remover um desafio ativo ou em avaliação.");
         }
+        // Also remove related participation records (mock)
+        mockParticipants = mockParticipants.filter(p => p.challengeId !== challengeId);
         mockChallenges.splice(index, 1);
         console.log("Challenge deleted:", challengeId);
     } else {
@@ -148,6 +178,14 @@ const updateChallengeStatus = async (challengeId: string, status: Challenge['sta
      const index = mockChallenges.findIndex(c => c.id === challengeId);
       if (index !== -1) {
          mockChallenges[index].status = status;
+         // If completing, mark all pending participations as rejected (or handle differently)
+         if (status === 'completed') {
+             mockParticipants = mockParticipants.map(p =>
+                 p.challengeId === challengeId && p.status === 'pending'
+                     ? { ...p, status: 'rejected', feedback: 'Desafio concluído sem submissão.' }
+                     : p
+             );
+         }
          console.log("Challenge status updated:", mockChallenges[index]);
          return mockChallenges[index];
      } else {
@@ -157,6 +195,7 @@ const updateChallengeStatus = async (challengeId: string, status: Challenge['sta
 
 const fetchParticipantsForChallenge = async (challengeId: string): Promise<ChallengeParticipation[]> => {
     await new Promise(resolve => setTimeout(resolve, 400));
+    // Return all participants for the challenge, not just submitted ones, for history view
     return mockParticipants.filter(p => p.challengeId === challengeId);
 }
 
@@ -172,6 +211,60 @@ const evaluateSubmission = async (participationId: string, status: 'approved' | 
     } else {
         throw new Error("Participação não encontrada.");
     }
+}
+
+const fetchChallengeDetails = async (challengeId: string): Promise<{ challenge: Challenge, participants: ChallengeParticipation[] } | null> => {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    const challenge = mockChallenges.find(c => c.id === challengeId);
+    if (!challenge) return null;
+    const participants = await fetchParticipantsForChallenge(challengeId);
+    return { challenge, participants };
+}
+
+
+// --- Utility Functions (Moved to top level) ---
+
+const getStatusText = (status: Challenge['status']): string => {
+    const map: Record<Challenge['status'], string> = {
+        active: 'Ativo',
+        scheduled: 'Agendado',
+        evaluating: 'Em Avaliação',
+        completed: 'Concluído',
+        draft: 'Rascunho',
+        archived: 'Arquivado'
+    };
+    return map[status] || status;
+}
+
+const getStatusBadgeVariant = (status: Challenge['status']): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" => {
+    const map: Record<Challenge['status'], "default" | "secondary" | "destructive" | "outline" | "success" | "warning"> = {
+        active: 'success',       // Green for active
+        scheduled: 'secondary',  // Grey for scheduled
+        evaluating: 'warning',   // Yellow/Orange for evaluating
+        completed: 'default',    // Blue/Default for completed
+        draft: 'outline',        // Outline for draft
+        archived: 'destructive', // Red for archived
+    };
+    // Add custom styles for success/warning if needed or map to existing variants
+     if (status === 'active') return 'success'; // Use custom variant
+     if (status === 'evaluating') return 'warning'; // Use custom variant
+     return map[status] || 'outline';
+}
+
+// Define custom badge variants if not present in globals.css or tailwind config
+// This requires adding styles to globals.css or extending tailwind config.
+// For demonstration, we assume 'success' and 'warning' variants exist or map them.
+// Let's adjust the mapping if they don't exist:
+const getSafeStatusBadgeVariant = (status: Challenge['status']): "default" | "secondary" | "destructive" | "outline" => {
+    const map: Record<Challenge['status'], "default" | "secondary" | "destructive" | "outline"> = {
+        active: 'default',       // Use default (Teal accent) for active
+        scheduled: 'secondary',  // Grey for scheduled
+        evaluating: 'outline',   // Use outline for evaluating
+        completed: 'secondary',    // Use secondary for completed
+        draft: 'outline',        // Outline for draft
+        archived: 'destructive', // Red for archived
+    };
+    return map[status] || 'outline';
 }
 
 
@@ -308,32 +401,6 @@ const ManageChallenges = () => {
         setIsFormOpen(true);
     };
 
-     const getStatusBadgeVariant = (status: Challenge['status']): "default" | "secondary" | "destructive" | "outline" | "warning" => {
-        const map: Record<Challenge['status'], "default" | "secondary" | "destructive" | "outline" | "warning"> = {
-            active: 'default',       // Blue/Primary
-            scheduled: 'secondary',  // Grey
-            evaluating: 'warning',   // Yellow/Orange
-            completed: 'success',    // Green (custom or adjust theme)
-            draft: 'outline',        // Outline
-            archived: 'destructive', // Red
-        };
-        // Add custom styles for success/warning if needed or map to existing variants
-         if (status === 'completed') return 'secondary'; // Using secondary for now
-         if (status === 'evaluating') return 'outline'; // Using outline for now
-         return map[status] || 'outline';
-    }
-
-    const getStatusText = (status: Challenge['status']): string => {
-        const map: Record<Challenge['status'], string> = {
-            active: 'Ativo',
-            scheduled: 'Agendado',
-            evaluating: 'Em Avaliação',
-            completed: 'Concluído',
-            draft: 'Rascunho',
-            archived: 'Arquivado'
-        };
-        return map[status] || status;
-    }
 
     const formatPeriod = (start: string, end: string) => {
         try {
@@ -407,7 +474,7 @@ const ManageChallenges = () => {
                             <TableCell>{challenge.difficulty}</TableCell>
                             <TableCell>{challenge.participationType}</TableCell>
                             <TableCell>
-                                <Badge variant={getStatusBadgeVariant(challenge.status)}>
+                                <Badge variant={getSafeStatusBadgeVariant(challenge.status)}>
                                     {getStatusText(challenge.status)}
                                 </Badge>
                             </TableCell>
@@ -433,12 +500,27 @@ const ManageChallenges = () => {
                                              <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> Agendar/Ativar
                                         </DropdownMenuItem>
                                     )}
+                                     {challenge.status === 'scheduled' && isPast(parseISO(challenge.periodStartDate)) && (
+                                         <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'active')}>
+                                              <Target className="mr-2 h-4 w-4 text-blue-600" /> Iniciar Agora
+                                         </DropdownMenuItem>
+                                     )}
                                      {challenge.status === 'active' && (
-                                        <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'completed')}>
-                                             <CheckSquare className="mr-2 h-4 w-4 text-blue-600" /> Marcar como Concluído
+                                        <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'evaluating')}>
+                                             <ClipboardCheck className="mr-2 h-4 w-4 text-orange-600" /> Iniciar Avaliação
                                         </DropdownMenuItem>
                                      )}
-                                      {(challenge.status === 'completed' || challenge.status === 'active') && (
+                                      {challenge.status === 'evaluating' && (
+                                        <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'completed')}>
+                                             <CheckSquare className="mr-2 h-4 w-4 text-primary" /> Marcar como Concluído
+                                        </DropdownMenuItem>
+                                      )}
+                                      {(challenge.status === 'completed' || challenge.status === 'archived') && (
+                                        <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'active')} disabled={!isPast(parseISO(challenge.periodEndDate))}>
+                                             <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> Reativar (se aplicável)
+                                        </DropdownMenuItem>
+                                      )}
+                                      {(challenge.status === 'completed') && (
                                         <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'archived')}>
                                              <Archive className="mr-2 h-4 w-4 text-muted-foreground" /> Arquivar
                                         </DropdownMenuItem>
@@ -475,7 +557,7 @@ const ManageChallenges = () => {
                     <AlertDialogHeader>
                     <AlertDialogTitle>Confirmar Remoção</AlertDialogTitle>
                     <AlertDialogDescription>
-                        Tem certeza que deseja remover o desafio "{challengeToDelete?.title}"? Esta ação não pode ser desfeita. Desafios ativos ou em avaliação não podem ser removidos.
+                        Tem certeza que deseja remover o desafio "{challengeToDelete?.title}"? Esta ação removerá também as participações associadas e não pode ser desfeita. Desafios ativos ou em avaliação não podem ser removidos.
                     </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -492,53 +574,89 @@ const ManageChallenges = () => {
 
 
 // Placeholder component - Replace with actual implementation
-const ChallengeDashboard = () => (
-  <Card>
-    <CardHeader>
-      <CardTitle>Dashboard de Desafios</CardTitle>
-      <CardDescription>Visão geral do programa de desafios.</CardDescription>
-    </CardHeader>
-    <CardContent>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-                <CardHeader className="pb-2">
-                    <CardDescription>Desafios Ativos</CardDescription>
-                    <CardTitle className="text-3xl">{mockChallenges.filter(c => c.status === 'active').length}</CardTitle>
-                </CardHeader>
-                 <CardContent><p className="text-xs text-muted-foreground">Desafios em andamento esta semana.</p></CardContent>
-            </Card>
-             <Card>
-                <CardHeader className="pb-2">
-                    <CardDescription>Participações Pendentes</CardDescription>
-                     <CardTitle className="text-3xl">{mockParticipants.filter(p => p.status === 'submitted').length}</CardTitle>
-                </CardHeader>
-                 <CardContent><p className="text-xs text-muted-foreground">Submissões aguardando avaliação.</p></CardContent>
-            </Card>
-             <Card>
-                <CardHeader className="pb-2">
-                    <CardDescription>Taxa de Conclusão Média</CardDescription>
-                    {/* Calculation is mock */}
-                    <CardTitle className="text-3xl">
-                        {(() => {
-                            const completed = mockParticipants.filter(p => p.status === 'approved').length;
-                            const total = mockParticipants.filter(p => ['approved', 'rejected'].includes(p.status)).length;
-                            return total > 0 ? `${((completed / total) * 100).toFixed(0)}%` : 'N/A';
-                        })()}
-                    </CardTitle>
-                </CardHeader>
-                 <CardContent><p className="text-xs text-muted-foreground">Média de sucesso dos últimos desafios avaliados.</p></CardContent>
-            </Card>
-      </div>
-       {/* TODO: Add Chart placeholder here */}
-       <div className="mt-6 text-center text-muted-foreground">
-            (Gráficos e relatórios detalhados serão implementados aqui)
-        </div>
-    </CardContent>
-    <CardFooter>
-        <Button variant="outline" onClick={() => alert("Relatórios Detalhados não implementados.")}>Ver Relatórios Detalhados</Button>
-    </CardFooter>
-  </Card>
-);
+const ChallengeDashboard = () => {
+    const [challenges, setChallenges] = React.useState<Challenge[]>([]);
+    const [participations, setParticipations] = React.useState<ChallengeParticipation[]>([]);
+    const [isLoading, setIsLoading] = React.useState(true);
+    const { toast } = useToast();
+
+     React.useEffect(() => {
+        const loadData = async () => {
+             setIsLoading(true);
+             try {
+                const [challengeData, participationData] = await Promise.all([
+                     fetchChallenges(),
+                     // In a real app, fetch all relevant participations
+                     Promise.resolve(mockParticipants) // Using mock data for now
+                ]);
+                setChallenges(challengeData);
+                setParticipations(participationData);
+            } catch (error) {
+                 console.error("Falha ao carregar dados do dashboard:", error);
+                 toast({ title: "Erro", description: "Falha ao carregar dados do dashboard.", variant: "destructive" });
+            } finally {
+                 setIsLoading(false);
+            }
+        };
+        loadData();
+    }, [toast]);
+
+     const activeChallenges = challenges.filter(c => c.status === 'active');
+     const pendingSubmissions = participations.filter(p => p.status === 'submitted').length;
+     const evaluatedSubmissions = participations.filter(p => ['approved', 'rejected'].includes(p.status));
+     const approvedSubmissions = evaluatedSubmissions.filter(p => p.status === 'approved').length;
+     const completionRate = evaluatedSubmissions.length > 0
+        ? `${((approvedSubmissions / evaluatedSubmissions.length) * 100).toFixed(0)}%`
+        : 'N/A';
+
+
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Dashboard de Desafios</CardTitle>
+          <CardDescription>Visão geral do programa de desafios.</CardDescription>
+        </CardHeader>
+         <CardContent>
+            {isLoading ? (
+                <div className="flex justify-center items-center py-10">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+             ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardDescription>Desafios Ativos</CardDescription>
+                            <CardTitle className="text-3xl">{activeChallenges.length}</CardTitle>
+                        </CardHeader>
+                         <CardContent><p className="text-xs text-muted-foreground">Desafios em andamento no período atual.</p></CardContent>
+                    </Card>
+                     <Card>
+                        <CardHeader className="pb-2">
+                            <CardDescription>Submissões Pendentes</CardDescription>
+                             <CardTitle className="text-3xl">{pendingSubmissions}</CardTitle>
+                        </CardHeader>
+                         <CardContent><p className="text-xs text-muted-foreground">Participações aguardando avaliação.</p></CardContent>
+                    </Card>
+                     <Card>
+                        <CardHeader className="pb-2">
+                            <CardDescription>Taxa de Conclusão Média</CardDescription>
+                            <CardTitle className="text-3xl">{completionRate}</CardTitle>
+                        </CardHeader>
+                         <CardContent><p className="text-xs text-muted-foreground">Média de sucesso (aprovações / avaliadas).</p></CardContent>
+                    </Card>
+                </div>
+             )}
+             {/* TODO: Add Chart placeholder here */}
+             <div className="mt-6 text-center text-muted-foreground">
+                  (Gráficos e relatórios detalhados serão implementados aqui)
+              </div>
+        </CardContent>
+        <CardFooter>
+            <Button variant="outline" onClick={() => alert("Relatórios Detalhados não implementados.")} disabled>Ver Relatórios Detalhados</Button>
+        </CardFooter>
+      </Card>
+    );
+};
 
 const ChallengeEvaluation = () => {
     const [challengesToEvaluate, setChallengesToEvaluate] = React.useState<Challenge[]>([]);
@@ -554,8 +672,8 @@ const ChallengeEvaluation = () => {
             setIsLoadingChallenges(true);
             try {
                 const allChallenges = await fetchChallenges();
-                // Consider 'completed' and 'evaluating' states for evaluation
-                 setChallengesToEvaluate(allChallenges.filter(c => ['evaluating', 'completed'].includes(c.status)));
+                // Consider 'evaluating' status primarily for evaluation
+                 setChallengesToEvaluate(allChallenges.filter(c => c.status === 'evaluating'));
             } catch {
                  toast({ title: "Erro", description: "Falha ao carregar desafios para avaliação.", variant: "destructive" });
             } finally {
@@ -572,7 +690,8 @@ const ChallengeEvaluation = () => {
                 setCurrentEvaluation({}); // Reset evaluation state when changing challenge
                 try {
                     const participantsData = await fetchParticipantsForChallenge(selectedChallengeId);
-                    const submittedParticipants = participantsData.filter(p => p.status === 'submitted');
+                    // Filter to show only submitted or already evaluated (for editing maybe?) for this screen
+                     const submittedParticipants = participantsData.filter(p => p.status === 'submitted'); // Only evaluate submitted ones
                     setParticipants(submittedParticipants);
                      // Initialize evaluation state for submitted participants
                      const initialEvalState: typeof currentEvaluation = {};
@@ -599,7 +718,7 @@ const ChallengeEvaluation = () => {
                 ...(prev[participantId] || { status: 'pending', feedback: '', isSaving: false }), // Ensure state exists
                 [field]: value,
                  // Reset score if rejected
-                ...(field === 'status' && value === 'rejected' && { score: undefined }),
+                ...(field === 'status' && value === 'rejected' && { score: 0 }), // Score is 0 if rejected
                 // Use default challenge points if approved and score not set
                  ...(field === 'status' && value === 'approved' && prev[participantId]?.score === undefined && { score: challengesToEvaluate.find(c => c.id === selectedChallengeId)?.points || 0 })
             }
@@ -639,6 +758,14 @@ const ChallengeEvaluation = () => {
                  return newState;
              });
 
+             // Check if all participants for this challenge are evaluated
+             if (participants.length === 1) { // If this was the last one
+                 toast({ title: "Concluído", description: `Todas as submissões para "${challenge.title}" foram avaliadas.` });
+                 // Optionally, change challenge status to 'completed'
+                 // await updateChallengeStatus(challenge.id, 'completed');
+                 // setSelectedChallengeId(null); // Reset selection
+             }
+
         } catch (error) {
              console.error("Falha ao salvar avaliação:", error);
              toast({ title: "Erro", description: "Falha ao salvar avaliação.", variant: "destructive" });
@@ -654,7 +781,7 @@ const ChallengeEvaluation = () => {
         <Card>
             <CardHeader>
             <CardTitle className="flex items-center gap-2"><CheckSquare className="h-5 w-5"/> Avaliação de Desafios</CardTitle>
-            <CardDescription>Avalie as submissões dos desafios concluídos ou em avaliação.</CardDescription>
+            <CardDescription>Avalie as submissões dos desafios que estão no status "Em Avaliação".</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
                 <div className="flex items-center gap-4">
@@ -671,11 +798,11 @@ const ChallengeEvaluation = () => {
                              {isLoadingChallenges ? (
                                  <SelectItem value="loading" disabled>Carregando...</SelectItem>
                              ) : challengesToEvaluate.length === 0 ? (
-                                <SelectItem value="no-challenges" disabled>Nenhum desafio para avaliar</SelectItem>
+                                <SelectItem value="no-challenges" disabled>Nenhum desafio em avaliação</SelectItem>
                              ) : (
                                 challengesToEvaluate.map(challenge => (
                                     <SelectItem key={challenge.id} value={challenge.id}>
-                                        {challenge.title} ({format(parseISO(challenge.periodEndDate), 'dd/MM/yy')}) - {getStatusText(challenge.status)}
+                                        {challenge.title} ({format(parseISO(challenge.periodEndDate), 'dd/MM/yy')})
                                     </SelectItem>
                                 ))
                              )}
@@ -694,94 +821,96 @@ const ChallengeEvaluation = () => {
                         ) : participants.length === 0 ? (
                             <p className="text-muted-foreground text-center py-4">Nenhuma submissão pendente para este desafio.</p>
                         ) : (
-                            <div className="space-y-4">
-                                {participants.map(participant => (
-                                    <Card key={participant.id} className="bg-muted/50">
-                                        <CardHeader className="pb-2 pt-3 px-4">
-                                            <CardTitle className="text-base flex justify-between items-center">
-                                                {participant.employeeName}
-                                                 <span className="text-xs text-muted-foreground font-normal">
-                                                    Enviado em: {participant.submittedAt ? format(participant.submittedAt, 'dd/MM/yy HH:mm', { locale: ptBR }) : '-'}
-                                                </span>
-                                            </CardTitle>
-                                            {/* Display submission details */}
-                                            <CardDescription className="text-sm pt-1">
-                                                <strong>Submissão:</strong>{' '}
-                                                {participant.submission?.startsWith('http') ? (
-                                                     <a href={participant.submission} target="_blank" rel="noopener noreferrer" className="text-accent underline hover:text-accent/80">
-                                                        <LinkIcon className="inline-block h-3 w-3 mr-1" /> Abrir Link
-                                                    </a>
-                                                ) : (
-                                                    participant.submission || <span className="italic text-muted-foreground">Nenhuma descrição fornecida.</span>
-                                                )}
-                                                 {/* TODO: Handle file uploads if needed */}
-                                            </CardDescription>
-                                        </CardHeader>
-                                        <CardContent className="px-4 pb-3 space-y-2">
-                                             <div className="flex flex-col md:flex-row gap-2 items-start md:items-center">
-                                                <div className='flex-shrink-0'>
-                                                    <Label className="text-xs">Resultado:</Label>
-                                                     <Select
-                                                        value={currentEvaluation[participant.id]?.status || 'pending'}
-                                                        onValueChange={(value: 'approved' | 'rejected') => handleEvaluationChange(participant.id, 'status', value)}
-                                                        disabled={currentEvaluation[participant.id]?.isSaving}
-                                                    >
-                                                        <SelectTrigger className="h-9 w-full md:w-[120px]">
-                                                            <SelectValue placeholder="Avaliar..." />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="approved">Aprovado</SelectItem>
-                                                            <SelectItem value="rejected">Rejeitado</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                                {currentEvaluation[participant.id]?.status === 'approved' && (
+                            <ScrollArea className="h-[45vh]"> {/* Add ScrollArea for many participants */}
+                                <div className="space-y-4 pr-4">
+                                    {participants.map(participant => (
+                                        <Card key={participant.id} className="bg-muted/50">
+                                            <CardHeader className="pb-2 pt-3 px-4">
+                                                <CardTitle className="text-base flex justify-between items-center">
+                                                    {participant.employeeName}
+                                                    <span className="text-xs text-muted-foreground font-normal">
+                                                        Enviado em: {participant.submittedAt ? format(participant.submittedAt, 'dd/MM/yy HH:mm', { locale: ptBR }) : '-'}
+                                                    </span>
+                                                </CardTitle>
+                                                {/* Display submission details */}
+                                                <CardDescription className="text-sm pt-1">
+                                                    <strong>Submissão:</strong>{' '}
+                                                    {participant.submission?.startsWith('http') ? (
+                                                        <a href={participant.submission} target="_blank" rel="noopener noreferrer" className="text-accent underline hover:text-accent/80">
+                                                            <LinkIcon className="inline-block h-3 w-3 mr-1" /> Abrir Link
+                                                        </a>
+                                                    ) : (
+                                                        participant.submission || <span className="italic text-muted-foreground">Nenhuma descrição fornecida.</span>
+                                                    )}
+                                                    {/* TODO: Handle file uploads if needed */}
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent className="px-4 pb-3 space-y-2">
+                                                <div className="flex flex-col md:flex-row gap-2 items-start md:items-center">
                                                     <div className='flex-shrink-0'>
-                                                        <Label htmlFor={`score-${participant.id}`} className="text-xs">Pontos:</Label>
-                                                        <Input
-                                                            id={`score-${participant.id}`}
-                                                            type="number"
-                                                            className="h-9 w-[80px]"
-                                                            value={currentEvaluation[participant.id]?.score ?? ''}
-                                                            onChange={(e) => handleEvaluationChange(participant.id, 'score', e.target.value ? parseInt(e.target.value) : undefined)}
-                                                            placeholder={selectedChallenge?.points.toString()}
-                                                            min="0"
-                                                            max={selectedChallenge?.points} // Set max based on challenge points
+                                                        <Label className="text-xs">Resultado:</Label>
+                                                        <Select
+                                                            value={currentEvaluation[participant.id]?.status || 'pending'}
+                                                            onValueChange={(value: 'approved' | 'rejected') => handleEvaluationChange(participant.id, 'status', value)}
+                                                            disabled={currentEvaluation[participant.id]?.isSaving}
+                                                        >
+                                                            <SelectTrigger className="h-9 w-full md:w-[120px]">
+                                                                <SelectValue placeholder="Avaliar..." />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="approved">Aprovado</SelectItem>
+                                                                <SelectItem value="rejected">Rejeitado</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    {currentEvaluation[participant.id]?.status === 'approved' && (
+                                                        <div className='flex-shrink-0'>
+                                                            <Label htmlFor={`score-${participant.id}`} className="text-xs">Pontos:</Label>
+                                                            <Input
+                                                                id={`score-${participant.id}`}
+                                                                type="number"
+                                                                className="h-9 w-[80px]"
+                                                                value={currentEvaluation[participant.id]?.score ?? ''}
+                                                                onChange={(e) => handleEvaluationChange(participant.id, 'score', e.target.value ? parseInt(e.target.value) : undefined)}
+                                                                placeholder={selectedChallenge?.points.toString()}
+                                                                min="0"
+                                                                max={selectedChallenge?.points} // Set max based on challenge points
+                                                                disabled={currentEvaluation[participant.id]?.isSaving}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    <div className='flex-1 min-w-0'>
+                                                        <Label htmlFor={`feedback-${participant.id}`} className="text-xs">Feedback {currentEvaluation[participant.id]?.status === 'rejected' ? '(Obrigatório)' : '(Opcional)'}:</Label>
+                                                        <Textarea
+                                                            id={`feedback-${participant.id}`}
+                                                            placeholder="Feedback para o colaborador..."
+                                                            className="min-h-[40px] text-sm"
+                                                            value={currentEvaluation[participant.id]?.feedback || ''}
+                                                            onChange={(e) => handleEvaluationChange(participant.id, 'feedback', e.target.value)}
+                                                            required={currentEvaluation[participant.id]?.status === 'rejected'}
                                                             disabled={currentEvaluation[participant.id]?.isSaving}
                                                         />
                                                     </div>
-                                                )}
-                                                <div className='flex-1 min-w-0'>
-                                                     <Label htmlFor={`feedback-${participant.id}`} className="text-xs">Feedback {currentEvaluation[participant.id]?.status === 'rejected' ? '(Obrigatório)' : '(Opcional)'}:</Label>
-                                                    <Textarea
-                                                        id={`feedback-${participant.id}`}
-                                                        placeholder="Feedback para o colaborador..."
-                                                        className="min-h-[40px] text-sm"
-                                                        value={currentEvaluation[participant.id]?.feedback || ''}
-                                                        onChange={(e) => handleEvaluationChange(participant.id, 'feedback', e.target.value)}
-                                                        required={currentEvaluation[participant.id]?.status === 'rejected'}
-                                                        disabled={currentEvaluation[participant.id]?.isSaving}
-                                                    />
-                                                </div>
 
-                                                <Button
-                                                    size="sm"
-                                                    className="mt-4 md:mt-5 self-end md:self-center"
-                                                     onClick={() => handleSaveEvaluation(participant.id)}
-                                                     disabled={!currentEvaluation[participant.id] || currentEvaluation[participant.id].status === 'pending' || currentEvaluation[participant.id].isSaving}
-                                                >
-                                                     {currentEvaluation[participant.id]?.isSaving ? (
-                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                     ) : (
-                                                        <Save className="mr-2 h-4 w-4" />
-                                                     )}
-                                                    {currentEvaluation[participant.id]?.isSaving ? 'Salvando...' : 'Salvar Avaliação'}
-                                                </Button>
-                                             </div>
-                                        </CardContent>
-                                    </Card>
-                                ))}
-                            </div>
+                                                    <Button
+                                                        size="sm"
+                                                        className="mt-4 md:mt-5 self-end md:self-center"
+                                                        onClick={() => handleSaveEvaluation(participant.id)}
+                                                        disabled={!currentEvaluation[participant.id] || currentEvaluation[participant.id].status === 'pending' || currentEvaluation[participant.id].isSaving}
+                                                    >
+                                                        {currentEvaluation[participant.id]?.isSaving ? (
+                                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                        ) : (
+                                                            <Save className="mr-2 h-4 w-4" />
+                                                        )}
+                                                        {currentEvaluation[participant.id]?.isSaving ? 'Salvando...' : 'Salvar Avaliação'}
+                                                    </Button>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+                            </ScrollArea>
                         )}
                     </div>
                 )}
@@ -791,9 +920,129 @@ const ChallengeEvaluation = () => {
 };
 
 
+// --- Challenge Details Dialog ---
+interface ChallengeDetailsDialogProps {
+    challengeId: string | null;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+}
+
+const ChallengeDetailsDialog = ({ challengeId, open, onOpenChange }: ChallengeDetailsDialogProps) => {
+    const [details, setDetails] = React.useState<{ challenge: Challenge, participants: ChallengeParticipation[] } | null>(null);
+    const [isLoading, setIsLoading] = React.useState(false);
+
+    React.useEffect(() => {
+        if (open && challengeId) {
+            const loadDetails = async () => {
+                setIsLoading(true);
+                try {
+                    const data = await fetchChallengeDetails(challengeId);
+                    setDetails(data);
+                } catch (error) {
+                    console.error("Failed to load challenge details:", error);
+                    // Handle error (e.g., show toast)
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+            loadDetails();
+        } else {
+            setDetails(null); // Reset details when closed or no ID
+        }
+    }, [open, challengeId]);
+
+    const getParticipantStatusText = (status: ChallengeParticipation['status']): string => {
+        const map = { pending: 'Pendente', submitted: 'Enviado', approved: 'Aprovado', rejected: 'Rejeitado' };
+        return map[status] || status;
+    }
+    const getParticipantStatusVariant = (status: ChallengeParticipation['status']): "default" | "secondary" | "destructive" | "outline" | "warning" => {
+        const map = { pending: 'outline', submitted: 'warning', approved: 'success', rejected: 'destructive' };
+        if (status === 'submitted') return 'warning';
+        if (status === 'approved') return 'default'; // Using default for success
+        return map[status] || 'outline';
+    }
+
+     const getSafeParticipantStatusVariant = (status: ChallengeParticipation['status']): "default" | "secondary" | "destructive" | "outline" => {
+        const map = { pending: 'outline', submitted: 'outline', approved: 'default', rejected: 'destructive' };
+        return map[status] || 'outline';
+    }
+
+
+    return (
+         <Dialog open={open} onOpenChange={onOpenChange}>
+             <DialogContent className="sm:max-w-3xl"> {/* Wider dialog */}
+                 <DialogHeader>
+                     <DialogTitle>Detalhes do Desafio: {details?.challenge.title ?? 'Carregando...'}</DialogTitle>
+                     <DialogDescription>
+                         Resultados e participantes do desafio selecionado.
+                     </DialogDescription>
+                 </DialogHeader>
+                {isLoading ? (
+                     <div className="flex justify-center items-center py-10">
+                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                     </div>
+                 ) : details ? (
+                     <div className="py-4 grid grid-cols-1 md:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto">
+                         {/* Column 1: Challenge Info */}
+                         <div className="md:col-span-1 space-y-3 border-r pr-4">
+                            <h4 className="font-semibold text-base">Informações do Desafio</h4>
+                             <p className="text-sm"><strong className="text-muted-foreground">Status:</strong> <Badge variant={getSafeStatusBadgeVariant(details.challenge.status)}>{getStatusText(details.challenge.status)}</Badge></p>
+                             <p className="text-sm"><strong className="text-muted-foreground">Período:</strong> {format(parseISO(details.challenge.periodStartDate), 'dd/MM/yy')} - {format(parseISO(details.challenge.periodEndDate), 'dd/MM/yy')}</p>
+                             <p className="text-sm"><strong className="text-muted-foreground">Pontos:</strong> {details.challenge.points}</p>
+                             <p className="text-sm"><strong className="text-muted-foreground">Dificuldade:</strong> {details.challenge.difficulty}</p>
+                             <p className="text-sm"><strong className="text-muted-foreground">Participação:</strong> {details.challenge.participationType}</p>
+                             <p className="text-sm"><strong className="text-muted-foreground">Elegibilidade:</strong> {details.challenge.eligibility.type === 'all' ? 'Todos' : `${details.challenge.eligibility.type}: ${details.challenge.eligibility.entityIds?.join(', ')}`}</p>
+                             <p className="text-sm"><strong className="text-muted-foreground">Métricas:</strong> {details.challenge.evaluationMetrics}</p>
+                         </div>
+                         {/* Column 2: Participants List */}
+                         <div className="md:col-span-2 space-y-3">
+                            <h4 className="font-semibold text-base">Participantes ({details.participants.length})</h4>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Colaborador</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead>Pontos</TableHead>
+                                        <TableHead>Feedback</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {details.participants.length === 0 ? (
+                                        <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground">Nenhum participante registrado.</TableCell></TableRow>
+                                    ) : (
+                                         details.participants.map(p => (
+                                            <TableRow key={p.id}>
+                                                <TableCell className="font-medium">{p.employeeName}</TableCell>
+                                                <TableCell><Badge variant={getSafeParticipantStatusVariant(p.status)}>{getParticipantStatusText(p.status)}</Badge></TableCell>
+                                                <TableCell className="text-center">{p.score ?? '-'}</TableCell>
+                                                 <TableCell className="text-xs max-w-[200px] truncate" title={p.feedback}>{p.feedback || '-'}</TableCell>
+                                            </TableRow>
+                                         ))
+                                    )}
+                                </TableBody>
+                            </Table>
+                         </div>
+                     </div>
+                 ) : (
+                     <p className="text-center text-muted-foreground py-10">Não foi possível carregar os detalhes.</p>
+                 )}
+                 <DialogFooter>
+                    <DialogClose asChild>
+                        <Button type="button" variant="secondary">Fechar</Button>
+                    </DialogClose>
+                </DialogFooter>
+             </DialogContent>
+         </Dialog>
+    );
+}
+
+
 const ChallengeHistory = () => {
      const [historyChallenges, setHistoryChallenges] = React.useState<Challenge[]>([]);
      const [isLoading, setIsLoading] = React.useState(true);
+     const [selectedChallengeIdForDetails, setSelectedChallengeIdForDetails] = React.useState<string | null>(null);
+     const [isDetailsOpen, setIsDetailsOpen] = React.useState(false);
+     const { toast } = useToast(); // Added toast
 
      React.useEffect(() => {
         const fetchHistory = async () => {
@@ -812,34 +1061,68 @@ const ChallengeHistory = () => {
             }
         };
         fetchHistory();
-    }, []);
+    }, [toast]); // Added toast dependency
 
-     // Helper to get status text (reuse from ManageChallenges)
-    const getStatusText = (status: Challenge['status']): string => {
-        const map: Record<Challenge['status'], string> = {
-            active: 'Ativo', scheduled: 'Agendado', evaluating: 'Em Avaliação',
-            completed: 'Concluído', draft: 'Rascunho', archived: 'Arquivado'
-        };
-        return map[status] || status;
-    }
-
-    // Helper to get status badge variant (reuse from ManageChallenges)
-     const getStatusBadgeVariant = (status: Challenge['status']): "default" | "secondary" | "destructive" | "outline" | "warning" => {
-        const map: Record<Challenge['status'], "default" | "secondary" | "destructive" | "outline" | "warning"> = {
-            active: 'default', scheduled: 'secondary', evaluating: 'warning',
-            completed: 'success', draft: 'outline', archived: 'destructive',
-        };
-         if (status === 'completed') return 'secondary'; // Use secondary for completed
-         if (status === 'evaluating') return 'outline'; // Use outline for evaluating
-         return map[status] || 'outline';
-    }
 
     const getParticipantSummary = (challengeId: string) => {
-        const totalParticipants = mockParticipants.filter(p => p.challengeId === challengeId).length;
-        const evaluated = mockParticipants.filter(p => p.challengeId === challengeId && ['approved', 'rejected'].includes(p.status)).length;
-        const approved = mockParticipants.filter(p => p.challengeId === challengeId && p.status === 'approved').length;
-         if (totalParticipants === 0) return "N/A";
-        return `${approved}/${evaluated} Aprovados (${totalParticipants} Total)`;
+         const challengeParticipants = mockParticipants.filter(p => p.challengeId === challengeId);
+        const totalParticipants = challengeParticipants.length;
+         const evaluated = challengeParticipants.filter(p => ['approved', 'rejected'].includes(p.status)).length;
+         const approved = challengeParticipants.filter(p => p.status === 'approved').length;
+         // If no one could participate based on eligibility, reflect that
+         const eligibleEmployees = mockEmployeesSimple.filter(emp => {
+              const challenge = mockChallenges.find(c => c.id === challengeId);
+              if (!challenge) return false;
+              if (challenge.eligibility.type === 'all') return true;
+              if (challenge.eligibility.type === 'department' && challenge.eligibility.entityIds?.includes(emp.department)) return true;
+              if (challenge.eligibility.type === 'role' && challenge.eligibility.entityIds?.includes(emp.role)) return true;
+              if (challenge.eligibility.type === 'individual' && challenge.eligibility.entityIds?.includes(emp.id)) return true;
+              return false;
+         }).length;
+
+         if (eligibleEmployees === 0) return "N/A (Sem Elegíveis)";
+         if (totalParticipants === 0 && eligibleEmployees > 0) return "0/0 (Sem Participações)";
+         if (totalParticipants === 0) return "N/A"; // Should not happen if eligible > 0
+
+        return `${approved}/${evaluated} Aprovados (${totalParticipants} Partic.)`;
+    }
+
+     const handleExportHistory = () => {
+        // Simulate CSV export
+        if (historyChallenges.length === 0) {
+            toast({ title: "Atenção", description: "Não há histórico para exportar.", variant: "destructive"});
+            return;
+        }
+
+        let csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "ID Desafio,Título,Data Início,Data Fim,Pontos,Status,Resumo Participantes\n"; // Header row
+
+        historyChallenges.forEach(challenge => {
+            const row = [
+                challenge.id,
+                `"${challenge.title.replace(/"/g, '""')}"`, // Escape quotes
+                challenge.periodStartDate,
+                challenge.periodEndDate,
+                challenge.points,
+                getStatusText(challenge.status),
+                `"${getParticipantSummary(challenge.id)}"`
+            ].join(",");
+            csvContent += row + "\n";
+        });
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `historico_desafios_${format(new Date(), 'yyyyMMdd')}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast({ title: "Sucesso", description: "Histórico exportado como CSV." });
+    }
+
+    const openDetails = (challengeId: string) => {
+        setSelectedChallengeIdForDetails(challengeId);
+        setIsDetailsOpen(true);
     }
 
 
@@ -873,13 +1156,13 @@ const ChallengeHistory = () => {
                                         <TableCell className="font-medium">{challenge.title}</TableCell>
                                          <TableCell>{format(parseISO(challenge.periodStartDate), 'dd/MM/yy')} - {format(parseISO(challenge.periodEndDate), 'dd/MM/yy')}</TableCell>
                                          <TableCell className="text-center">{challenge.points}</TableCell>
-                                         <TableCell><Badge variant={getStatusBadgeVariant(challenge.status)}>{getStatusText(challenge.status)}</Badge></TableCell>
+                                         <TableCell><Badge variant={getSafeStatusBadgeVariant(challenge.status)}>{getStatusText(challenge.status)}</Badge></TableCell>
                                         <TableCell className="text-center text-xs">
                                             {getParticipantSummary(challenge.id)}
                                         </TableCell>
                                         <TableCell className="text-right">
-                                            <Button variant="outline" size="sm" onClick={() => alert(`Visualizar detalhes de ${challenge.title} (não implementado).`)}>
-                                                 Ver Detalhes
+                                            <Button variant="outline" size="sm" onClick={() => openDetails(challenge.id)}>
+                                                 <FileText className="mr-1 h-3 w-3" /> Ver Detalhes
                                              </Button>
                                          </TableCell>
                                     </TableRow>
@@ -890,8 +1173,16 @@ const ChallengeHistory = () => {
                 )}
             </CardContent>
             <CardFooter>
-                <Button variant="outline" onClick={() => alert("Exportar Histórico não implementado.")} disabled={isLoading || historyChallenges.length === 0}>Exportar Histórico</Button>
+                <Button variant="outline" onClick={handleExportHistory} disabled={isLoading || historyChallenges.length === 0}>
+                    <FileClock className="mr-2 h-4 w-4" /> Exportar Histórico
+                </Button>
             </CardFooter>
+            {/* Details Dialog */}
+            <ChallengeDetailsDialog
+                challengeId={selectedChallengeIdForDetails}
+                open={isDetailsOpen}
+                onOpenChange={setIsDetailsOpen}
+            />
         </Card>
     );
 };
@@ -909,11 +1200,30 @@ const ChallengeSettings = () => {
         defaultParticipation: 'Opcional', // 'Opcional' or 'Obrigatório'
     });
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    // Load settings from backend on component mount (simulation)
+     React.useEffect(() => {
+        // Simulate loading saved settings
+         const loadSettings = async () => {
+             // Replace with actual API call
+             await new Promise(resolve => setTimeout(resolve, 500));
+             // Example: const savedSettings = await fetchChallengeSettingsAPI();
+             // setSettings(savedSettings);
+             console.log("Settings loaded (simulated)");
+         };
+         loadSettings();
+     }, []);
+
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => { // Updated type
         const { id, value, type } = e.target;
+         // Handle number input properly, allowing empty string for optional fields
+         const newValue = type === 'number'
+            ? (value === '' ? '' : parseFloat(value))
+            : value;
+
         setSettings(prev => ({
             ...prev,
-            [id]: type === 'number' ? (value === '' ? '' : parseFloat(value)) : value
+            [id]: newValue
         }));
     };
 
@@ -931,6 +1241,7 @@ const ChallengeSettings = () => {
          // Simulate API call
          console.log("Saving challenge settings:", settings);
          await new Promise(resolve => setTimeout(resolve, 800));
+         // Example: await saveChallengeSettingsAPI(settings);
          toast({ title: "Sucesso", description: "Configurações de desafios salvas." });
          setIsSaving(false);
          // In real app, might need to refetch or update state based on response
@@ -944,9 +1255,9 @@ const ChallengeSettings = () => {
             </CardHeader>
             <CardContent className="space-y-6">
                 <div className="space-y-2">
-                    <Label htmlFor="ranking-factor">Fator de Ponderação no Ranking</Label>
+                    <Label htmlFor="rankingFactor">Fator de Ponderação no Ranking</Label>
                     <Input
-                        id="ranking-factor"
+                        id="rankingFactor"
                         type="number"
                         value={settings.rankingFactor}
                         onChange={handleInputChange}
@@ -970,21 +1281,30 @@ const ChallengeSettings = () => {
                  </div>
                  <Separator />
                  <div className="flex items-center space-x-2">
-                    <Switch id="enable-gamification" checked={settings.enableGamification} onCheckedChange={handleSwitchChange} />
-                    <Label htmlFor="enable-gamification" className="text-sm font-normal">Habilitar Emblemas e Conquistas (Gamificação)</Label>
+                    <Switch id="enableGamification" checked={settings.enableGamification} onCheckedChange={handleSwitchChange} />
+                    <Label htmlFor="enableGamification" className="text-sm font-normal">Habilitar Emblemas e Conquistas (Gamificação)</Label>
                  </div>
                 <p className="text-xs text-muted-foreground -mt-4 pl-8">Ativa recursos adicionais de gamificação relacionados a desafios (requer implementação).</p>
                  <Separator />
                 <div className="space-y-2">
                     <Label htmlFor="maxPointsCap">Teto Máximo de Pontos de Desafios por Mês (Opcional)</Label>
-                    <Input
-                        id="maxPointsCap"
-                        type="number"
-                        placeholder="Sem limite"
-                        value={settings.maxPointsCap}
-                        onChange={handleInputChange}
-                        min="0" className="w-[120px]"
-                    />
+                     <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Input
+                                    id="maxPointsCap"
+                                    type="number"
+                                    placeholder="Sem limite"
+                                    value={settings.maxPointsCap}
+                                    onChange={handleInputChange}
+                                    min="0" className="w-[120px]"
+                                />
+                             </TooltipTrigger>
+                            <TooltipContent>
+                                <p>Deixe em branco para não aplicar limite.</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
                     <p className="text-xs text-muted-foreground">Limite máximo de pontos de desafios que podem contar para o ranking em um único mês.</p>
                 </div>
                  {/* Add more settings as needed */}
@@ -1005,7 +1325,7 @@ export default function ChallengesPage() {
   return (
     <div className="space-y-6">
         <h1 className="text-3xl font-bold flex items-center gap-2">
-             <Target className="h-7 w-7" /> Desafios Semanais
+             <Target className="h-7 w-7" /> Sistema de Desafios
         </h1>
         <p className="text-muted-foreground">
             Gerencie o sistema de desafios, acompanhe o progresso e avalie as conquistas dos colaboradores.
