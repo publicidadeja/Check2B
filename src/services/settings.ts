@@ -1,6 +1,8 @@
 
 'use server';
 
+import { currentSettings as settingsStore } from './mock-data'; // Import shared store
+
 // Define the Settings interface
 export interface AppSettings {
   bonusValuePerPoint: number;
@@ -12,13 +14,6 @@ export interface AppSettings {
   // e.g., defaultEmailSignature?: string;
 }
 
-// Mock initial settings data (replace with database storage/retrieval)
-let currentSettings: AppSettings = {
-  bonusValuePerPoint: 1.50,
-  maxZerosThreshold: 5,
-  enableAutoReports: true,
-  notificationFrequency: 'daily',
-};
 
 // --- Mock API Functions ---
 
@@ -30,9 +25,9 @@ let currentSettings: AppSettings = {
 export async function getSettings(): Promise<AppSettings> {
     console.log("Fetching settings (mock)...");
     // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise(resolve => setTimeout(resolve, 50));
     // Return a copy to prevent direct modification
-    return { ...currentSettings };
+    return { ...settingsStore }; // Use shared store
 }
 
 /**
@@ -45,7 +40,7 @@ export async function getSettings(): Promise<AppSettings> {
 export async function saveSettings(newSettings: Partial<AppSettings>): Promise<AppSettings> {
     console.log("Saving settings (mock):", newSettings);
     // Simulate API delay and potential validation
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 150));
 
     // --- Basic Validation Example ---
     if (newSettings.bonusValuePerPoint !== undefined) {
@@ -73,10 +68,10 @@ export async function saveSettings(newSettings: Partial<AppSettings>): Promise<A
         }
      }
 
-    // Merge the new settings into the current settings
-    currentSettings = { ...currentSettings, ...newSettings };
+    // Merge the new settings into the shared settings store
+    Object.assign(settingsStore, newSettings);
 
-    console.log("Settings updated (mock):", currentSettings);
+    console.log("Settings updated (mock):", settingsStore);
     // Return a copy of the updated settings
-    return { ...currentSettings };
+    return { ...settingsStore };
 }

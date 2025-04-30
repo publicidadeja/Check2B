@@ -1,8 +1,8 @@
 
 'use server';
 
-import type { Department } from './department'; // Assuming department service exists
-import { getAllDepartments } from './department'; // To validate department
+import { mockEmployees } from './mock-data'; // Import from centralized store
+import { getAllDepartments } from './department'; // Still needed for validation
 
 /**
  * Represents employee information.
@@ -34,39 +34,6 @@ export interface Employee {
   admissionDate?: string; // ISO string format ideally (e.g., "2024-01-15")
 }
 
-// In-memory store for mock data (replace with actual database interactions)
-let mockEmployees: Employee[] = [
-    {
-      id: 'emp_123',
-      name: 'João Silva',
-      department: 'Engenharia',
-      role: 'Engenheiro de Software Pleno',
-      email: 'joao.silva@check2b.com',
-      admissionDate: '2023-05-20'
-    },
-    {
-      id: 'emp_456',
-      name: 'Maria Oliveira',
-      department: 'Vendas',
-      role: 'Executiva de Contas',
-      email: 'maria.oliveira@check2b.com',
-      admissionDate: '2022-11-10'
-    },
-     {
-      id: 'emp_789',
-      name: 'Carlos Pereira',
-      department: 'Marketing',
-      role: 'Especialista em SEO',
-      // No email or admission date for this mock employee
-    },
-     {
-      id: 'emp_101',
-      name: 'Ana Costa',
-      department: 'RH',
-      role: 'Analista de Recrutamento',
-       email: 'ana.costa@check2b.com',
-    },
-];
 
 // --- Mock API Functions ---
 
@@ -78,7 +45,7 @@ let mockEmployees: Employee[] = [
  */
 export async function getEmployee(id: string): Promise<Employee | null> {
   console.log("Fetching employee by ID (mock):", id);
-  await new Promise(resolve => setTimeout(resolve, 200));
+  await new Promise(resolve => setTimeout(resolve, 50));
   const employee = mockEmployees.find(emp => emp.id === id);
   return employee ? { ...employee } : null; // Return a copy
 }
@@ -91,11 +58,11 @@ export async function getEmployee(id: string): Promise<Employee | null> {
  */
 export async function getAllEmployees(department?: string): Promise<Employee[]> {
   console.log(`Fetching all employees${department ? ` for department ${department}` : ''} (mock)...`);
-  await new Promise(resolve => setTimeout(resolve, 400));
+  await new Promise(resolve => setTimeout(resolve, 100)); // Reduced delay
   if (department) {
       return mockEmployees.filter(emp => emp.department === department).map(emp => ({ ...emp })); // Return copies
   }
-  return [...mockEmployees].map(emp => ({ ...emp })); // Return copies
+  return [...mockEmployees].map(emp => ({ ...emp })); // Return copies from shared store
 }
 
 /**
@@ -107,7 +74,7 @@ export async function getAllEmployees(department?: string): Promise<Employee[]> 
  */
 export async function addEmployee(employeeData: Omit<Employee, 'id'>): Promise<Employee> {
     console.log("Adding employee (mock):", employeeData);
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise(resolve => setTimeout(resolve, 200));
 
     // --- Basic Validation ---
     if (!employeeData.name?.trim() || !employeeData.department?.trim() || !employeeData.role?.trim()) {
@@ -132,7 +99,7 @@ export async function addEmployee(employeeData: Omit<Employee, 'id'>): Promise<E
         ...employeeData,
         id: `emp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     };
-    mockEmployees.push(newEmployee);
+    mockEmployees.push(newEmployee); // Add to shared store
     return { ...newEmployee }; // Return a copy
 }
 
@@ -146,7 +113,7 @@ export async function addEmployee(employeeData: Omit<Employee, 'id'>): Promise<E
  */
 export async function updateEmployee(id: string, employeeData: Partial<Omit<Employee, 'id'>>): Promise<Employee> {
     console.log("Updating employee (mock):", id, employeeData);
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise(resolve => setTimeout(resolve, 200));
 
     const empIndex = mockEmployees.findIndex(e => e.id === id);
     if (empIndex === -1) {
@@ -183,7 +150,7 @@ export async function updateEmployee(id: string, employeeData: Partial<Omit<Empl
     }
     // Add more validations...
 
-    mockEmployees[empIndex] = updatedFields;
+    mockEmployees[empIndex] = updatedFields; // Update shared store
     return { ...updatedFields }; // Return a copy
 }
 
@@ -197,17 +164,17 @@ export async function updateEmployee(id: string, employeeData: Partial<Omit<Empl
  */
 export async function deleteEmployee(id: string): Promise<void> {
     console.log("Deleting employee (mock):", id);
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    // Example Guard: Prevent deleting a specific employee (e.g., CEO)
-    // if (id === 'ceo_id') { throw new Error("Cannot delete the CEO."); }
+    await new Promise(resolve => setTimeout(resolve, 200));
 
     const initialLength = mockEmployees.length;
-    mockEmployees = mockEmployees.filter(emp => emp.id !== id);
+    const empIndex = mockEmployees.findIndex(emp => emp.id === id);
 
-    if (mockEmployees.length === initialLength) {
-        throw new Error("Colaborador não encontrado para exclusão.");
+    if (empIndex === -1) {
+         throw new Error("Colaborador não encontrado para exclusão.");
     }
+
+    mockEmployees.splice(empIndex, 1); // Remove from shared store
+
     // In a real app, handle related data (e.g., evaluations, access rights)
 }
 
@@ -218,7 +185,7 @@ export async function deleteEmployee(id: string): Promise<void> {
  * Useful for filtering if not fetching all departments separately.
  */
 export async function getUsedDepartmentNames(): Promise<string[]> {
-    await new Promise(resolve => setTimeout(resolve, 50)); // Simulate small delay
+    await new Promise(resolve => setTimeout(resolve, 20)); // Simulate small delay
     const departments = new Set(mockEmployees.map(emp => emp.department));
     return Array.from(departments);
 }
@@ -227,7 +194,7 @@ export async function getUsedDepartmentNames(): Promise<string[]> {
  * Gets a list of unique role names currently used by employees.
  */
 export async function getUsedRoleNames(): Promise<string[]> {
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise(resolve => setTimeout(resolve, 20));
     const roles = new Set(mockEmployees.map(emp => emp.role));
     return Array.from(roles);
 }

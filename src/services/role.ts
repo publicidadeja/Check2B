@@ -1,6 +1,8 @@
 
 'use server';
 
+import { mockRoles } from './mock-data'; // Import from centralized store
+
 /**
  * Represents a collaborator role/function.
  */
@@ -15,18 +17,6 @@ export interface Role {
   name: string;
 }
 
-// In-memory store for mock data (replace with actual database interactions)
-let mockRoles: Role[] = [
-    { id: "engenheiro-de-software-junior", name: "Engenheiro de Software Júnior" },
-    { id: "engenheiro-de-software-pleno", name: "Engenheiro de Software Pleno" },
-    { id: "engenheiro-de-software-senior", name: "Engenheiro de Software Sênior" },
-    { id: "gerente-de-vendas", name: "Gerente de Vendas" },
-    { id: "executivo-de-contas", name: "Executivo de Contas" },
-    { id: "especialista-em-marketing", name: "Especialista em Marketing" },
-    { id: "analista-de-rh", name: "Analista de RH" },
-    { id: "analista-de-recrutamento", name: "Analista de Recrutamento" },
-    { id: "designer-ux-ui", name: "Designer UX/UI" },
-];
 
 // --- Mock API Functions ---
 
@@ -37,8 +27,8 @@ let mockRoles: Role[] = [
  */
 export async function getAllRoles(): Promise<Role[]> {
     console.log("Fetching all roles (mock)...");
-    await new Promise(resolve => setTimeout(resolve, 100)); // Simulate short delay
-    return [...mockRoles].sort((a, b) => a.name.localeCompare(b.name)); // Return sorted copy
+    await new Promise(resolve => setTimeout(resolve, 50)); // Simulate short delay
+    return [...mockRoles].sort((a, b) => a.name.localeCompare(b.name)); // Return sorted copy from shared store
 }
 
 /**
@@ -50,7 +40,7 @@ export async function getAllRoles(): Promise<Role[]> {
  */
 export async function addRole(roleName: string): Promise<Role> {
     console.log("Adding role (mock):", roleName);
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     const trimmedName = roleName.trim();
 
@@ -65,16 +55,18 @@ export async function addRole(roleName: string): Promise<Role> {
 
     const newRole: Role = {
         // Generate a simple ID based on the name (replace with better ID generation)
-        id: trimmedName.toLowerCase().replace(/\s+/g, '-'),
+        id: trimmedName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''), // Sanitize ID
         name: trimmedName,
     };
 
-    mockRoles.push(newRole);
+    mockRoles.push(newRole); // Add to shared store
     console.log("Role added, current roles:", mockRoles);
     return { ...newRole }; // Return a copy
 }
 
-// --- Potentially add updateRole and deleteRole functions later if needed ---
+// --- Potentially add updateRole later if needed ---
+// export async function updateRole(id: string, name: string): Promise<Role> { ... }
+
 
 /**
  * Asynchronously deletes a role.
@@ -86,7 +78,7 @@ export async function addRole(roleName: string): Promise<Role> {
  */
 export async function deleteRole(roleId: string): Promise<void> {
     console.log("Deleting role (mock):", roleId);
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise(resolve => setTimeout(resolve, 150));
 
     // Example Guard: Prevent deleting a core role
     if (roleId === 'engenheiro-de-software-pleno') {
@@ -96,10 +88,12 @@ export async function deleteRole(roleId: string): Promise<void> {
     // TODO: Check if any employee uses this roleId before deleting
 
     const initialLength = mockRoles.length;
-    mockRoles = mockRoles.filter(role => role.id !== roleId);
+    const roleIndex = mockRoles.findIndex(role => role.id === roleId);
 
-    if (mockRoles.length === initialLength) {
-        throw new Error("Função não encontrada para exclusão.");
+    if (roleIndex === -1) {
+         throw new Error("Função não encontrada para exclusão.");
     }
+
+    mockRoles.splice(roleIndex, 1); // Remove from shared store
     console.log("Role deleted, current roles:", mockRoles);
 }

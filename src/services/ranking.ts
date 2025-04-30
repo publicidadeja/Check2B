@@ -4,10 +4,9 @@
 import type { Employee } from './employee';
 import { getAllEmployees } from './employee';
 import type { EvaluationScore } from './evaluation';
-import { getEvaluationsForEmployeeByDate } from './evaluation'; // Assumindo que busca por período
-import type { Task } from './task';
-import { getTasksForDepartmentEvaluation } from './task';
-import { AppSettings, getSettings } from './settings'; // Para buscar limite de zeros
+import { mockEvaluationsData } from './mock-data'; // Import shared stores
+import { currentSettings, getSettings } from './settings'; // Use currentSettings directly for sync access
+import { parse, startOfMonth, endOfMonth, isValid } from 'date-fns'; // Import date-fns
 
 /**
  * Representa a entrada de um colaborador no ranking.
@@ -16,9 +15,9 @@ export interface RankingEntry {
   employeeId: string;
   employeeName: string;
   department: string;
-  /** Pontuação total acumulada no período (0 a 10 * número de dias avaliados * número de tarefas diárias) */
+  /** Pontuação total acumulada no período */
   totalScore: number;
-  /** Número total de tarefas avaliadas no período */
+  /** Número total de tarefas *avaliadas* no período */
   evaluatedTasksCount: number;
    /** Número total de 'zeros' recebidos no período */
   zerosCount: number;
@@ -33,12 +32,18 @@ export interface RankingEntry {
 }
 
 // Cache simulado para o ranking (em produção, usar Redis ou similar)
-let rankingCache: { timestamp: number; data: RankingEntry[] } | null = null;
-const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutos
+let rankingCache: { period: string; timestamp: number; data: RankingEntry[] } | null = null;
+const CACHE_DURATION_MS = 1 * 60 * 1000; // 1 minuto cache
+
+/** Invalida o cache do ranking */
+export async function invalidateRankingCache(): Promise<void> {
+    console.log("Invalidating ranking cache.");
+    rankingCache = null;
+}
+
 
 /**
  * Calcula (ou busca do cache) o ranking dos colaboradores para um determinado período.
- * Esta é uma implementação MOCK e simplificada. Uma versão real seria mais complexa.
  *
  * @param yearMonth Período no formato 'YYYY-MM' (ex: '2024-07').
  * @param department Optional. Filtra o ranking por departamento.
@@ -48,59 +53,76 @@ export async function getRanking(yearMonth: string, department?: string): Promis
     console.log(`Getting ranking (mock) for ${yearMonth}${department ? ` in ${department}` : ''}...`);
 
     const now = Date.now();
-    // Verifica cache
-    if (rankingCache && (now - rankingCache.timestamp < CACHE_DURATION_MS)) {
+    // Verifica cache por período
+    if (rankingCache && rankingCache.period === yearMonth && (now - rankingCache.timestamp < CACHE_DURATION_MS)) {
        console.log("Returning cached ranking.");
        return filterRanking(rankingCache.data, department);
     }
 
     console.log("Calculating ranking...");
-    await new Promise(resolve => setTimeout(resolve, 800)); // Simular cálculo demorado
+    await new Promise(resolve => setTimeout(resolve, 50)); // Shorter delay for calculation
 
     try {
-        const employees = await getAllEmployees();
-        const settings = await getSettings(); // Buscar configurações (limite de zeros)
+        const employees = await getAllEmployees(); // Use the function from employee service
+        const settings = await getSettings(); // Fetch latest settings asynchronously
         const rankingData: Omit<RankingEntry, 'rank'>[] = [];
+
+        // Validar yearMonth
+        const targetMonthDate = parse(yearMonth, 'yyyy-MM', new Date());
+        if (!isValid(targetMonthDate)) {
+            throw new Error(`Invalid yearMonth format: ${yearMonth}. Use YYYY-MM.`);
+        }
+        const monthStart = startOfMonth(targetMonthDate);
+        const monthEnd = endOfMonth(targetMonthDate);
+        // const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
         // Iterar sobre os colaboradores para calcular scores
         for (const employee of employees) {
-             // Simular busca de avaliações para o mês (MOCK - busca apenas um dia fixo)
-            // Em produção: buscar todas as avaliações do employee no yearMonth
-            const mockDate = `${yearMonth}-15`; // Dia fixo para mock
-            const evaluations = await getEvaluationsForEmployeeByDate(employee.id, mockDate);
+            let totalScore = 0;
+            let evaluatedTasksCount = 0;
+            let zerosCount = 0;
 
-             let totalScore = 0;
-             let evaluatedTasksCount = 0;
-             let zerosCount = 0;
+            // Buscar todas as avaliações do funcionário no período
+            const employeeEvaluations = mockEvaluationsData[employee.id] || {};
 
-            for (const taskId in evaluations) {
-                const evaluation = evaluations[taskId];
-                totalScore += evaluation.score;
-                evaluatedTasksCount++;
-                if (evaluation.score === 0) {
-                    zerosCount++;
-                }
+            // Filtrar avaliações para o mês específico
+            for (const taskId in employeeEvaluations) {
+                const evaluation = employeeEvaluations[taskId];
+                 try {
+                    // Ensure timestamp exists and is valid before parsing
+                     if (evaluation.timestamp && typeof evaluation.timestamp === 'string') {
+                        const evalDate = parse(evaluation.timestamp, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", new Date());
+                        if (isValid(evalDate) && evalDate >= monthStart && evalDate <= monthEnd) {
+                            totalScore += evaluation.score;
+                            evaluatedTasksCount++;
+                            if (evaluation.score === 0) {
+                                zerosCount++;
+                            }
+                        }
+                     } else {
+                         console.warn(`Missing or invalid timestamp for task ${taskId}, employee ${employee.id}`);
+                     }
+                 } catch (e) {
+                     console.error(`Error parsing timestamp ${evaluation.timestamp} for task ${taskId}, employee ${employee.id}:`, e);
+                 }
             }
-
-             // Adicionar lógica para lidar com dias sem avaliação ou tarefas não avaliadas?
-             // Por enquanto, a média é baseada apenas nas tarefas *efetivamente* avaliadas.
 
             const averagePercentage = evaluatedTasksCount > 0
                 ? Math.round((totalScore / (evaluatedTasksCount * 10)) * 100)
                 : 0;
 
-             const isEligible = zerosCount <= settings.maxZerosThreshold;
+            const isEligible = zerosCount <= settings.maxZerosThreshold;
 
-             rankingData.push({
-                 employeeId: employee.id,
-                 employeeName: employee.name,
-                 department: employee.department,
-                 totalScore: totalScore, // Simplificado - seria a soma do mês
-                 evaluatedTasksCount: evaluatedTasksCount, // Simplificado
-                 zerosCount: zerosCount, // Simplificado
-                 averagePercentage: averagePercentage,
-                 isEligibleForBonus: isEligible,
-             });
+            rankingData.push({
+                employeeId: employee.id,
+                employeeName: employee.name,
+                department: employee.department,
+                totalScore: totalScore,
+                evaluatedTasksCount: evaluatedTasksCount,
+                zerosCount: zerosCount,
+                averagePercentage: averagePercentage,
+                isEligibleForBonus: isEligible,
+            });
         }
 
         // Ordenar o ranking (Critério: Maior Média Percentual, Menor nº Zeros, Nome)
@@ -121,7 +143,7 @@ export async function getRanking(yearMonth: string, department?: string): Promis
         }));
 
         // Atualizar cache
-        rankingCache = { timestamp: now, data: finalRanking };
+        rankingCache = { period: yearMonth, timestamp: now, data: finalRanking };
 
         return filterRanking(finalRanking, department);
 
@@ -134,8 +156,8 @@ export async function getRanking(yearMonth: string, department?: string): Promis
 
 /** Filtra o ranking por departamento (helper) */
 function filterRanking(ranking: RankingEntry[], department?: string): RankingEntry[] {
-    if (!department) {
-        return ranking; // Retorna todos se não houver filtro
+    if (!department || department === "Todos") {
+        return ranking; // Retorna todos se não houver filtro ou for 'Todos'
     }
     return ranking.filter(entry => entry.department === department);
 }
@@ -154,7 +176,7 @@ export async function getEmployeeRankingHistory(employeeId: string): Promise<{ p
     console.log(`Getting ranking history (mock) for employee ${employeeId}...`);
     await new Promise(resolve => setTimeout(resolve, 200));
 
-    // Simular histórico
+    // Simular histórico (poderia buscar rankings cacheados de meses anteriores)
     return [
         { period: '2024-07', rank: 3, averagePercentage: 95 },
         { period: '2024-06', rank: 5, averagePercentage: 92 },

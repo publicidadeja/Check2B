@@ -1,8 +1,8 @@
 
 'use server';
 
-import type { Department } from './department';
-import { getAllDepartments } from './department'; // To validate department
+import { mockTasks } from './mock-data'; // Import from centralized store
+import { getAllDepartments } from './department'; // Keep for validation
 
 /**
  * Represents a task.
@@ -21,7 +21,7 @@ export interface Task {
    */
   description: string;
   /**
-   * The department name to which the task belongs.
+   * The department name to which the task belongs, or 'Geral'.
    */
   department: string;
   /**
@@ -43,61 +43,6 @@ export interface Task {
 }
 
 
-// In-memory store for mock data (replace with actual database interactions)
-let mockTasks: Task[] = [
-    {
-      id: 'task_1',
-      title: 'Preencher Relatório Diário de Vendas',
-      description: 'Registrar todas as vendas e contatos realizados no dia no CRM.',
-      department: 'Vendas',
-      criteria: 'Todos os campos obrigatórios do CRM preenchidos corretamente até às 18h.',
-      category: 'Relatórios',
-      priority: 'Alta',
-      periodicity: 'Diária'
-    },
-    {
-      id: 'task_2',
-      title: 'Participar da Daily Standup',
-      description: 'Comparecer à reunião diária de alinhamento da equipe às 9h.',
-      department: 'Engenharia',
-      criteria: 'Participação pontual e ativa na reunião.',
-      category: 'Reuniões',
-      priority: 'Alta',
-      periodicity: 'Diária'
-    },
-     {
-      id: 'task_3',
-      title: 'Revisar Pull Requests Pendentes',
-      description: 'Analisar e fornecer feedback sobre os PRs abertos no repositório da equipe.',
-      department: 'Engenharia',
-      criteria: 'Todos os PRs pendentes revisados ou comentados até o final do dia.',
-      category: 'Desenvolvimento',
-      priority: 'Média',
-      periodicity: 'Diária'
-    },
-     {
-      id: 'task_4',
-      title: 'Planejar Campanha de Email Marketing',
-      description: 'Definir público, conteúdo e cronograma para a próxima campanha de email.',
-      department: 'Marketing',
-      criteria: 'Documento de planejamento da campanha concluído e aprovado.',
-      category: 'Planejamento', // New category example
-      priority: 'Média',
-      periodicity: 'Semanal' // Example of non-daily
-    },
-     {
-      id: 'task_5',
-      title: 'Organizar Arquivos de Contratos',
-      description: 'Digitalizar e organizar contratos de novos clientes na pasta designada.',
-      department: 'RH', // Example for RH
-      criteria: 'Todos os contratos recebidos no dia anterior organizados até 12h.',
-      category: 'Administrativo', // New category example
-      priority: 'Baixa',
-      periodicity: 'Diária'
-    },
-];
-
-
 // --- Mock API Functions ---
 
 /**
@@ -108,7 +53,7 @@ let mockTasks: Task[] = [
  */
 export async function getTask(id: string): Promise<Task | null> {
   console.log("Fetching task by ID (mock):", id);
-  await new Promise(resolve => setTimeout(resolve, 150));
+  await new Promise(resolve => setTimeout(resolve, 50));
   const task = mockTasks.find(t => t.id === id);
   return task ? { ...task } : null; // Return copy
 }
@@ -116,34 +61,37 @@ export async function getTask(id: string): Promise<Task | null> {
 /**
  * Asynchronously retrieves all tasks, optionally filtered by department.
  *
- * @param department Optional department name to filter tasks.
+ * @param department Optional department name to filter tasks. Use 'Todos' to skip filtering.
  * @returns A promise that resolves to an array of Task objects.
  */
 export async function getAllTasks(department?: string): Promise<Task[]> {
-   console.log(`Fetching tasks${department ? ` for ${department}` : ' (all)'} (mock)...`);
-   await new Promise(resolve => setTimeout(resolve, 350));
-   const filteredTasks = department
+   console.log(`Fetching tasks${department && department !== 'Todos' ? ` for ${department}` : ' (all)'} (mock)...`);
+   await new Promise(resolve => setTimeout(resolve, 100)); // Reduced delay
+   const filteredTasks = (department && department !== 'Todos')
      ? mockTasks.filter(task => task.department === department)
      : [...mockTasks];
-   return filteredTasks.map(task => ({...task})); // Return copies
+   return filteredTasks.map(task => ({...task})); // Return copies from shared store
 }
 
 
 /**
- * Asynchronously retrieves tasks relevant for a specific department.
- * This often includes tasks assigned directly to the department AND 'Geral' tasks.
- * Adapt this logic based on your application's requirements.
+ * Asynchronously retrieves tasks relevant for a specific department's evaluation checklist.
+ * Includes tasks assigned directly to the department AND 'Geral' tasks.
  *
- * @param department The specific department name.
+ * @param department The specific department name. Cannot be 'Todos'.
  * @returns A promise that resolves to an array of Task objects relevant to the department.
+ * @throws Error if department is 'Todos' or invalid.
  */
 export async function getTasksForDepartmentEvaluation(department: string): Promise<Task[]> {
+   if (!department || department === 'Todos') {
+       throw new Error("Department must be specified for evaluation tasks.");
+   }
    console.log(`Fetching tasks for evaluation in ${department} (mock)...`);
-   await new Promise(resolve => setTimeout(resolve, 350));
+   await new Promise(resolve => setTimeout(resolve, 100));
 
-   // Filter tasks assigned to the specific department OR the 'Geral' department (if applicable)
+   // Filter tasks assigned to the specific department OR the 'Geral' department
    const relevantTasks = mockTasks.filter(task =>
-       task.department === department || task.department === 'Geral' // Adjust 'Geral' logic if needed
+       task.department === department || task.department === 'Geral'
    );
 
    return relevantTasks.map(task => ({...task})); // Return copies
@@ -159,18 +107,18 @@ export async function getTasksForDepartmentEvaluation(department: string): Promi
  */
 export async function addTask(taskData: Omit<Task, 'id'>): Promise<Task> {
     console.log("Adding task (mock):", taskData);
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise(resolve => setTimeout(resolve, 200));
 
     // --- Basic Validation ---
     if (!taskData.title?.trim() || !taskData.description?.trim() || !taskData.department?.trim()) {
         throw new Error("Título, Descrição e Departamento são obrigatórios.");
     }
-    // Validate department exists
-    const validDepartments = await getAllDepartments();
-     // Include 'Geral' as a potentially valid department if your logic uses it
-    const allPossibleDepartments = [...validDepartments.map(d => d.name), 'Geral'];
-    if (!allPossibleDepartments.includes(taskData.department)) {
-         throw new Error(`Departamento "${taskData.department}" inválido.`);
+    // Validate department exists (including 'Geral')
+    if (taskData.department !== 'Geral') {
+        const validDepartments = await getAllDepartments();
+        if (!validDepartments.some(d => d.name === taskData.department)) {
+            throw new Error(`Departamento "${taskData.department}" inválido.`);
+        }
     }
      // Add more specific validations (e.g., category from allowed list, priority format)
 
@@ -181,7 +129,7 @@ export async function addTask(taskData: Omit<Task, 'id'>): Promise<Task> {
         priority: taskData.priority ?? 'Média',
         periodicity: taskData.periodicity ?? 'Diária',
     };
-    mockTasks.push(newTask);
+    mockTasks.push(newTask); // Add to shared store
     return { ...newTask }; // Return copy
 }
 
@@ -195,7 +143,7 @@ export async function addTask(taskData: Omit<Task, 'id'>): Promise<Task> {
  */
 export async function updateTask(id: string, taskData: Partial<Omit<Task, 'id'>>): Promise<Task> {
     console.log("Updating task (mock):", id, taskData);
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise(resolve => setTimeout(resolve, 200));
 
     const taskIndex = mockTasks.findIndex(t => t.id === id);
     if (taskIndex === -1) {
@@ -212,20 +160,21 @@ export async function updateTask(id: string, taskData: Partial<Omit<Task, 'id'>>
     if (updatedFields.description !== undefined && !updatedFields.description?.trim()) {
          throw new Error("Descrição não pode ser vazia.");
     }
-    if (updatedFields.department !== undefined && !updatedFields.department?.trim()) {
-         throw new Error("Departamento não pode ser vazio.");
-    }
-    // Validate department if changed
-    if (updatedFields.department !== undefined && updatedFields.department !== currentTask.department) {
-        const validDepartments = await getAllDepartments();
-         const allPossibleDepartments = [...validDepartments.map(d => d.name), 'Geral'];
-        if (!allPossibleDepartments.includes(updatedFields.department)) {
-            throw new Error(`Departamento "${updatedFields.department}" inválido.`);
+    if (updatedFields.department !== undefined) {
+        if (!updatedFields.department?.trim()) {
+            throw new Error("Departamento não pode ser vazio.");
+        }
+        // Validate department if changed
+        if (updatedFields.department !== currentTask.department && updatedFields.department !== 'Geral') {
+             const validDepartments = await getAllDepartments();
+             if (!validDepartments.some(d => d.name === updatedFields.department)) {
+                 throw new Error(`Departamento "${updatedFields.department}" inválido.`);
+             }
         }
     }
     // Add more specific validations...
 
-    mockTasks[taskIndex] = updatedFields;
+    mockTasks[taskIndex] = updatedFields; // Update shared store
     return { ...updatedFields }; // Return copy
 }
 
@@ -238,14 +187,16 @@ export async function updateTask(id: string, taskData: Partial<Omit<Task, 'id'>>
  */
 export async function deleteTask(id: string): Promise<void> {
     console.log("Deleting task (mock):", id);
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise(resolve => setTimeout(resolve, 200));
 
     const initialLength = mockTasks.length;
-    mockTasks = mockTasks.filter(task => task.id !== id);
+    const taskIndex = mockTasks.findIndex(task => task.id === id);
 
-    if (mockTasks.length === initialLength) {
+    if (taskIndex === -1) {
         throw new Error("Tarefa não encontrada para exclusão.");
     }
+
+    mockTasks.splice(taskIndex, 1); // Remove from shared store
     // In a real app, consider implications (e.g., past evaluations using this task?)
 }
 
@@ -253,7 +204,7 @@ export async function deleteTask(id: string): Promise<void> {
 
 /** Gets unique categories used in tasks */
 export async function getUsedTaskCategories(): Promise<string[]> {
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise(resolve => setTimeout(resolve, 20));
     const categories = new Set(mockTasks.map(t => t.category).filter(Boolean) as string[]);
     return Array.from(categories);
 }

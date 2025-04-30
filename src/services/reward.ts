@@ -1,7 +1,7 @@
 
 'use server';
 
-import type { Department } from './department';
+import { mockRewards } from './mock-data'; // Import from centralized store
 
 /**
  * Representa a definição de uma premiação.
@@ -35,45 +35,6 @@ export interface Reward {
   isActive: boolean;
 }
 
-// In-memory store para dados mock (substituir por banco de dados real)
-let mockRewards: Reward[] = [
-    {
-        id: 'reward_1',
-        title: 'Colaborador Destaque do Mês',
-        description: 'Reconhecimento pelo excelente desempenho e contribuição excepcional durante o mês.',
-        monetaryValue: 500,
-        period: 'recorrente',
-        isRecurring: true,
-        numberOfWinners: 1,
-        eligibleDepartments: ['Todos'],
-        isActive: true,
-        imageUrl: 'https://picsum.photos/seed/reward1/100/100' // Placeholder image
-    },
-    {
-        id: 'reward_2',
-        title: 'Top Vendas Agosto/2024',
-        description: 'Prêmio para o membro da equipe de vendas com o maior volume de negócios fechados em Agosto.',
-        monetaryValue: 1000,
-        nonMonetaryDescription: 'Troféu exclusivo Top Vendas',
-        period: '2024-08',
-        isRecurring: false,
-        numberOfWinners: 1,
-        eligibleDepartments: ['Vendas'],
-        isActive: true,
-        imageUrl: 'https://picsum.photos/seed/reward2/100/100'
-    },
-     {
-        id: 'reward_3',
-        title: 'Excelência Operacional Q3',
-        description: 'Premiação trimestral para o colaborador que demonstrou maior eficiência e qualidade nas operações.',
-        nonMonetaryDescription: '1 dia de folga adicional',
-        period: '2024-Q3', // Exemplo de período trimestral
-        isRecurring: false,
-        numberOfWinners: 1,
-        eligibleDepartments: ['Engenharia', 'Suporte'], // Exemplo múltiplos deptos
-        isActive: false, // Exemplo inativo
-    }
-];
 
 // --- Funções Mock da API ---
 
@@ -83,8 +44,8 @@ let mockRewards: Reward[] = [
  */
 export async function getAllRewards(): Promise<Reward[]> {
     console.log("Fetching all rewards (mock)...");
-    await new Promise(resolve => setTimeout(resolve, 300));
-    return mockRewards.map(r => ({...r})); // Retorna cópias
+    await new Promise(resolve => setTimeout(resolve, 100)); // Reduced delay
+    return mockRewards.map(r => ({...r})); // Retorna cópias from shared store
 }
 
 /**
@@ -94,7 +55,7 @@ export async function getAllRewards(): Promise<Reward[]> {
  */
 export async function getRewardById(id: string): Promise<Reward | null> {
     console.log("Fetching reward by ID (mock):", id);
-    await new Promise(resolve => setTimeout(resolve, 150));
+    await new Promise(resolve => setTimeout(resolve, 50));
     const reward = mockRewards.find(r => r.id === id);
     return reward ? {...reward} : null;
 }
@@ -108,7 +69,7 @@ export async function getRewardById(id: string): Promise<Reward | null> {
  */
 export async function addReward(rewardData: Omit<Reward, 'id'>): Promise<Reward> {
     console.log("Adding reward (mock):", rewardData);
-    await new Promise(resolve => setTimeout(resolve, 400));
+    await new Promise(resolve => setTimeout(resolve, 200));
 
     // --- Validação Básica ---
     if (!rewardData.title?.trim() || !rewardData.description?.trim()) {
@@ -126,7 +87,7 @@ export async function addReward(rewardData: Omit<Reward, 'id'>): Promise<Reward>
         eligibleDepartments: rewardData.eligibleDepartments?.length ? rewardData.eligibleDepartments : ['Todos'],
     };
 
-    mockRewards.push(newReward);
+    mockRewards.push(newReward); // Add to shared store
     return { ...newReward }; // Retorna cópia
 }
 
@@ -139,7 +100,7 @@ export async function addReward(rewardData: Omit<Reward, 'id'>): Promise<Reward>
  */
 export async function updateReward(id: string, rewardData: Partial<Omit<Reward, 'id'>>): Promise<Reward> {
     console.log("Updating reward (mock):", id, rewardData);
-    await new Promise(resolve => setTimeout(resolve, 400));
+    await new Promise(resolve => setTimeout(resolve, 200));
 
     const rewardIndex = mockRewards.findIndex(r => r.id === id);
     if (rewardIndex === -1) {
@@ -152,9 +113,8 @@ export async function updateReward(id: string, rewardData: Partial<Omit<Reward, 
     }
     // Adicionar mais validações conforme necessário
 
-    const updatedReward = { ...mockRewards[rewardIndex], ...rewardData };
-    mockRewards[rewardIndex] = updatedReward;
-    return { ...updatedReward }; // Retorna cópia
+    mockRewards[rewardIndex] = { ...mockRewards[rewardIndex], ...rewardData }; // Update shared store
+    return { ...mockRewards[rewardIndex] }; // Retorna cópia
 }
 
 /**
@@ -165,13 +125,13 @@ export async function updateReward(id: string, rewardData: Partial<Omit<Reward, 
  */
 export async function deleteReward(id: string): Promise<void> {
     console.log("Deleting reward (mock):", id);
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise(resolve => setTimeout(resolve, 200));
 
     const initialLength = mockRewards.length;
-    mockRewards = mockRewards.filter(r => r.id !== id);
+    const rewardIndex = mockRewards.findIndex(r => r.id === id);
 
-    if (mockRewards.length === initialLength) {
+    if (rewardIndex === -1) {
         throw new Error("Premiação não encontrada para exclusão.");
     }
-    // Em uma aplicação real, considerar o que acontece com históricos associados, etc.
+    mockRewards.splice(rewardIndex, 1); // Remove from shared store
 }

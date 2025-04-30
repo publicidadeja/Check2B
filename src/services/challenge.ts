@@ -1,7 +1,8 @@
 
 'use server';
 
-import { Department, getAllDepartments } from './department';
+import { mockChallenges } from './mock-data'; // Import from centralized store
+import { getAllDepartments } from './department'; // Keep for validation
 
 /**
  * Represents the structure of a weekly challenge.
@@ -37,53 +38,6 @@ export interface Challenge {
   isActive: boolean;
 }
 
-// In-memory store for mock data (replace with actual database)
-let mockChallenges: Challenge[] = [
-  {
-    id: 'challenge_1',
-    title: 'Superação de Metas de Vendas',
-    description: 'Atingir 110% da meta de vendas individual da semana.',
-    category: 'Produtividade',
-    startDate: '2024-08-05',
-    endDate: '2024-08-09',
-    points: 50,
-    difficulty: 'Médio',
-    participationType: 'Obrigatório',
-    eligibleDepartments: ['Vendas'],
-    evaluationMetrics: 'Verificação do relatório de vendas no CRM.',
-    isActive: true,
-    imageUrl: 'https://picsum.photos/seed/challenge1/100/100'
-  },
-  {
-    id: 'challenge_2',
-    title: 'Inovação Operacional Proposta',
-    description: 'Sugerir uma melhoria concreta em um processo operacional existente.',
-    category: 'Inovação',
-    startDate: '2024-08-05',
-    endDate: '2024-08-09',
-    points: 75,
-    difficulty: 'Difícil',
-    participationType: 'Opcional',
-    eligibleDepartments: ['Todos'],
-    evaluationMetrics: 'Avaliação da proposta pela gerência (originalidade, viabilidade, impacto).',
-    supportMaterial: 'Link para formulário de sugestões: [link]',
-    isActive: true,
-  },
-  {
-    id: 'challenge_3',
-    title: 'Zero Erros de Digitação',
-    description: 'Concluir todas as tarefas de entrada de dados da semana sem erros reportados.',
-    category: 'Qualidade',
-    startDate: '2024-08-12',
-    endDate: '2024-08-16',
-    points: 30,
-    difficulty: 'Fácil',
-    participationType: 'Obrigatório',
-    eligibleDepartments: ['Administrativo', 'RH'],
-    evaluationMetrics: 'Auditoria aleatória de 10% das entradas realizadas.',
-    isActive: false, // Example of an inactive (past or future) challenge
-  },
-];
 
 // --- Mock API Functions ---
 
@@ -94,9 +48,9 @@ let mockChallenges: Challenge[] = [
  */
 export async function getAllChallenges(options?: { isActive?: boolean, department?: string }): Promise<Challenge[]> {
   console.log("Fetching challenges (mock) with options:", options);
-  await new Promise(resolve => setTimeout(resolve, 400));
+  await new Promise(resolve => setTimeout(resolve, 150)); // Reduced delay
 
-  let filteredChallenges = [...mockChallenges];
+  let filteredChallenges = [...mockChallenges]; // Use shared store
 
   if (options?.isActive !== undefined) {
     filteredChallenges = filteredChallenges.filter(c => c.isActive === options.isActive);
@@ -118,7 +72,7 @@ export async function getAllChallenges(options?: { isActive?: boolean, departmen
  */
 export async function getChallengeById(id: string): Promise<Challenge | null> {
   console.log("Fetching challenge by ID (mock):", id);
-  await new Promise(resolve => setTimeout(resolve, 150));
+  await new Promise(resolve => setTimeout(resolve, 50));
   const challenge = mockChallenges.find(c => c.id === id);
   return challenge ? { ...challenge } : null;
 }
@@ -131,7 +85,7 @@ export async function getChallengeById(id: string): Promise<Challenge | null> {
  */
 export async function addChallenge(challengeData: Omit<Challenge, 'id'>): Promise<Challenge> {
   console.log("Adding challenge (mock):", challengeData);
-  await new Promise(resolve => setTimeout(resolve, 350));
+  await new Promise(resolve => setTimeout(resolve, 250));
 
   // --- Basic Validation ---
   if (!challengeData.title?.trim() || !challengeData.description?.trim() || !challengeData.startDate || !challengeData.endDate) {
@@ -165,7 +119,7 @@ export async function addChallenge(challengeData: Omit<Challenge, 'id'>): Promis
     isActive: challengeData.isActive ?? false, // Default to inactive if not set
   };
 
-  mockChallenges.push(newChallenge);
+  mockChallenges.push(newChallenge); // Modify shared store
   return { ...newChallenge }; // Return copy
 }
 
@@ -178,7 +132,7 @@ export async function addChallenge(challengeData: Omit<Challenge, 'id'>): Promis
  */
 export async function updateChallenge(id: string, challengeData: Partial<Omit<Challenge, 'id'>>): Promise<Challenge> {
   console.log("Updating challenge (mock):", id, challengeData);
-  await new Promise(resolve => setTimeout(resolve, 350));
+  await new Promise(resolve => setTimeout(resolve, 250));
 
   const challengeIndex = mockChallenges.findIndex(c => c.id === id);
   if (challengeIndex === -1) {
@@ -220,7 +174,7 @@ export async function updateChallenge(id: string, challengeData: Partial<Omit<Ch
   }
 
 
-  mockChallenges[challengeIndex] = updatedFields;
+  mockChallenges[challengeIndex] = updatedFields; // Update shared store
   return { ...updatedFields }; // Return copy
 }
 
@@ -232,15 +186,16 @@ export async function updateChallenge(id: string, challengeData: Partial<Omit<Ch
  */
 export async function deleteChallenge(id: string): Promise<void> {
   console.log("Deleting challenge (mock):", id);
-  await new Promise(resolve => setTimeout(resolve, 300));
+  await new Promise(resolve => setTimeout(resolve, 200));
 
   const initialLength = mockChallenges.length;
-  mockChallenges = mockChallenges.filter(c => c.id !== id);
+  const challengeIndex = mockChallenges.findIndex(c => c.id === id);
 
-  if (mockChallenges.length === initialLength) {
+  if (challengeIndex === -1) {
     throw new Error("Desafio não encontrado para exclusão.");
   }
-  // Consider implications in a real app (e.g., ongoing participations?)
+
+  mockChallenges.splice(challengeIndex, 1); // Remove from shared store
 }
 
 /**
@@ -248,48 +203,21 @@ export async function deleteChallenge(id: string): Promise<void> {
  * @returns Promise<string[]> - Array of unique category names.
  */
 export async function getUsedChallengeCategories(): Promise<string[]> {
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise(resolve => setTimeout(resolve, 20));
     const categories = new Set(mockChallenges.map(c => c.category).filter(Boolean) as string[]);
     return Array.from(categories);
 }
 
-// --- Placeholder functions for other aspects ---
-
-/**
- * Simulates a participant accepting a challenge.
- * @param challengeId - ID of the challenge.
- * @param employeeId - ID of the employee accepting.
- * @returns Promise<void>
- */
+// --- Placeholder functions for other aspects (remain unchanged) ---
 export async function acceptChallenge(challengeId: string, employeeId: string): Promise<void> {
     console.log(`Employee ${employeeId} accepted challenge ${challengeId} (mock).`);
     await new Promise(resolve => setTimeout(resolve, 100));
-    // In a real app: Record acceptance in a participation table.
 }
-
-/**
- * Simulates submitting evidence for challenge completion.
- * @param challengeId - ID of the challenge.
- * @param employeeId - ID of the employee submitting.
- * @param evidence - Evidence data (e.g., text, file URL).
- * @returns Promise<void>
- */
 export async function submitChallengeEvidence(challengeId: string, employeeId: string, evidence: any): Promise<void> {
      console.log(`Employee ${employeeId} submitted evidence for challenge ${challengeId} (mock):`, evidence);
      await new Promise(resolve => setTimeout(resolve, 200));
-     // In a real app: Store evidence link/data, mark participation as 'pending review'.
 }
-
-/**
- * Simulates an admin evaluating a challenge submission.
- * @param challengeId - ID of the challenge.
- * @param employeeId - ID of the employee whose submission is being evaluated.
- * @param score - Points awarded (can be different from challenge.points if variable).
- * @param feedback - Optional feedback for the employee.
- * @returns Promise<void>
- */
 export async function evaluateChallengeSubmission(challengeId: string, employeeId: string, score: number, feedback?: string): Promise<void> {
     console.log(`Admin evaluated challenge ${challengeId} for employee ${employeeId} (mock). Score: ${score}, Feedback: ${feedback || 'N/A'}`);
     await new Promise(resolve => setTimeout(resolve, 150));
-    // In a real app: Update participation record with score, feedback, timestamp. Trigger ranking update.
 }
