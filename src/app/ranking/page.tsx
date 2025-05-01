@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -54,7 +53,7 @@ import {
 } from '@/components/ui/dropdown-menu'; // Import DropdownMenu components
 
 // Mock Data Types
-interface Award {
+export interface Award { // Exported Award interface
     id: string;
     title: string;
     description: string;
@@ -71,7 +70,7 @@ interface Award {
     specificMonth?: Date;
 }
 
-interface RankingEntry {
+export interface RankingEntry { // Exported RankingEntry interface
     rank: number;
     employeeId: string;
     employeeName: string;
@@ -98,7 +97,7 @@ const awardSchema = z.object({
     description: z.string().min(5, "Descrição deve ter pelo menos 5 caracteres."),
     monetaryValue: z.coerce.number().nonnegative("Valor monetário não pode ser negativo.").optional(),
     nonMonetaryValue: z.string().optional(),
-    imageUrl: z.string().url("URL da imagem inválida.").optional().or(z.literal('')),
+    imageUrl: z.string().url("URL inválida.").optional().or(z.literal('')),
     isRecurring: z.boolean().default(true),
     specificMonth: z.date().optional(),
     eligibilityCriteria: z.boolean().default(false),
@@ -128,18 +127,21 @@ type AwardFormData = z.infer<typeof awardSchema>;
 
 
 // Mock Data (Replace with API calls)
-const mockAwards: Award[] = [
+// Export mockAwards
+export let mockAwards: Award[] = [ // Changed to let and exported
     { id: 'awd1', title: 'Colaborador do Mês', description: 'Reconhecimento pelo desempenho excepcional.', monetaryValue: 500, period: 'recorrente', winnerCount: 1, eligibleDepartments: ['all'], status: 'active', isRecurring: true },
     { id: 'awd2', title: 'Destaque Operacional - Julho', description: 'Melhor performance nas tarefas operacionais.', nonMonetaryValue: 'Folga adicional', period: '2024-07', winnerCount: 1, eligibleDepartments: ['Engenharia', 'RH'], status: 'inactive', isRecurring: false, specificMonth: new Date(2024, 6, 1), eligibilityCriteria: true },
     { id: 'awd3', title: 'Top 3 Vendas', description: 'Maiores resultados em vendas.', monetaryValue: 300, period: 'recorrente', winnerCount: 3, eligibleDepartments: ['Vendas'], status: 'active', isRecurring: true, valuesPerPosition: { 1: { monetary: 300 }, 2: { monetary: 200 }, 3: { monetary: 100 } } },
     { id: 'awd4', title: 'Campeão da Inovação (Rascunho)', description: 'Melhor sugestão de melhoria.', period: 'recorrente', winnerCount: 1, eligibleDepartments: ['all'], status: 'draft', isRecurring: true },
 ];
 
-const mockRanking: RankingEntry[] = [
+// Export mockRanking
+export const mockRanking: RankingEntry[] = [
     { rank: 1, employeeId: '1', employeeName: 'Alice Silva', department: 'RH', role: 'Recrutadora', score: 980, zeros: 0, trend: 'up', employeePhotoUrl: 'https://picsum.photos/id/1027/40/40' },
     { rank: 2, employeeId: '4', employeeName: 'Davi Costa', department: 'Vendas', role: 'Executivo de Contas', score: 950, zeros: 1, trend: 'stable', employeePhotoUrl: 'https://picsum.photos/id/338/40/40' },
     { rank: 3, employeeId: '5', employeeName: 'Eva Pereira', department: 'Engenharia', role: 'Desenvolvedora Frontend', score: 945, zeros: 1, trend: 'down', employeePhotoUrl: 'https://picsum.photos/id/1005/40/40' }, // Updated URL
     { rank: 4, employeeId: '2', employeeName: 'Beto Santos', department: 'Engenharia', role: 'Desenvolvedor Backend', score: 920, zeros: 2, trend: 'up', employeePhotoUrl: 'https://picsum.photos/id/1005/40/40' },
+    { rank: 5, employeeId: '6', employeeName: 'Leo Corax', department: 'Engenharia', role: 'Desenvolvedor Frontend', score: 890, zeros: 3, trend: 'stable', employeePhotoUrl: 'https://picsum.photos/seed/leo/40/40' }, // Added Leo
 ];
 
 const mockHistory: AwardHistoryEntry[] = [
@@ -750,7 +752,8 @@ const AwardConfiguration = () => {
                                      <FormField control={control} name="monetaryValue" render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>Valor Monetário (R$) (Opcional)</FormLabel>
-                                            <FormControl><Input type="number" placeholder="Ex: 500.00" step="0.01" {...field} onChange={event => field.onChange(event.target.value === '' ? undefined : +event.target.value)} /></FormControl>
+                                             {/* Update Input to handle potential undefined value from field */}
+                                            <FormControl><Input type="number" placeholder="Ex: 500.00" step="0.01" {...field} value={field.value ?? ''} onChange={event => field.onChange(event.target.value === '' ? undefined : +event.target.value)} /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )}/>
@@ -799,7 +802,9 @@ const AwardConfiguration = () => {
                                             <Input
                                                 type="number"
                                                 min="1"
-                                                {...field} // Use spread syntax for field props
+                                                // Use spread syntax for field props, handle potential undefined value
+                                                {...field}
+                                                value={field.value ?? 1} // Ensure value is number or default
                                                 // Handle onChange specifically for coercion to number
                                                 onChange={event => field.onChange(+event.target.value)}
                                             />
@@ -1120,5 +1125,3 @@ export default function RankingPage() {
     </div>
   );
 }
-
-    

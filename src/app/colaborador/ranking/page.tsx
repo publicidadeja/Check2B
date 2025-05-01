@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -17,15 +16,14 @@ import { Separator } from '@/components/ui/separator';
 import EmployeeLayout from '../layout'; // Import EmployeeLayout
 
 // Import Types
-import type { RankingEntry } from '@/app/ranking/page'; // Reuse admin type if suitable
-import type { Award as AdminAward } from '@/app/ranking/page'; // Reuse admin award type, rename to avoid clash
+import type { RankingEntry, Award as AdminAward } from '@/app/ranking/page'; // Reuse admin types, rename Award to AdminAward
 
 // Mock Employee ID
 const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
 
 // --- Mock Data & Fetching ---
-import { mockRanking as allAdminRanking } from '@/app/ranking/page'; // Reuse admin mock data
-import { mockAwards as allAdminAwards } from '@/app/ranking/page';
+import { mockRanking as allAdminRanking, mockAwards as allAdminAwards } from '@/app/ranking/page'; // Reuse admin mock data
+
 
 // Mock function to fetch ranking data for a specific month, adapted for employee view
 const fetchEmployeeRankingData = async (employeeId: string, period: Date): Promise<{ ranking: RankingEntry[], userEntry?: RankingEntry, award?: AdminAward }> => {
@@ -217,7 +215,7 @@ export default function EmployeeRankingPage() {
                         <Card>
                             <CardHeader>
                                  <CardTitle className="flex items-center gap-2"><Award className="h-5 w-5 text-yellow-500"/> Premiação Vigente</CardTitle>
-                                 <CardDescription>Prêmio para os melhores colocados neste período ({currentAward.period === 'recorrente' ? 'Recorrente' : format(parseISO(currentAward.period + '-01'), 'MMMM yyyy', { locale: ptBR })}).</CardDescription>
+                                 <CardDescription>Prêmio para os melhores colocados neste período ({currentAward.period === 'recorrente' ? 'Recorrente' : currentAward.specificMonth ? format(currentAward.specificMonth, 'MMMM yyyy', { locale: ptBR }) : 'Data Indefinida'}).</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-2">
                                  <h4 className="font-semibold">{currentAward.title}</h4>
