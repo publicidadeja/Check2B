@@ -32,7 +32,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { logoutUser } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { BottomNavigation } from '@/components/layout/bottom-navigation'; // Import BottomNavigation
-import { Sheet, SheetContent, SheetTrigger, SheetClose } from '@/components/ui/sheet'; // Import Sheet for mobile menu
+import { Sheet, SheetContent, SheetTrigger, SheetClose, SheetTitle, SheetHeader } from '@/components/ui/sheet'; // Import Sheet for mobile menu, including SheetTitle and SheetHeader
 import { cn } from '@/lib/utils';
 
 interface EmployeeLayoutProps {
@@ -87,6 +87,22 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
     }
   };
 
+  const handleGuestLoginRedirect = () => {
+      router.push('/login'); // Redirect guest users to the login page
+       toast({
+           title: "Acesso Requerido",
+           description: "Por favor, faça login para acessar esta área.",
+           variant: "destructive"
+       });
+   };
+
+
+  // Check if the user is a guest (replace with actual logic if implemented)
+   // For now, assume any access to /colaborador without auth cookie implies guest attempt
+   // This check might be better handled in middleware in a real app
+   const isGuest = typeof window !== 'undefined' && !document.cookie.includes('auth-token=');
+
+
   return (
     <TooltipProvider>
         <div className="flex min-h-screen w-full flex-col bg-background">
@@ -102,6 +118,10 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
                     </SheetTrigger>
                      {/* Use SheetContent for the mobile sidebar */}
                     <SheetContent side="left" className="flex flex-col p-0">
+                        {/* Add a visually hidden title for accessibility */}
+                         <SheetHeader className="sr-only">
+                           <SheetTitle>Menu de Navegação Principal</SheetTitle>
+                         </SheetHeader>
                          <nav className="flex flex-col gap-1 p-4 text-lg font-medium flex-grow">
                              <Link
                                 href="#"
@@ -138,10 +158,19 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
                                     </Avatar>
                                     <span className="text-sm font-medium truncate">{mockEmployee.name}</span>
                                 </div>
-                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}>
-                                     <LogOut className="h-4 w-4" />
-                                     <span className="sr-only">Sair</span>
-                                </Button>
+                                  {/* Show logout button only if not guest */}
+                                  {!isGuest && (
+                                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}>
+                                          <LogOut className="h-4 w-4" />
+                                          <span className="sr-only">Sair</span>
+                                      </Button>
+                                  )}
+                                  {/* Show login button if guest */}
+                                  {isGuest && (
+                                       <Button variant="ghost" size="sm" onClick={() => { handleGuestLoginRedirect(); setIsMobileMenuOpen(false); }}>
+                                          Entrar
+                                       </Button>
+                                  )}
                              </div>
                          </div>
                     </SheetContent>
@@ -153,26 +182,32 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
 
                 {/* Right side of Header (User info/logout for desktop) */}
                 <div className="hidden items-center gap-4 md:flex">
-                    {/* Maybe add notifications or other icons here */}
-                     <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="secondary" size="icon" className="rounded-full">
-                           <Avatar className="h-8 w-8">
-                              <AvatarImage src={mockEmployee.photoUrl} alt={mockEmployee.name} />
-                              <AvatarFallback>{getInitials(mockEmployee.name)}</AvatarFallback>
-                           </Avatar>
-                          <span className="sr-only">Alternar menu do usuário</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem asChild><Link href="/colaborador/perfil">Perfil</Link></DropdownMenuItem>
-                        {/* <DropdownMenuItem>Suporte</DropdownMenuItem> */}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={handleLogout}>Sair</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                     {/* Conditionally render DropdownMenu or Login button */}
+                    {!isGuest ? (
+                        <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="secondary" size="icon" className="rounded-full">
+                            <Avatar className="h-8 w-8">
+                                <AvatarImage src={mockEmployee.photoUrl} alt={mockEmployee.name} />
+                                <AvatarFallback>{getInitials(mockEmployee.name)}</AvatarFallback>
+                            </Avatar>
+                            <span className="sr-only">Alternar menu do usuário</span>
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem asChild><Link href="/colaborador/perfil">Perfil</Link></DropdownMenuItem>
+                            {/* <DropdownMenuItem>Suporte</DropdownMenuItem> */}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={handleLogout}>Sair</DropdownMenuItem>
+                        </DropdownMenuContent>
+                        </DropdownMenu>
+                    ) : (
+                         <Button variant="outline" size="sm" onClick={handleGuestLoginRedirect}>
+                            Entrar / Registrar
+                         </Button>
+                    )}
                 </div>
             </header>
 
