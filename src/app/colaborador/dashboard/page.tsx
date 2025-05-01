@@ -1,4 +1,3 @@
-
  'use client';
 
  import * as React from 'react';
@@ -40,16 +39,8 @@
  import Link from 'next/link';
  import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
  import { cn } from '@/lib/utils'; // Import cn
- import { Label } from "@/components/ui/label"; // Import Label component
  import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'; // Import Avatar components
- import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'; // Import DropdownMenu components
+ import { Label } from '@/components/ui/label'; // Import Label
 
  // Import types
  import type { Evaluation } from '@/types/evaluation';
@@ -60,7 +51,7 @@
  // Import mock data (Ensure paths are correct)
  import { mockEmployees } from '@/app/employees/page';
  import { mockTasks as allAdminTasks } from '@/app/tasks/page';
- import { mockChallenges as allAdminChallenges, mockParticipants } from '@/app/challenges/page';
+ import { mockChallenges as allAdminChallenges, mockParticipants } from '@/app/challenges/page'; // Updated import
 
  // Mock Employee ID for demonstration
  const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
@@ -82,17 +73,36 @@
         }
 
         days.forEach(day => {
+            // Ensure employee '1' exists in mockEmployees before filtering tasks
+            const employee = mockEmployees.find(e => e.id === employeeId);
+            if (!employee) return; // Skip if employee not found
+
             const tasksForDay = allAdminTasks.filter(task => {
-                 if (!task.assignedTo) return true; // Global
-                 if (task.assignedTo === 'individual' && task.assignedEntityId === employeeId) return true;
-                 // Add role/dept checks if needed, assuming employee '1' is Recruiter in RH
-                 if (task.assignedTo === 'role' && task.assignedEntityId === 'Recrutadora' && employeeId === '1') return true;
-                 if (task.assignedTo === 'department' && task.assignedEntityId === 'RH' && employeeId === '1') return true;
+                 let applies = false;
+                 const dayOfWeek = day.getDay(); // 0 = Sunday
+
+                 // Check periodicity
+                 if (task.periodicity === 'daily') applies = true;
+                 else if (task.periodicity === 'specific_days') {
+                      // Example: Friday only for t6
+                     if (task.id === 't6' && dayOfWeek === 5) applies = true;
+                     // Add more specific day logic here
+                 }
+                  // Add specific_dates logic here if needed
+
+                 if (!applies) return false; // Stop if periodicity doesn't match
+
+                 // Check assignment
+                 if (!task.assignedTo) return true; // Global task
+                 if (task.assignedTo === 'role' && task.assignedEntityId === employee.role) return true;
+                 if (task.assignedTo === 'department' && task.assignedEntityId === employee.department) return true;
+                 if (task.assignedTo === 'individual' && task.assignedEntityId === employee.id) return true;
                  return false;
             });
 
             if (tasksForDay.length > 0) {
                 tasksForDay.forEach(task => {
+                    if (day > today) return; // Don't evaluate future dates
                     const score = Math.random() > 0.1 ? 10 : 0; // 10% chance of getting 0
                     evals.push({
                         id: `eval${employeeId}-${task.id}-${format(day, 'yyyy-MM-dd')}`,
@@ -127,7 +137,7 @@
 
  // Mock fetching function for employee dashboard
  const fetchEmployeeDashboardData = async (employeeId: string): Promise<EmployeeDashboardData> => {
-     await new Promise(resolve => setTimeout(resolve, 600)); // Slightly reduced delay
+     await new Promise(resolve => setTimeout(resolve, 600)); // Simulate network delay
 
      const todayStr = format(new Date(), 'yyyy-MM-dd');
      const employee = mockEmployees.find(e => e.id === employeeId);
@@ -219,10 +229,10 @@
 
       // --- Mock Notifications ---
      const recentNotifications: Notification[] = [
-         ...(todayStatus === 'evaluated' ? [{ id: 'n1', type: 'evaluation' as const, message: `Sua avaliação de hoje foi registrada.`, timestamp: new Date(Date.now() - 360000 * Math.random()), read: false, link: '/colaborador/avaliacoes' }] : []),
+         ...(todayStatus === 'evaluated' ? [{ id: 'n1', type: 'evaluation' as const, message: `Sua avaliação de hoje (${format(new Date(), 'dd/MM')}) foi registrada.`, timestamp: new Date(Date.now() - 360000 * Math.random()), read: false, link: '/colaborador/avaliacoes' }] : []),
          { id: 'n2', type: zerosThisMonth >= ZERO_LIMIT ? 'system' as const : 'info' as const, message: `Você tem ${zerosThisMonth} zero(s) este mês. Limite para bônus: ${ZERO_LIMIT}.`, timestamp: new Date(), read: false },
          ...(activeChallenges.length > 0 ? [{ id: 'n3', type: 'challenge' as const, message: `Desafio ativo: "${activeChallenges[0]?.title}". Ganhe ${activeChallenges[0]?.points} pts!`, timestamp: new Date(Date.now() - 2 * 3600000), read: false, link: '/colaborador/desafios' }] : []),
-          { id: 'n4', type: 'ranking' as const, message: `Sua posição no ranking é 3º lugar.`, timestamp: new Date(Date.now() - 86400000), read: true, link: '/colaborador/ranking' },
+          { id: 'n4', type: 'ranking' as const, message: `Ranking atualizado! Sua posição agora é 3º lugar.`, timestamp: new Date(Date.now() - 86400000), read: true, link: '/colaborador/ranking' },
           { id: 'n5', type: 'announcement' as const, message: 'Lembrete: Reunião geral sexta-feira às 10h.', timestamp: new Date(Date.now() - 2 * 86400000), read: true },
      ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()); // Sort newest first
 
@@ -249,26 +259,8 @@
          const loadData = async () => {
              setIsLoading(true);
              try {
-                 // Simulate guest mode or fetch based on actual auth state
-                 const isGuest = false; // Replace with actual check
-                 if (!isGuest) {
-                     const dashboardData = await fetchEmployeeDashboardData(CURRENT_EMPLOYEE_ID);
-                     setData(dashboardData);
-                 } else {
-                      // Set mock data for guest view or handle appropriately
-                      setData({
-                          todayStatus: 'pending',
-                          zerosThisMonth: 1,
-                          projectedBonus: 90,
-                          tasksToday: allAdminTasks.slice(0, 2), // Show a couple tasks
-                          activeChallenges: allAdminChallenges.filter(c => c.status === 'active').slice(0, 1),
-                          recentNotifications: [
-                              { id: 'gn1', type: 'info', message: 'Bem-vindo ao modo convidado!', timestamp: new Date(), read: false },
-                              { id: 'gn2', type: 'challenge', message: 'Confira os desafios disponíveis!', timestamp: new Date(Date.now() - 10000), read: false, link: '/colaborador/desafios' }
-                          ],
-                           monthlyPerformanceTrend: 'stable',
-                      });
-                 }
+                 const dashboardData = await fetchEmployeeDashboardData(CURRENT_EMPLOYEE_ID);
+                 setData(dashboardData);
              } catch (error) {
                  console.error("Erro ao carregar dashboard:", error);
                  toast({
@@ -282,18 +274,6 @@
          };
          loadData();
      }, [toast]);
-
-      // Function to get notification icon based on type
-     const getNotificationIcon = (type: Notification['type']) => {
-        switch (type) {
-            case 'evaluation': return <ClipboardCheck className="h-4 w-4 text-blue-500" />;
-            case 'challenge': return <Target className="h-4 w-4 text-purple-500" />;
-            case 'ranking': return <Trophy className="h-4 w-4 text-yellow-500" />; // Assuming Trophy exists
-            case 'announcement': return <Bell className="h-4 w-4 text-gray-500" />;
-            case 'system': return <Settings className="h-4 w-4 text-red-500" />; // Assuming Settings exists
-            default: return <Info className="h-4 w-4 text-muted-foreground" />; // Default to Info
-        }
-     };
 
 
      if (isLoading) {
@@ -316,7 +296,7 @@
      }
 
      const zeroProgress = Math.min((data.zerosThisMonth / ZERO_LIMIT) * 100, 100);
-     const progressColor = zeroProgress > 80 ? 'bg-destructive' : zeroProgress > 50 ? 'bg-yellow-500' : 'bg-green-500'; // Changed to green for low zeros
+     const progressColor = zeroProgress >= (ZERO_LIMIT / ZERO_LIMIT * 100) ? 'bg-destructive' : zeroProgress >= ( (ZERO_LIMIT - 1) / ZERO_LIMIT * 100) ? 'bg-yellow-500' : 'bg-green-500'; // Color logic refined
 
 
      const getTrendIcon = (trend?: 'up' | 'down' | 'stable') => {
@@ -328,13 +308,22 @@
         }
     };
 
+    // Style Card for illustration
+    const IllustrationCard = ({ children, className }: { children: React.ReactNode, className?: string }) => (
+         <Card className={cn("shadow-md overflow-hidden border-none relative bg-gradient-to-br from-teal-500 to-cyan-600 dark:from-teal-800 dark:to-cyan-900 text-primary-foreground", className)}>
+            {/* Add subtle background pattern or image if desired */}
+            <div className="absolute inset-0 bg-[url('/path/to/subtle-pattern.svg')] opacity-10"></div>
+            <div className="relative z-10">{children}</div>
+         </Card>
+     );
+
 
      return (
          <TooltipProvider>
              <div className="space-y-4 p-4 md:p-0"> {/* Add padding for mobile */}
 
                  {/* Welcome/Status Card - Enhanced and Illustrated */}
-                 <Card className="shadow-md overflow-hidden border-none bg-gradient-to-br from-primary to-teal-600 dark:from-slate-800 dark:to-teal-900 text-primary-foreground">
+                 <IllustrationCard>
                      <CardHeader className="p-4 pb-2">
                          <div className="flex justify-between items-center">
                              <CardTitle className="text-lg">Seu Dia</CardTitle>
@@ -359,13 +348,18 @@
                          {/* Monthly Zeros */}
                          <div className="flex flex-col items-center justify-center text-center p-3 rounded-lg bg-white/20 backdrop-blur-sm">
                             <Label className="text-xs text-primary-foreground/80 mb-1">Zeros no Mês</Label>
-                             <div className={`text-3xl font-bold mb-1 ${data.zerosThisMonth > ZERO_LIMIT ? 'text-red-300' : ''}`}>
+                             <div className={cn("text-3xl font-bold mb-1", data.zerosThisMonth >= ZERO_LIMIT ? 'text-red-300' : 'text-primary-foreground')}>
                                  {data.zerosThisMonth}
                                  <span className="text-sm text-primary-foreground/70"> / {ZERO_LIMIT}</span>
                              </div>
                              <Tooltip>
                                 <TooltipTrigger asChild>
-                                     <Progress value={zeroProgress} aria-label={`${data.zerosThisMonth} de ${ZERO_LIMIT} zeros permitidos`} className="h-1.5 w-full bg-white/30" indicatorClassName={progressColor} />
+                                     <Progress
+                                        value={zeroProgress}
+                                        aria-label={`${data.zerosThisMonth} de ${ZERO_LIMIT} zeros permitidos`}
+                                        className="h-1.5 w-full bg-white/30"
+                                        indicatorClassName={progressColor} // Pass class name here
+                                     />
                                 </TooltipTrigger>
                                  <TooltipContent>
                                     <p>{data.zerosThisMonth >= ZERO_LIMIT ? 'Limite de zeros atingido/excedido.' : `${ZERO_LIMIT - data.zerosThisMonth} zero(s) restante(s).`}</p>
@@ -397,7 +391,7 @@
                             <Button variant="link" size="sm" className="w-full text-xs text-primary-foreground/90 hover:text-primary-foreground justify-center">Ver Histórico Completo</Button>
                         </Link>
                      </CardFooter>
-                 </Card>
+                 </IllustrationCard>
 
                  {/* Tasks for Today - Cleaner List */}
                  <Card className="shadow-sm border">
@@ -478,5 +472,3 @@
 
  // Assuming Trophy and Settings are imported elsewhere or need importing if used in getNotificationIcon
  import { Settings, Trophy } from 'lucide-react';
-
-    
