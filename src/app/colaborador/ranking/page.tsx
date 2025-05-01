@@ -1,45 +1,56 @@
-
  'use client';
 
  import * as React from 'react';
- import { format, parseISO, subMonths, addMonths, startOfMonth } from 'date-fns';
+ import { format, parseISO, subMonths, addMonths, startOfMonth, endOfMonth } from 'date-fns'; // Added endOfMonth
  import { ptBR } from 'date-fns/locale';
- import { Trophy, Crown, Medal, ChevronLeft, ChevronRight, HelpCircle, Loader2, BarChartHorizontal, Info, Award as AwardIcon } from 'lucide-react'; // Added AwardIcon
+ import { Trophy, Crown, Medal, ChevronLeft, ChevronRight, HelpCircle, Loader2, BarChartHorizontal, Info, Award as AwardIcon, TrendingUp, TrendingDown, Minus, User, Activity, AlertTriangle } from 'lucide-react'; // Added more icons
  import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
  import { Button } from '@/components/ui/button';
  import { Badge } from '@/components/ui/badge';
- import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
  import { useToast } from '@/hooks/use-toast';
  import { DataTable } from '@/components/ui/data-table';
  import type { ColumnDef } from "@tanstack/react-table";
  import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
  import { Separator } from '@/components/ui/separator';
- import { ScrollArea } from '@/components/ui/scroll-area'; // Import ScrollArea
- // Removed EmployeeLayout import
+ import { ScrollArea } from '@/components/ui/scroll-area'; // Ensure ScrollArea is imported
+ import { cn } from '@/lib/utils'; // Import cn utility
 
  // Import Types
- import type { RankingEntry, Award as AdminAward } from '@/app/ranking/page'; // Reuse admin types, rename Award to AdminAward
+ import type { RankingEntry, Award as AdminAward } from '@/app/ranking/page'; // Reuse admin types
 
  // Mock Employee ID
  const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
 
  // --- Mock Data & Fetching ---
- import { mockRanking as allAdminRanking, mockAwards as allAdminAwards } from '@/app/ranking/page'; // Reuse admin mock data
+ // Use exported mock data from admin page
+ import { mockRanking as allAdminRanking, mockAwards as allAdminAwards } from '@/app/ranking/page';
 
 
+ // Function to fetch ranking data for a specific month, adapted for employee view
  const fetchEmployeeRankingData = async (employeeId: string, period: Date): Promise<{ ranking: RankingEntry[], userEntry?: RankingEntry, award?: AdminAward }> => {
-     await new Promise(resolve => setTimeout(resolve, 600));
+     await new Promise(resolve => setTimeout(resolve, 500)); // Simulate delay
 
-     const monthFactor = period.getMonth() + 1;
-     const fullRanking = allAdminRanking.map(entry => ({
+     const monthKey = format(period, 'yyyy-MM');
+
+     // Simulate data fetching/calculation for the given period
+      let fullRanking = allAdminRanking.map(entry => ({
          ...entry,
-         score: Math.max(800, entry.score + (monthFactor * 5 - 20) + Math.floor(Math.random()*20 - 10)), // Add some randomness
-         zeros: Math.max(0, entry.zeros + (Math.random() > 0.8 ? 1 : 0) - (Math.random() > 0.85 ? 1 : 0)),
+         // Simulate score variation based on month for demo
+         score: entry.score + (period.getMonth() - new Date().getMonth()) * (Math.random() > 0.5 ? 15 : -10),
+         zeros: Math.max(0, entry.zeros + (Math.random() > 0.8 ? (period.getMonth() % 2 === 0 ? 1 : -1) : 0)),
+         // Simulate trend based on random change
+         trend: (['up', 'down', 'stable'] as const)[Math.floor(Math.random() * 3)],
      })).sort((a, b) => b.score - a.score || a.zeros - b.zeros)
-       .map((entry, index) => ({ ...entry, rank: index + 1 }));
+        .map((entry, index) => ({ ...entry, rank: index + 1 }));
 
      const userEntry = fullRanking.find(entry => entry.employeeId === employeeId);
-     const currentAward = allAdminAwards.find(a => a.status === 'active' && (a.isRecurring || (a.specificMonth && format(a.specificMonth, 'yyyy-MM') === format(period, 'yyyy-MM'))));
+
+      // Find award active for the specific month OR a recurring one
+     const currentAward = allAdminAwards.find(a =>
+         a.status === 'active' &&
+         (a.isRecurring || (a.specificMonth && format(a.specificMonth, 'yyyy-MM') === monthKey))
+     );
 
      return { ranking: fullRanking, userEntry, award: currentAward };
  }
@@ -50,49 +61,65 @@
      return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
  }
 
- // DataTable Columns definition (simplified for employee view)
- const rankingColumns: ColumnDef<RankingEntry>[] = [
+ // Trend Icon Helper
+ const getTrendIcon = (trend?: 'up' | 'down' | 'stable') => {
+     switch (trend) {
+         case 'up': return <TrendingUp className="h-4 w-4 text-green-500" />;
+         case 'down': return <TrendingDown className="h-4 w-4 text-red-500" />;
+         case 'stable': return <Minus className="h-4 w-4 text-muted-foreground" />;
+         default: return <Activity className="h-4 w-4 text-muted-foreground opacity-50"/>; // Default icon if no trend data
+     }
+ };
+
+
+ // DataTable Columns definition (optimized for mobile)
+ const rankingColumns = (currentEmployeeId: string): ColumnDef<RankingEntry>[] => [
      {
          accessorKey: "rank",
          header: "#",
          cell: ({ row }) => (
-             <div className="font-medium text-center w-6"> {/* Reduced width */}
-                 {row.original.rank <= 3 && row.original.rank === 1 && <Crown className="h-4 w-4 text-yellow-500 mx-auto" />}
-                 {row.original.rank <= 3 && row.original.rank === 2 && <Medal className="h-4 w-4 text-slate-400 mx-auto" />}
-                 {row.original.rank <= 3 && row.original.rank === 3 && <Medal className="h-4 w-4 text-yellow-700 mx-auto" />}
-                 {row.original.rank > 3 && <span className="text-xs">{row.getValue("rank")}</span>}
+             <div className="font-bold text-center w-6 text-sm">
+                 {row.original.rank === 1 && <Crown className="h-4 w-4 text-yellow-500 mx-auto" />}
+                 {row.original.rank === 2 && <Medal className="h-4 w-4 text-slate-400 mx-auto" />}
+                 {row.original.rank === 3 && <Medal className="h-4 w-4 text-yellow-700 mx-auto" />}
+                 {row.original.rank > 3 && <span className="text-xs text-muted-foreground">{row.getValue("rank")}</span>}
              </div>
          ),
-         size: 30, // Reduced size
+         size: 35, // Slightly reduced size
      },
      {
          accessorKey: "employeeName",
          header: "Colaborador",
          cell: ({ row }) => (
-             <div className="flex items-center gap-1.5"> {/* Reduced gap */}
-                 <Avatar className="h-6 w-6"> {/* Reduced avatar size */}
+             <div className="flex items-center gap-2">
+                 <Avatar className="h-7 w-7"> {/* Smaller avatar */}
                      <AvatarImage src={row.original.employeePhotoUrl} alt={row.original.employeeName} />
                      <AvatarFallback className="text-[10px]">{getInitials(row.original.employeeName)}</AvatarFallback>
                  </Avatar>
-                  <span className={`font-medium text-xs truncate ${row.original.employeeId === CURRENT_EMPLOYEE_ID ? 'text-primary' : ''}`}>
-                     {row.original.employeeName} {row.original.employeeId === CURRENT_EMPLOYEE_ID ? '(Você)' : ''}
+                  <span className={cn("font-medium text-xs truncate", row.original.employeeId === currentEmployeeId && 'text-primary font-semibold')}>
+                     {row.original.employeeName} {row.original.employeeId === currentEmployeeId ? '(Você)' : ''}
                  </span>
              </div>
          ),
-         minSize: 100, // Allow shrinking
+         minSize: 120, // Allow more shrinking
      },
-     // { accessorKey: "department", header: "Depto", cell: ({ row }) => <span className="text-[10px] hidden sm:inline">{row.getValue("department")}</span>, size: 60 }, // Shorter header, hide on smaller screens
      {
          accessorKey: "score",
-         header: () => <div className="text-right text-xs">Pontos</div>, // Right align header
+         header: () => <div className="text-right text-xs">Pts</div>, // Shorter header
          cell: ({ row }) => <div className="text-right font-semibold text-xs">{row.getValue("score")}</div>,
-         size: 50, // Reduced size
+         size: 45, // Reduced size
      },
       {
          accessorKey: "zeros",
-         header: () => <div className="text-right text-xs">Zeros</div>, // Right align header
-         cell: ({ row }) => <div className={`text-right text-[10px] ${Number(row.getValue("zeros")) > 0 ? 'text-destructive font-medium' : ''}`}>{row.getValue("zeros")}</div>,
-         size: 30, // Reduced size
+         header: () => <div className="text-center text-xs">Zeros</div>, // Centered header
+         cell: ({ row }) => <div className={`text-center text-xs ${Number(row.getValue("zeros")) > 0 ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>{row.getValue("zeros")}</div>,
+         size: 35, // Reduced size
+     },
+      {
+         accessorKey: "trend",
+         header: () => <div className="text-center text-xs">Tend.</div>, // Shorter header
+         cell: ({ row }) => <div className="flex justify-center">{getTrendIcon(row.original.trend)}</div>,
+         size: 35, // Reduced size
      },
  ];
 
@@ -128,10 +155,10 @@
      };
 
      const handleNextMonth = () => {
-          setCurrentMonth(prev => {
-              const next = addMonths(prev, 1);
-              return next <= new Date() ? next : prev;
-          });
+          const nextMonthStart = startOfMonth(addMonths(currentMonth, 1));
+          if (nextMonthStart <= startOfMonth(new Date())) {
+              setCurrentMonth(nextMonthStart);
+          }
      };
 
      const isCurrentDisplayMonth = startOfMonth(currentMonth).getTime() === startOfMonth(new Date()).getTime();
@@ -148,113 +175,118 @@
 
      return (
           <TooltipProvider>
-              <div className="space-y-4"> {/* Reduced spacing */}
-                    {/* Header Card for Navigation and User Position */}
-                   <Card className="shadow-sm">
-                     <CardHeader className="p-3">
+              <div className="space-y-4">
+                    {/* Header Card - Navigation & User Position */}
+                   <Card className="shadow-sm overflow-hidden">
+                     <CardHeader className="p-3 bg-muted/30 border-b">
                          {/* Month Navigation */}
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                              <Button variant="outline" size="icon" onClick={handlePreviousMonth} aria-label="Mês anterior" className="h-8 w-8">
-                                  <ChevronLeft className="h-4 w-4" />
+                        <div className="flex items-center justify-between gap-2">
+                              <Button variant="ghost" size="icon" onClick={handlePreviousMonth} aria-label="Mês anterior" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                                  <ChevronLeft className="h-5 w-5" />
                               </Button>
-                              <h2 className="text-base font-semibold text-center capitalize">
+                              <h2 className="text-base font-semibold text-center capitalize flex-1 whitespace-nowrap">
                                   {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
                               </h2>
-                              <Button variant="outline" size="icon" onClick={handleNextMonth} disabled={isCurrentDisplayMonth} aria-label="Próximo mês" className="h-8 w-8">
-                                  <ChevronRight className="h-4 w-4" />
+                              <Button variant="ghost" size="icon" onClick={handleNextMonth} disabled={isCurrentDisplayMonth} aria-label="Próximo mês" className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:text-muted-foreground/50">
+                                  <ChevronRight className="h-5 w-5" />
                               </Button>
                           </div>
-                          <Separator />
-                         {/* User's Position */}
-                         <div className="flex items-center gap-3 pt-3">
-                              <div className="flex flex-col items-center">
-                                 <span className="text-4xl font-bold text-primary">
-                                     {currentUserEntry?.rank ?? '-'}º
-                                  </span>
-                                  <span className="text-muted-foreground text-[10px]">Lugar</span>
-                              </div>
-                              <div className="flex-1 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] sm:text-xs">
-                                  <div className="font-medium">Pontuação:</div>
-                                 <div className="text-right font-semibold">{currentUserEntry?.score ?? '-'}</div>
-                                 <div className="font-medium">Zeros:</div>
-                                 <div className={`text-right font-semibold ${currentUserEntry?.zeros && currentUserEntry.zeros > 0 ? 'text-destructive' : ''}`}>{currentUserEntry?.zeros ?? '-'}</div>
-                                  <div className="font-medium col-span-2 text-muted-foreground truncate">{currentUserEntry?.role ?? '-'} / {currentUserEntry?.department ?? '-'}</div>
-                              </div>
-                         </div>
                      </CardHeader>
+                     {/* User's Position */}
+                      <CardContent className="p-4">
+                         {currentUserEntry ? (
+                            <div className="flex items-center gap-4">
+                                <div className="flex flex-col items-center justify-center w-16 h-16 rounded-full bg-primary/10 border-2 border-primary text-primary flex-shrink-0">
+                                    <span className="text-2xl font-bold leading-none">
+                                        {currentUserEntry.rank}º
+                                    </span>
+                                </div>
+                                <div className="flex-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
+                                    <div className="font-medium text-muted-foreground">Sua Posição:</div>
+                                    <div className="text-right font-semibold">{currentUserEntry.rank}º Lugar</div>
+                                    <div className="font-medium text-muted-foreground">Pontos:</div>
+                                    <div className="text-right font-semibold">{currentUserEntry.score}</div>
+                                    <div className="font-medium text-muted-foreground">Zeros:</div>
+                                    <div className={cn("text-right font-semibold", currentUserEntry.zeros > 0 && "text-destructive")}>{currentUserEntry.zeros}</div>
+                                     <div className="font-medium text-muted-foreground">Tendência:</div>
+                                    <div className="text-right flex justify-end items-center gap-1">{getTrendIcon(currentUserEntry.trend)}</div>
+                                    <div className="col-span-2 text-muted-foreground/80 text-[10px] mt-1 truncate">{currentUserEntry.role} / {currentUserEntry.department}</div>
+                                </div>
+                            </div>
+                         ) : (
+                             <div className="text-center text-muted-foreground py-4">
+                                <User className="h-8 w-8 mx-auto mb-2 text-gray-400"/>
+                                <p>Você não está no ranking para este período.</p>
+                            </div>
+                         )}
+                      </CardContent>
                  </Card>
 
-
-                 {/* Current Award Card */}
+                  {/* Current Award Card - Improved Layout */}
                  {currentAward && (
                      <Card className="shadow-sm">
-                         <CardHeader className="p-3">
-                              <CardTitle className="flex items-center gap-1 text-sm"> {/* Reduced size */}
-                                  <AwardIcon className="h-4 w-4 text-yellow-500 flex-shrink-0"/> Premiação Vigente
-                             </CardTitle>
-                             <CardDescription className="text-xs">{currentAward.title}</CardDescription>
+                         <CardHeader className="p-3 flex flex-row items-center justify-between space-y-0">
+                              <div className='flex items-center gap-2'>
+                                  <AwardIcon className="h-5 w-5 text-yellow-500 flex-shrink-0"/>
+                                  <div>
+                                     <CardTitle className="text-sm font-semibold">{currentAward.title}</CardTitle>
+                                     <CardDescription className="text-xs">{format(currentMonth, 'MMMM yyyy', { locale: ptBR })}</CardDescription>
+                                  </div>
+                              </div>
+                              <Badge variant="outline" className="text-[10px] border-primary text-primary">{currentAward.winnerCount} Ganhador{currentAward.winnerCount > 1 ? 'es' : ''}</Badge>
                          </CardHeader>
                          <CardContent className="space-y-1 px-3 pb-3 text-xs">
-                             <p className="text-muted-foreground line-clamp-2">{currentAward.description}</p>
-                             <div className="text-[10px] sm:text-xs">
-                                 <strong>Ganhadores:</strong> {currentAward.winnerCount}º Lugar{currentAward.winnerCount > 1 ? 'es' : ''}
-                              </div>
-                             {currentAward.winnerCount === 1 ? (
-                                 <div className="text-[10px] sm:text-xs"><strong>Prêmio:</strong> {getPrizeDescription(currentAward, 1)}</div>
-                             ) : (
-                                  <ul className="text-[10px] sm:text-xs list-disc list-inside">
-                                     {Array.from({ length: currentAward.winnerCount }).map((_, i) => (
-                                          <li key={i}><strong>{i + 1}º:</strong> {getPrizeDescription(currentAward, i + 1)}</li>
-                                      ))}
-                                 </ul>
-                             )}
-                              {/* <div className="text-[10px] text-muted-foreground pt-1">
+                             <p className="text-muted-foreground mb-2">{currentAward.description}</p>
+                             <Separator />
+                             <div className="pt-2">
+                                 <strong className='text-foreground/80'>Prêmio(s):</strong>
+                                 {currentAward.winnerCount === 1 ? (
+                                     <p className='ml-2'>{getPrizeDescription(currentAward, 1)}</p>
+                                 ) : (
+                                      <ul className="list-none pl-2 mt-0.5 space-y-0.5">
+                                         {Array.from({ length: currentAward.winnerCount }).map((_, i) => (
+                                              <li key={i}><strong>{i + 1}º:</strong> {getPrizeDescription(currentAward, i + 1)}</li>
+                                          ))}
+                                     </ul>
+                                 )}
+                            </div>
+                             {/* <div className="text-[10px] text-muted-foreground pt-1">
                                  <strong>Elegíveis:</strong> {currentAward.eligibleDepartments.includes('all') ? 'Todos' : currentAward.eligibleDepartments.join(', ')}
-                                 {currentAward.eligibilityCriteria ? ' (Excelência)' : ''}
-                              </div> */}
+                             </div> */}
                           </CardContent>
                      </Card>
                   )}
-
+                   {!currentAward && !isLoading && (
+                         <Card className="shadow-sm border-dashed">
+                            <CardContent className="p-3 text-center text-muted-foreground text-xs flex items-center justify-center gap-2">
+                                <AlertTriangle className="h-4 w-4"/> Nenhuma premiação configurada para este período.
+                            </CardContent>
+                        </Card>
+                   )}
 
                  {/* Ranking Table Card */}
-                 <Card className="flex-grow flex flex-col">
+                 <Card className="flex-grow flex flex-col shadow-sm">
                      <CardHeader className="p-3">
-                         <CardTitle className="text-sm">Ranking Geral</CardTitle>
-                          <CardDescription className="text-xs">Classificação completa dos colaboradores.</CardDescription>
+                         <CardTitle className="text-sm">Classificação Geral</CardTitle>
+                          {/* <CardDescription className="text-xs">Desempenho de todos os colaboradores.</CardDescription> */}
                      </CardHeader>
-                      <CardContent className="flex-grow p-0"> {/* Remove padding for table */}
+                      <CardContent className="flex-grow p-0">
                           {isLoading ? (
-                             <div className="flex justify-center items-center py-10">
+                             <div className="flex justify-center items-center py-16">
                                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
                               </div>
                          ) : (
-                              // Use a container that allows horizontal scrolling if needed
-                             <ScrollArea className="h-[calc(100vh-450px)]"> {/* Adjust height based on other elements */}
-                                <DataTable columns={rankingColumns} data={rankingData} noPagination /> {/* Remove internal pagination */}
+                            <ScrollArea className="h-[calc(100vh-500px)]"> {/* Adjust height */}
+                                <DataTable columns={rankingColumns(CURRENT_EMPLOYEE_ID)} data={rankingData} noPagination />
                              </ScrollArea>
                           )}
                      </CardContent>
-                     {/* <CardFooter className="p-2 text-xs text-muted-foreground justify-end border-t">
+                      <CardFooter className="p-2 text-xs text-muted-foreground justify-end border-t">
                           Atualizado em: {format(new Date(), 'dd/MM/yy HH:mm')}
-                     </CardFooter> */}
+                     </CardFooter>
                  </Card>
-
-                  {/* How Scoring Works (Optional Help Section) */}
-                  {/* <Card className="border-dashed mt-4">
-                     <CardHeader className="p-2">
-                         <CardTitle className="flex items-center gap-1 text-xs">
-                              <HelpCircle className="h-3 w-3" /> Como funciona?
-                         </CardTitle>
-                     </CardHeader>
-                     <CardContent className="text-[10px] text-muted-foreground space-y-0.5 p-2 pt-0">
-                          <p>Pontuação baseada em avaliações (10 = pts) e desafios. Zeros impactam negativamente.</p>
-                     </CardContent>
-                 </Card> */}
 
               </div>
           </TooltipProvider>
      );
  }
-
-    

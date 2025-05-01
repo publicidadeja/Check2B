@@ -1,4 +1,3 @@
-
  'use client';
 
  import * as React from 'react';
@@ -12,6 +11,7 @@
    MessageSquare,
    Loader2,
    Info,
+   Frown, // Icon for no data
  } from 'lucide-react';
  import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, subMonths, addMonths } from 'date-fns';
  import { ptBR } from 'date-fns/locale';
@@ -32,14 +32,14 @@
    DialogHeader,
    DialogTitle,
    DialogClose,
+   DialogFooter, // Added DialogFooter
  } from '@/components/ui/dialog';
  import { ScrollArea } from '@/components/ui/scroll-area';
  import { Separator } from '@/components/ui/separator';
- import { Badge } from '@/components/ui/badge';
+ import { Badge } from '@/components/ui/badge'; // Ensure Badge is imported
  import { useToast } from '@/hooks/use-toast';
  import { cn } from '@/lib/utils';
  import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
- // Removed EmployeeLayout import
 
  // Import types
  import type { Evaluation } from '@/types/evaluation';
@@ -51,39 +51,42 @@
  // --- Mock Data & Fetching ---
  import { mockTasks as allAdminTasks } from '@/app/tasks/page'; // Reuse tasks
 
- // Enhanced mock evaluations
+ // Simplified mock evaluations generation for demo
  const generateMockEvaluations = (employeeId: string, monthsBack: number = 2): Evaluation[] => {
     const evals: Evaluation[] = [];
     const today = new Date();
     for (let m = 0; m <= monthsBack; m++) {
         const monthToProcess = subMonths(today, m);
         const start = startOfMonth(monthToProcess);
-        const end = m === 0 ? today : endOfMonth(monthToProcess); // Only go up to today for current month
-        const days = eachDayOfInterval({ start, end });
+        const end = m === 0 ? today : endOfMonth(monthToProcess);
+
+        let days = [];
+         if(start <= end) {
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                // Only include weekdays for this mock example
+                // if (d.getDay() !== 0 && d.getDay() !== 6) {
+                     days.push(new Date(d));
+                // }
+            }
+        }
 
         days.forEach(day => {
-            // Simulate getting tasks for this employee on this day
-            const tasksForDay = allAdminTasks.filter(task => {
-                 // Simple daily check for demo
-                 if(task.periodicity === 'daily' && (task.assignedTo === 'individual' && task.assignedEntityId === employeeId || task.assignedTo === 'role' && employeeId === '1' /* Alice is Recruiter */)) {
-                     return true;
-                 }
-                 if (task.id === 't6' && day.getDay() === 5 && employeeId === '1') return true; // Alice gets weekly report task on Friday
-                 return false;
-            });
+            // Simple check: Assume 2 tasks per day for mock employee '1'
+            const tasksForDay = allAdminTasks.filter(t => ['t1', 't6'].includes(t.id) && employeeId === '1');
 
             if (tasksForDay.length > 0) {
-                let dayHasZero = false;
                 tasksForDay.forEach(task => {
-                    const score = Math.random() > 0.15 ? 10 : 0; // 15% chance of getting 0
-                    if (score === 0) dayHasZero = true;
+                    // Don't evaluate future dates
+                    if (day > today) return;
+
+                    const score = Math.random() > 0.15 ? 10 : 0; // 15% chance of 0
                     evals.push({
                         id: `eval${employeeId}-${task.id}-${format(day, 'yyyy-MM-dd')}`,
                         employeeId: employeeId,
                         taskId: task.id,
                         evaluationDate: format(day, 'yyyy-MM-dd'),
                         score: score,
-                        justification: score === 0 ? `Item não concluído conforme esperado (${task.title}).` : undefined,
+                        justification: score === 0 ? `Item não concluído (${task.title}). Verifique os anexos.` : `Tarefa realizada conforme esperado (${task.title}).`,
                         evaluatorId: 'admin1',
                         isDraft: false,
                     });
@@ -105,21 +108,26 @@
 
  // Mock fetching function for evaluations in a given month
  const fetchEvaluationsForMonth = async (employeeId: string, month: Date): Promise<DayEvaluationSummary[]> => {
-     await new Promise(resolve => setTimeout(resolve, 400)); // Simulate delay
+     await new Promise(resolve => setTimeout(resolve, 300)); // Shorter delay
 
      const start = startOfMonth(month);
      const end = endOfMonth(month);
      const daysInMonth = eachDayOfInterval({ start, end });
+     const today = new Date();
 
      const summaries: DayEvaluationSummary[] = daysInMonth.map(day => {
+         // Don't show data for future dates
+         if (day > today) {
+             return { date: day, score: -1 };
+         }
+
          const dayStr = format(day, 'yyyy-MM-dd');
          const evaluationsForDay = mockEvaluations.filter(e =>
              e.employeeId === employeeId && e.evaluationDate === dayStr
          );
 
          if (evaluationsForDay.length === 0) {
-            // Check if tasks *should* exist for this day (optional, adds complexity)
-            // For simplicity, assume -1 means no data recorded for that day
+            // Simulate no evaluation recorded for past/present dates without records
             return { date: day, score: -1 };
          }
 
@@ -148,7 +156,7 @@
      React.useEffect(() => {
          const loadEvaluations = async () => {
              setIsLoading(true);
-             setSelectedDayDetails(null);
+             setSelectedDayDetails(null); // Close modal when month changes
              try {
                  const data = await fetchEvaluationsForMonth(CURRENT_EMPLOYEE_ID, currentMonth);
                  setEvaluations(data);
@@ -167,11 +175,11 @@
      }, [currentMonth, toast]);
 
      const handleDayClick = (daySummary: DayEvaluationSummary) => {
-         if (daySummary.score !== -1) {
+         if (daySummary.score !== -1 && daySummary.details && daySummary.details.length > 0) {
              setSelectedDayDetails(daySummary);
              setIsModalOpen(true);
          } else {
-              toast({ title: "Sem Avaliação", description: `Nenhuma avaliação registrada para ${format(daySummary.date, 'dd/MM/yyyy', { locale: ptBR })}.`, duration: 2000 });
+              toast({ title: "Sem Avaliação", description: `Nenhuma avaliação registrada para ${format(daySummary.date, 'dd/MM/yyyy', { locale: ptBR })}.`, duration: 2500 });
          }
      };
 
@@ -180,8 +188,10 @@
      };
 
      const goToNextMonth = () => {
-         if (startOfMonth(addMonths(currentMonth, 1)) <= startOfMonth(new Date())) {
-             setCurrentMonth(addMonths(currentMonth, 1));
+          const nextMonthStart = startOfMonth(addMonths(currentMonth, 1));
+         // Prevent going into the future beyond the current month
+         if (nextMonthStart <= startOfMonth(new Date())) {
+             setCurrentMonth(nextMonthStart);
          }
      };
 
@@ -189,163 +199,210 @@
 
      // Get month grid data including placeholder days
      const getMonthGrid = (monthSummaries: DayEvaluationSummary[]): (DayEvaluationSummary | null)[] => {
-         if (!monthSummaries || monthSummaries.length === 0) return Array(35).fill(null); // Placeholder for loading/empty
+         if (!monthSummaries || monthSummaries.length === 0) {
+             // If loading or no data for the month, still need grid structure
+             const firstDayOfMonth = startOfMonth(currentMonth);
+             const daysInMonthCount = endOfMonth(currentMonth).getDate();
+             const startingDayOfWeek = firstDayOfMonth.getDay();
+             const grid: (DayEvaluationSummary | null)[] = Array(startingDayOfWeek).fill(null);
+             for(let i=1; i<=daysInMonthCount; i++){
+                 grid.push(null); // Fill with null initially
+             }
+             while (grid.length % 7 !== 0) grid.push(null); // Ensure full weeks
+             return grid;
+         }
 
          const firstDayOfMonth = startOfMonth(monthSummaries[0].date);
          const startingDayOfWeek = firstDayOfMonth.getDay(); // 0 (Sun) to 6 (Sat)
-
          const grid: (DayEvaluationSummary | null)[] = [];
+
          // Add nulls for days before the start of the month
          for (let i = 0; i < startingDayOfWeek; i++) {
              grid.push(null);
          }
-         // Add the actual days
-         grid.push(...monthSummaries);
-         // Add nulls to fill the remaining grid (optional, adjust as needed)
-         while (grid.length < 35) { // Assuming max 5 weeks display
+
+          // Add the actual days
+          // Create a map for quick lookup
+         const summaryMap = new Map(monthSummaries.map(s => [format(s.date, 'yyyy-MM-dd'), s]));
+         const daysInMonthCount = endOfMonth(firstDayOfMonth).getDate();
+         for(let i=1; i<=daysInMonthCount; i++){
+             const currentDate = new Date(firstDayOfMonth.getFullYear(), firstDayOfMonth.getMonth(), i);
+             const dateStr = format(currentDate, 'yyyy-MM-dd');
+             grid.push(summaryMap.get(dateStr) || { date: currentDate, score: -1 }); // Use summary or default empty state
+         }
+
+         // Add nulls to fill the remaining grid for full weeks display
+         while (grid.length % 7 !== 0) {
              grid.push(null);
          }
-         return grid.slice(0, 35); // Ensure max length
+         return grid;
      };
+
 
      const monthGrid = getMonthGrid(evaluations);
 
 
      return (
-         // EmployeeLayout is applied by group layout
          <TooltipProvider>
-             <div className="space-y-4"> {/* Reduced spacing */}
+             <div className="space-y-4">
                  {/* Header Card for Navigation */}
                  <Card className="shadow-sm">
                      <CardHeader className="p-3">
                          <div className="flex items-center justify-between gap-2">
-                             <Button variant="outline" size="icon" onClick={goToPreviousMonth} aria-label="Mês anterior" className="h-8 w-8">
-                                 <ChevronLeft className="h-4 w-4" />
+                             <Button variant="ghost" size="icon" onClick={goToPreviousMonth} aria-label="Mês anterior" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                                 <ChevronLeft className="h-5 w-5" />
                              </Button>
-                             <h2 className="text-base font-semibold text-center capitalize"> {/* Adjusted text size */}
+                             <h2 className="text-lg font-semibold text-center capitalize flex-1">
                                  {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
                              </h2>
-                             <Button variant="outline" size="icon" onClick={goToNextMonth} disabled={isFutureMonth} aria-label="Próximo mês" className="h-8 w-8">
-                                 <ChevronRight className="h-4 w-4" />
+                             <Button variant="ghost" size="icon" onClick={goToNextMonth} disabled={isFutureMonth} aria-label="Próximo mês" className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:text-muted-foreground/50">
+                                 <ChevronRight className="h-5 w-5" />
                              </Button>
                          </div>
                      </CardHeader>
                  </Card>
 
                  {/* Calendar Card */}
-                 <Card className="flex-grow">
-                      <CardContent className="p-2"> {/* Reduced padding */}
+                 <Card className="flex-grow shadow-sm">
+                      <CardContent className="p-2">
                          {isLoading ? (
                              <div className="flex justify-center items-center h-60">
-                                 <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                                 <Loader2 className="h-10 w-10 animate-spin text-primary" />
                              </div>
                          ) : (
-                             <div className="grid grid-cols-7 gap-1 text-center text-xs">
-                                 {/* Calendar Header */}
-                                 {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((day, index) => ( // Abbreviated days
-                                     <div key={index} className="font-semibold text-muted-foreground p-1 text-[10px]">{day}</div>
-                                 ))}
-                                 {/* Calendar Days */}
-                                 {monthGrid.map((daySummary, index) => (
-                                     <div key={index} className="relative aspect-square"> {/* Maintain square aspect ratio */}
-                                        {daySummary ? (
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <button
-                                                        onClick={() => handleDayClick(daySummary)}
-                                                        disabled={daySummary.score === -1}
-                                                        className={cn(
-                                                            "absolute inset-0 flex items-center justify-center rounded-md border text-xs transition-colors focus:outline-none focus:ring-1 focus:ring-ring focus:ring-offset-1",
-                                                            daySummary.score === 10 && "bg-green-100 dark:bg-green-900/50 border-green-200 dark:border-green-800 hover:bg-green-200 dark:hover:bg-green-800/60",
-                                                            daySummary.score === 0 && "bg-red-100 dark:bg-red-900/50 border-red-200 dark:border-red-800 hover:bg-red-200 dark:hover:bg-red-800/60",
-                                                            daySummary.score === -1 && "bg-muted/30 border-dashed text-muted-foreground cursor-not-allowed opacity-70",
-                                                            isSameDay(daySummary.date, new Date()) && "ring-2 ring-primary font-bold" // Highlight today
-                                                        )}
-                                                    >
-                                                        <span>{format(daySummary.date, 'd')}</span>
-                                                        {daySummary.score === 10 && <CheckCircle className="absolute top-0.5 right-0.5 h-2 w-2 text-green-600 dark:text-green-400" />}
-                                                        {daySummary.score === 0 && <XCircle className="absolute top-0.5 right-0.5 h-2 w-2 text-red-600 dark:text-red-400" />}
-                                                    </button>
-                                                </TooltipTrigger>
-                                                 <TooltipContent className="text-xs">
-                                                     {daySummary.score === 10 && <p>Desempenho: OK</p>}
-                                                     {daySummary.score === 0 && <p>Desempenho: Atenção</p>}
-                                                     {daySummary.score === -1 && <p>Sem Avaliação</p>}
-                                                     <p>{format(daySummary.date, 'PPP', { locale: ptBR })}</p>
-                                                 </TooltipContent>
-                                            </Tooltip>
-                                        ) : (
-                                             <div className="absolute inset-0"></div> // Placeholder for empty grid cells
-                                        )}
-                                     </div>
-                                 ))}
-                             </div>
+                            <>
+                                {/* Calendar Header (Days of Week) */}
+                                <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-muted-foreground pb-1 border-b mb-1">
+                                     {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day) => (
+                                        <div key={day} className="p-1">{day}</div>
+                                    ))}
+                                </div>
+                                {/* Calendar Days Grid */}
+                                <div className="grid grid-cols-7 gap-1">
+                                     {monthGrid.map((daySummary, index) => (
+                                        <div key={index} className="relative aspect-square"> {/* Maintain square aspect ratio */}
+                                            {daySummary ? (
+                                                <Tooltip delayDuration={200}>
+                                                    <TooltipTrigger asChild>
+                                                        <button
+                                                            onClick={() => handleDayClick(daySummary)}
+                                                            // Disable clicking on future dates or days without evaluations
+                                                            disabled={daySummary.score === -1 || daySummary.date > new Date()}
+                                                            className={cn(
+                                                                "absolute inset-0 flex flex-col items-center justify-center rounded-md border text-xs font-medium transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed",
+                                                                // Base styles
+                                                                "bg-background hover:bg-muted/50",
+                                                                // Score specific styles
+                                                                daySummary.score === 10 && "bg-green-100 dark:bg-green-900/30 border-green-200 dark:border-green-800/50 hover:bg-green-200 dark:hover:bg-green-800/50",
+                                                                daySummary.score === 0 && "bg-red-100 dark:bg-red-900/30 border-red-200 dark:border-red-800/50 hover:bg-red-200 dark:hover:bg-red-800/50",
+                                                                daySummary.score === -1 && "bg-muted/20 border-dashed border-muted-foreground/30 text-muted-foreground",
+                                                                // Today's date highlight
+                                                                isSameDay(daySummary.date, new Date()) && "ring-2 ring-primary ring-offset-background",
+                                                                // Disabled state for future dates
+                                                                daySummary.date > new Date() && "bg-muted/10 border-muted-foreground/10 text-muted-foreground/40"
+                                                            )}
+                                                        >
+                                                            <span className="mb-0.5">{format(daySummary.date, 'd')}</span>
+                                                             {/* Icons within the button */}
+                                                            {daySummary.score === 10 && <CheckCircle className="h-3 w-3 text-green-600 dark:text-green-400" />}
+                                                            {daySummary.score === 0 && <XCircle className="h-3 w-3 text-red-600 dark:text-red-400" />}
+                                                        </button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent className="text-xs p-1">
+                                                         <p className='font-semibold'>{format(daySummary.date, 'PPP', { locale: ptBR })}</p>
+                                                        {daySummary.score === 10 && <p className='text-green-600'>Desempenho: OK</p>}
+                                                        {daySummary.score === 0 && <p className='text-red-600'>Desempenho: Atenção</p>}
+                                                        {daySummary.score === -1 && daySummary.date <= new Date() && <p className='text-muted-foreground'>Sem Avaliação Registrada</p>}
+                                                        {daySummary.date > new Date() && <p className='text-muted-foreground'>Data Futura</p>}
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            ) : (
+                                                <div className="absolute inset-0"></div> // Placeholder for empty grid cells
+                                            )}
+                                        </div>
+                                     ))}
+                                </div>
+                            </>
                          )}
                      </CardContent>
-                     {/* Optional Footer for Legend */}
-                     <CardFooter className="p-2 text-xs text-muted-foreground flex justify-center gap-4">
+                     {/* Footer Legend */}
+                     <CardFooter className="p-2 text-xs text-muted-foreground flex flex-wrap justify-center gap-x-3 gap-y-1 border-t mt-1">
                          <span className="flex items-center gap-1"><CheckCircle className="h-3 w-3 text-green-500"/> OK</span>
                          <span className="flex items-center gap-1"><XCircle className="h-3 w-3 text-red-500"/> Atenção</span>
-                         <span className="flex items-center gap-1"><div className="h-3 w-3 rounded-full bg-muted/50 border border-dashed"></div> Sem Avaliação</span>
+                         <span className="flex items-center gap-1"><div className="h-3 w-3 rounded-sm bg-muted/20 border border-dashed border-muted-foreground/30"></div> Sem Avaliação</span>
                      </CardFooter>
                  </Card>
 
-                 {/* Evaluation Details Modal */}
+                 {/* Evaluation Details Modal - Improved Styling */}
                  <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                     <DialogContent className="sm:max-w-md"> {/* Adjusted max width */}
+                     <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col"> {/* Limit height */}
                          <DialogHeader>
-                             <DialogTitle>Detalhes - {selectedDayDetails ? format(selectedDayDetails.date, 'PPP', { locale: ptBR }) : ''}</DialogTitle>
+                             <DialogTitle className="text-lg">Detalhes da Avaliação</DialogTitle>
                              <DialogDescription>
-                                 Tarefas avaliadas neste dia.
+                                 {selectedDayDetails ? format(selectedDayDetails.date, 'PPP', { locale: ptBR }) : ''}
                              </DialogDescription>
                          </DialogHeader>
-                         <ScrollArea className="max-h-[60vh] pr-4 -mr-4"> {/* Allow scrolling */}
-                             <div className="py-4 space-y-3">
+                         {/* Scrollable content area */}
+                         <ScrollArea className="flex-grow pr-4 -mr-4 my-2">
+                             <div className="space-y-3">
                                  {selectedDayDetails?.details?.map((evaluation) => {
                                      const task = getTaskDetails(evaluation.taskId);
                                      return (
-                                         <div key={evaluation.id} className="border p-3 rounded-md bg-card">
-                                             <div className="flex justify-between items-center mb-2">
-                                                 <span className="font-medium text-sm">{task?.title || 'Tarefa Desconhecida'}</span>
+                                         <div key={evaluation.id} className="border p-3 rounded-lg bg-card shadow-sm">
+                                             {/* Task Title and Score */}
+                                             <div className="flex justify-between items-start mb-1.5">
+                                                 <span className="font-semibold text-sm flex-1 mr-2">{task?.title || 'Tarefa Desconhecida'}</span>
                                                  {evaluation.score === 10 ? (
-                                                     <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-xs">Nota 10</Badge>
+                                                     <Badge variant="default" className="bg-green-100 text-green-800 border border-green-200 text-xs whitespace-nowrap">Nota 10</Badge>
                                                  ) : (
-                                                     <Badge variant="destructive" className="text-xs">Nota 0</Badge>
+                                                     <Badge variant="destructive" className="bg-red-100 text-red-800 border border-red-200 text-xs whitespace-nowrap">Nota 0</Badge>
                                                  )}
                                              </div>
-                                             {evaluation.justification && (
-                                                 <div className="mt-2 p-2 bg-muted/50 rounded text-xs">
-                                                     <p className="font-medium flex items-center gap-1"><MessageSquare className="h-3 w-3" /> Justificativa:</p>
-                                                     <p className="text-muted-foreground ml-4">{evaluation.justification}</p>
-                                                 </div>
-                                             )}
+
+                                             {/* Criteria */}
                                              {task?.criteria && (
-                                                 <div className="mt-2 text-[10px] text-muted-foreground border-t pt-1">
+                                                 <div className="mb-2 text-xs text-muted-foreground border-l-2 pl-2 border-border italic">
                                                      <p><strong>Critério (Nota 10):</strong> {task.criteria}</p>
                                                  </div>
                                              )}
+
+                                             {/* Justification */}
+                                             {evaluation.justification && (
+                                                 <div className="mt-2 p-2 bg-muted/50 rounded text-xs border border-muted">
+                                                     <p className="font-medium flex items-center gap-1 mb-0.5"><MessageSquare className="h-3 w-3" /> Justificativa:</p>
+                                                     <p className="text-muted-foreground pl-1">{evaluation.justification}</p>
+                                                 </div>
+                                             )}
+
+                                             {/* Evidence Link (Simulated) */}
                                              {evaluation.evidenceUrl && (
-                                                 <div className="mt-1">
-                                                     <Button variant="link" size="sm" className="p-0 h-auto text-accent text-xs" onClick={() => alert('Visualização de evidência não implementada.')}>
-                                                         <FileText className="mr-1 h-3 w-3"/> Ver Evidência
+                                                 <div className="mt-2">
+                                                     <Button variant="link" size="sm" className="p-0 h-auto text-accent text-xs" onClick={() => toast({title: "Visualizar Evidência", description: "Funcionalidade ainda não implementada."})}>
+                                                         <FileText className="mr-1 h-3 w-3"/> Ver Evidência (Simulado)
                                                      </Button>
                                                  </div>
                                              )}
                                          </div>
                                      );
                                  })}
+                                 {/* Handle case where day was evaluated but somehow no details are present */}
                                  {(!selectedDayDetails || !selectedDayDetails.details || selectedDayDetails.details.length === 0) && (
-                                     <p className="text-muted-foreground text-center text-sm">Nenhum detalhe encontrado.</p>
+                                      <div className="text-center py-10 text-muted-foreground">
+                                         <Frown className="h-8 w-8 mx-auto mb-2" />
+                                         <p>Nenhum detalhe de tarefa encontrado para esta avaliação.</p>
+                                     </div>
                                  )}
                              </div>
                          </ScrollArea>
-                         <DialogClose asChild>
-                             <Button type="button" variant="secondary" className="mt-4 w-full">Fechar</Button>
-                         </DialogClose>
+                          {/* Modal Footer */}
+                         <DialogFooter className="mt-auto pt-4 border-t">
+                             <DialogClose asChild>
+                                 <Button type="button" variant="secondary" className="w-full">Fechar</Button>
+                             </DialogClose>
+                         </DialogFooter>
                      </DialogContent>
                  </Dialog>
              </div>
          </TooltipProvider>
      );
  }
-   
