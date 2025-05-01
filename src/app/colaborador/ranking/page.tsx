@@ -1,9 +1,10 @@
+
  'use client';
 
  import * as React from 'react';
  import { format, parseISO, subMonths, addMonths, startOfMonth, endOfMonth } from 'date-fns'; // Added endOfMonth
  import { ptBR } from 'date-fns/locale';
- import { Trophy, Crown, Medal, ChevronLeft, ChevronRight, HelpCircle, Loader2, BarChartHorizontal, Info, Award as AwardIcon, TrendingUp, TrendingDown, Minus, User, Activity, AlertTriangle } from 'lucide-react'; // Added more icons
+ import { Trophy, Crown, Medal, ChevronLeft, ChevronRight, HelpCircle, Loader2, BarChartHorizontal, Info, Award as AwardIcon, TrendingUp, TrendingDown, Minus, User, Activity, AlertTriangle, Eye } from 'lucide-react'; // Added more icons
  import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
  import { Button } from '@/components/ui/button';
  import { Badge } from '@/components/ui/badge';
@@ -15,16 +16,17 @@
  import { Separator } from '@/components/ui/separator';
  import { ScrollArea } from '@/components/ui/scroll-area'; // Ensure ScrollArea is imported
  import { cn } from '@/lib/utils'; // Import cn utility
+ import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
 
  // Import Types
- import type { RankingEntry, Award as AdminAward } from '@/app/ranking/page'; // Reuse admin types
+ import type { RankingEntry, Award as AdminAward } from '@/app/(admin)/ranking/page'; // Reuse admin types
 
  // Mock Employee ID
  const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
 
  // --- Mock Data & Fetching ---
  // Use exported mock data from admin page
- import { mockRanking as allAdminRanking, mockAwards as allAdminAwards } from '@/app/ranking/page';
+ import { mockRanking as allAdminRanking, mockAwards as allAdminAwards } from '@/app/(admin)/ranking/page';
 
 
  // Function to fetch ranking data for a specific month, adapted for employee view
@@ -49,7 +51,7 @@
       // Find award active for the specific month OR a recurring one
      const currentAward = allAdminAwards.find(a =>
          a.status === 'active' &&
-         (a.isRecurring || (a.specificMonth && format(a.specificMonth, 'yyyy-MM') === monthKey))
+         (a.isRecurring || (a.specificMonth && format(parseISO(a.specificMonth as unknown as string), 'yyyy-MM') === monthKey)) // Ensure date parsing if needed
      );
 
      return { ranking: fullRanking, userEntry, award: currentAward };
@@ -173,11 +175,58 @@
           return award.monetaryValue ? `R$ ${award.monetaryValue.toFixed(2)}` : award.nonMonetaryValue || '-';
      }
 
+      const renderSkeleton = () => (
+         <div className="space-y-4 p-4">
+             <Card className="shadow-sm overflow-hidden">
+                 <CardHeader className="p-3 bg-muted/30 border-b">
+                     <div className="flex items-center justify-between gap-2">
+                         <Skeleton className="h-8 w-8 rounded-full bg-muted" />
+                         <Skeleton className="h-5 w-32 bg-muted" />
+                         <Skeleton className="h-8 w-8 rounded-full bg-muted" />
+                     </div>
+                 </CardHeader>
+                 <CardContent className="p-4">
+                     <div className="flex items-center gap-4">
+                         <Skeleton className="h-16 w-16 rounded-full bg-muted" />
+                         <div className="flex-1 space-y-2">
+                             <Skeleton className="h-4 w-3/4 bg-muted" />
+                             <Skeleton className="h-3 w-1/2 bg-muted" />
+                             <Skeleton className="h-3 w-1/4 bg-muted" />
+                         </div>
+                     </div>
+                 </CardContent>
+             </Card>
+             <Card className="shadow-sm"><CardContent className="p-3"><Skeleton className="h-10 w-full bg-muted" /></CardContent></Card>
+             <Card className="flex-grow flex flex-col shadow-sm">
+                  <CardHeader className="p-3"><Skeleton className="h-5 w-24 bg-muted" /></CardHeader>
+                  <CardContent className="flex-grow p-0">
+                      <div className="p-4 space-y-2">
+                          {Array.from({ length: 5 }).map((_, i) => (
+                              <div key={i} className="flex items-center gap-2">
+                                   <Skeleton className="h-7 w-7 rounded-full bg-muted" />
+                                  <Skeleton className="h-4 flex-1 bg-muted" />
+                                  <Skeleton className="h-4 w-10 bg-muted" />
+                                  <Skeleton className="h-4 w-8 bg-muted" />
+                             </div>
+                         ))}
+                      </div>
+                  </CardContent>
+                  <CardFooter className="p-2 border-t"><Skeleton className="h-4 w-20 ml-auto bg-muted" /></CardFooter>
+             </Card>
+         </div>
+     );
+
+
+     if (isLoading) {
+          return renderSkeleton();
+     }
+
+
      return (
           <TooltipProvider>
-              <div className="space-y-4">
+              <div className="space-y-4 p-4"> {/* Added padding */}
                     {/* Header Card - Navigation & User Position */}
-                   <Card className="shadow-sm overflow-hidden">
+                   <Card className="shadow-sm overflow-hidden border rounded-lg">
                      <CardHeader className="p-3 bg-muted/30 border-b">
                          {/* Month Navigation */}
                         <div className="flex items-center justify-between gap-2">
@@ -196,7 +245,10 @@
                       <CardContent className="p-4">
                          {currentUserEntry ? (
                             <div className="flex items-center gap-4">
-                                <div className="flex flex-col items-center justify-center w-16 h-16 rounded-full bg-primary/10 border-2 border-primary text-primary flex-shrink-0">
+                                <div className="flex flex-col items-center justify-center w-16 h-16 rounded-full bg-primary/10 border-2 border-primary text-primary flex-shrink-0 relative">
+                                     {currentUserEntry.rank === 1 && <Crown className="h-4 w-4 text-yellow-500 absolute -top-1 -right-1" />}
+                                     {currentUserEntry.rank === 2 && <Medal className="h-4 w-4 text-slate-400 absolute -top-1 -right-1" />}
+                                     {currentUserEntry.rank === 3 && <Medal className="h-4 w-4 text-yellow-700 absolute -top-1 -right-1" />}
                                     <span className="text-2xl font-bold leading-none">
                                         {currentUserEntry.rank}º
                                     </span>
@@ -210,30 +262,30 @@
                                     <div className={cn("text-right font-semibold", currentUserEntry.zeros > 0 && "text-destructive")}>{currentUserEntry.zeros}</div>
                                      <div className="font-medium text-muted-foreground">Tendência:</div>
                                     <div className="text-right flex justify-end items-center gap-1">{getTrendIcon(currentUserEntry.trend)}</div>
-                                    <div className="col-span-2 text-muted-foreground/80 text-[10px] mt-1 truncate">{currentUserEntry.role} / {currentUserEntry.department}</div>
+                                     <div className="col-span-2 text-muted-foreground/80 text-[10px] mt-1 truncate">{currentUserEntry.role} / {currentUserEntry.department}</div>
                                 </div>
                             </div>
                          ) : (
                              <div className="text-center text-muted-foreground py-4">
                                 <User className="h-8 w-8 mx-auto mb-2 text-gray-400"/>
-                                <p>Você não está no ranking para este período.</p>
+                                <p className="text-sm">Você não está no ranking para este período.</p>
                             </div>
                          )}
                       </CardContent>
                  </Card>
 
-                  {/* Current Award Card - Improved Layout */}
+                  {/* Current Award Card */}
                  {currentAward && (
-                     <Card className="shadow-sm">
-                         <CardHeader className="p-3 flex flex-row items-center justify-between space-y-0">
+                     <Card className="shadow-sm border rounded-lg bg-gradient-to-r from-yellow-50 via-amber-50 to-orange-50 dark:from-yellow-900/20 dark:via-amber-900/20 dark:to-orange-900/20">
+                         <CardHeader className="p-3 flex flex-row items-start justify-between space-y-0">
                               <div className='flex items-center gap-2'>
-                                  <AwardIcon className="h-5 w-5 text-yellow-500 flex-shrink-0"/>
+                                  <AwardIcon className="h-5 w-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0"/>
                                   <div>
                                      <CardTitle className="text-sm font-semibold">{currentAward.title}</CardTitle>
                                      <CardDescription className="text-xs">{format(currentMonth, 'MMMM yyyy', { locale: ptBR })}</CardDescription>
                                   </div>
                               </div>
-                              <Badge variant="outline" className="text-[10px] border-primary text-primary">{currentAward.winnerCount} Ganhador{currentAward.winnerCount > 1 ? 'es' : ''}</Badge>
+                              <Badge variant="outline" className="text-[10px] border-yellow-500 text-yellow-700 bg-white dark:bg-card dark:text-yellow-400 whitespace-nowrap">{currentAward.winnerCount} Ganhador{currentAward.winnerCount > 1 ? 'es' : ''}</Badge>
                          </CardHeader>
                          <CardContent className="space-y-1 px-3 pb-3 text-xs">
                              <p className="text-muted-foreground mb-2">{currentAward.description}</p>
@@ -250,14 +302,16 @@
                                      </ul>
                                  )}
                             </div>
-                             {/* <div className="text-[10px] text-muted-foreground pt-1">
-                                 <strong>Elegíveis:</strong> {currentAward.eligibleDepartments.includes('all') ? 'Todos' : currentAward.eligibleDepartments.join(', ')}
-                             </div> */}
+                             {currentAward.eligibilityCriteria && (
+                                 <div className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400 text-[10px] pt-1">
+                                     <CheckCircle className="h-3 w-3"/> Requer excelência (0 zeros no mês).
+                                 </div>
+                             )}
                           </CardContent>
                      </Card>
                   )}
                    {!currentAward && !isLoading && (
-                         <Card className="shadow-sm border-dashed">
+                         <Card className="shadow-sm border-dashed border rounded-lg">
                             <CardContent className="p-3 text-center text-muted-foreground text-xs flex items-center justify-center gap-2">
                                 <AlertTriangle className="h-4 w-4"/> Nenhuma premiação configurada para este período.
                             </CardContent>
@@ -265,25 +319,27 @@
                    )}
 
                  {/* Ranking Table Card */}
-                 <Card className="flex-grow flex flex-col shadow-sm">
-                     <CardHeader className="p-3">
-                         <CardTitle className="text-sm">Classificação Geral</CardTitle>
-                          {/* <CardDescription className="text-xs">Desempenho de todos os colaboradores.</CardDescription> */}
+                 <Card className="flex-grow flex flex-col shadow-sm border rounded-lg overflow-hidden">
+                     <CardHeader className="p-3 border-b bg-muted/30">
+                         <CardTitle className="text-sm font-medium flex items-center gap-1.5"><BarChartHorizontal className="h-4 w-4"/> Classificação Geral</CardTitle>
                      </CardHeader>
                       <CardContent className="flex-grow p-0">
                           {isLoading ? (
-                             <div className="flex justify-center items-center py-16">
-                                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                              </div>
+                             <div className="p-4 space-y-2">
+                                {Array.from({ length: 5 }).map((_, i) => (
+                                    <div key={i} className="flex items-center gap-2">
+                                        <Skeleton className="h-7 w-7 rounded-full bg-muted" />
+                                        <Skeleton className="h-4 flex-1 bg-muted" />
+                                        <Skeleton className="h-4 w-10 bg-muted" />
+                                        <Skeleton className="h-4 w-8 bg-muted" />
+                                    </div>
+                                ))}
+                             </div>
                          ) : (
-                            <ScrollArea className="h-[calc(100vh-500px)]"> {/* Adjust height */}
-                                <DataTable columns={rankingColumns(CURRENT_EMPLOYEE_ID)} data={rankingData} noPagination />
-                             </ScrollArea>
+                             // Remove ScrollArea, let page handle scroll
+                             <DataTable columns={rankingColumns(CURRENT_EMPLOYEE_ID)} data={rankingData} noPagination />
                           )}
                      </CardContent>
-                      <CardFooter className="p-2 text-xs text-muted-foreground justify-end border-t">
-                          Atualizado em: {format(new Date(), 'dd/MM/yy HH:mm')}
-                     </CardFooter>
                  </Card>
 
               </div>

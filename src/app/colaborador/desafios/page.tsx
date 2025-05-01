@@ -1,7 +1,8 @@
+
  'use client';
 
  import * as React from 'react';
- import { Target, CheckCircle, Clock, Award, History, Filter, Loader2, Info, ArrowRight, FileText, Upload, Link as LinkIcon, Calendar, Trophy, Eye } from 'lucide-react'; // Added Calendar, Trophy, Eye
+ import { Target, CheckCircle, Clock, Award, History, Filter, Loader2, Info, ArrowRight, FileText, Upload, Link as LinkIcon, Calendar, Trophy, Eye, ArrowLeft, Frown, CalendarDays, ListFilter, Search } from 'lucide-react'; // Added icons
  import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
  import {
    Card,
@@ -15,7 +16,7 @@
  import { Badge } from '@/components/ui/badge';
  import { ScrollArea } from '@/components/ui/scroll-area';
  import { useToast } from '@/hooks/use-toast';
- import { format, parseISO, differenceInDays, isPast } from 'date-fns';
+ import { format, parseISO, differenceInDays, isPast, isValid } from 'date-fns'; // Added isValid
  import { ptBR } from 'date-fns/locale';
  import {
    Dialog,
@@ -32,11 +33,11 @@
  import { Label } from '@/components/ui/label';
  import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
  import { cn } from '@/lib/utils'; // Import cn utility
+ import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
 
  // Import types
  import type { Challenge } from '@/types/challenge';
- import { mockEmployees } from '@/app/employees/page';
- // Correct the import path for admin challenges data - It should point to the admin route group
+ import { mockEmployees } from '@/lib/mockData/employees'; // Updated import path
  import { mockChallenges as allAdminChallenges, mockParticipants } from '@/app/(admin)/challenges/page';
 
  // Mock Employee ID
@@ -49,7 +50,7 @@
      acceptedAt?: Date;
      submittedAt?: Date;
      submissionText?: string;
-     submissionFileUrl?: string;
+     submissionFileUrl?: string; // Assume URL is stored after upload
      score?: number;
      feedback?: string;
  }
@@ -59,81 +60,113 @@
      { challengeId: 'c1', employeeId: '1', status: 'approved', acceptedAt: new Date(2024, 7, 5), submittedAt: new Date(2024, 7, 9), submissionText: 'Resumos enviados.', score: 50, feedback: 'Ótimo trabalho!' },
      { challengeId: 'c2', employeeId: '1', status: 'pending' }, // Eligible but not accepted
      { challengeId: 'c3', employeeId: '1', status: 'pending' }, // Eligible but not accepted
-     { challengeId: 'c4', employeeId: '1', status: 'submitted', acceptedAt: new Date(2024, 7, 29), submittedAt: new Date(2024, 7, 31), submissionText: 'Feedbacks enviados via RH.' },
+     { challengeId: 'c4', employeeId: '1', status: 'submitted', acceptedAt: new Date(2024, 7, 29), submittedAt: new Date(2024, 7, 31), submissionText: 'Feedbacks enviados via RH.', feedback: 'Recebido para avaliação.' }, // Added feedback
      { challengeId: 'c5', employeeId: '1', status: 'accepted', acceptedAt: new Date(Date.now() - 86400000 * 2) }, // Accepted 2 days ago
-      { challengeId: 'c6', employeeId: '1', status: 'pending' }, // Not eligible for Alice
+      { challengeId: 'c6', employeeId: '1', status: 'pending' }, // Not eligible for Alice (or maybe?) Let's assume eligible for demo
  ];
 
  // --- Mock Fetching Functions ---
  const fetchEmployeeChallenges = async (employeeId: string): Promise<{ available: Challenge[], active: Challenge[], completed: Challenge[] }> => {
-    await new Promise(resolve => setTimeout(resolve, 400)); // Reduced delay
-    const employee = mockEmployees.find(e => e.id === employeeId);
-    if (!employee) throw new Error("Colaborador não encontrado.");
+     await new Promise(resolve => setTimeout(resolve, 600)); // Slightly longer delay for demo
+     const employee = mockEmployees.find(e => e.id === employeeId);
+     if (!employee) throw new Error("Colaborador não encontrado.");
 
-    const employeeParticipations = mockCurrentParticipations.filter(p => p.employeeId === employeeId);
-    const participationMap = new Map(employeeParticipations.map(p => [p.challengeId, p]));
+     const employeeParticipations = mockCurrentParticipations.filter(p => p.employeeId === employeeId);
+     const participationMap = new Map(employeeParticipations.map(p => [p.challengeId, p]));
 
-    const available: Challenge[] = [];
-    const active: Challenge[] = [];
-    const completed: Challenge[] = [];
+     const available: Challenge[] = [];
+     const active: Challenge[] = [];
+     const completed: Challenge[] = [];
 
-    allAdminChallenges.forEach(challenge => {
-        let isEligible = false;
-        if (challenge.status === 'draft' || challenge.status === 'archived') return; // Skip drafts/archived
-
-        if (challenge.eligibility.type === 'all') isEligible = true;
-        else if (challenge.eligibility.type === 'department' && challenge.eligibility.entityIds?.includes(employee.department)) isEligible = true;
-        else if (challenge.eligibility.type === 'role' && challenge.eligibility.entityIds?.includes(employee.role)) isEligible = true;
-        else if (challenge.eligibility.type === 'individual' && challenge.eligibility.entityIds?.includes(employee.id)) isEligible = true;
-
-        if (!isEligible) return; // Skip if not eligible
-
-        const participation = participationMap.get(challenge.id);
-        const isChallengePeriodActive = !isPast(parseISO(challenge.periodEndDate)); // Check if end date hasn't passed
-
-         if (challenge.status === 'active' || (challenge.status === 'scheduled' && !isPast(parseISO(challenge.periodStartDate)))) {
-             if (!participation || participation.status === 'pending') {
-                 // Available if active/scheduled (and not started), and user hasn't interacted
-                 if (isChallengePeriodActive) {
-                     available.push(challenge);
-                 }
-             } else if (participation.status === 'accepted' || participation.status === 'submitted') {
-                 // Active if user accepted/submitted and period is still active or it's evaluating
-                  if (isChallengePeriodActive || challenge.status === 'evaluating') {
-                    active.push(challenge);
-                 } else { // If period ended but not yet evaluated/completed? Move to completed?
-                    completed.push(challenge);
-                 }
-             } else if (participation.status === 'approved' || participation.status === 'rejected') {
-                 // Already evaluated, goes to completed
-                 completed.push(challenge);
-             }
-         } else if (challenge.status === 'completed' || challenge.status === 'evaluating') {
-              // If challenge is evaluating/completed, check participation status
-              if (participation && (participation.status === 'approved' || participation.status === 'rejected')) {
-                 completed.push(challenge); // Already done
-              } else if (participation && challenge.status === 'evaluating' && ['accepted', 'submitted'].includes(participation.status)) {
-                  active.push(challenge); // Still active from user perspective until evaluated
-              } else if (!participation && challenge.status === 'completed') {
-                  // If completed and user didn't participate, show in history
-                  completed.push(challenge);
-              }
+     allAdminChallenges.forEach(challenge => {
+          // Basic date validation
+         const startDateValid = challenge.periodStartDate && isValid(parseISO(challenge.periodStartDate));
+         const endDateValid = challenge.periodEndDate && isValid(parseISO(challenge.periodEndDate));
+         if (!startDateValid || !endDateValid) {
+            console.warn(`Skipping challenge ${challenge.id} due to invalid dates.`);
+            return;
          }
-    });
 
-    // Sort completed by end date descending
-    completed.sort((a, b) => parseISO(b.periodEndDate).getTime() - parseISO(a.periodEndDate).getTime());
+         const endDate = parseISO(challenge.periodEndDate);
+         const startDate = parseISO(challenge.periodStartDate);
+         const isChallengePeriodOver = isPast(endDate);
+         const isChallengeNotStarted = new Date() < startDate;
 
 
-    return { available, active, completed };
- }
+         let isEligible = false;
+         if (challenge.status === 'draft' || challenge.status === 'archived') return; // Skip drafts/archived
+
+         if (challenge.eligibility.type === 'all') isEligible = true;
+         else if (challenge.eligibility.type === 'department' && challenge.eligibility.entityIds?.includes(employee.department)) isEligible = true;
+         else if (challenge.eligibility.type === 'role' && challenge.eligibility.entityIds?.includes(employee.role)) isEligible = true;
+         else if (challenge.eligibility.type === 'individual' && challenge.eligibility.entityIds?.includes(employee.id)) isEligible = true;
+
+         if (!isEligible) return; // Skip if not eligible
+
+         const participation = participationMap.get(challenge.id);
+         const participationStatus = participation?.status || 'pending';
+
+          // Categorize based on challenge status and participation status
+          if (challenge.status === 'scheduled' && isChallengeNotStarted) {
+             // Future challenges, show as available if user hasn't interacted
+             if (participationStatus === 'pending') {
+                 available.push(challenge);
+             } else {
+                 // If somehow accepted early? Edge case, maybe show in active? Or completed?
+                 // For now, let's assume this state is invalid or handled server-side
+             }
+          } else if (challenge.status === 'active' || (challenge.status === 'scheduled' && !isChallengeNotStarted)) {
+             // Active or just started challenges
+             if (participationStatus === 'pending') {
+                  if (!isChallengePeriodOver) available.push(challenge); // Available to accept if period not over
+             } else if (participationStatus === 'accepted' || participationStatus === 'submitted') {
+                  if (!isChallengePeriodOver || challenge.status === 'evaluating') {
+                      active.push(challenge); // Active if accepted/submitted and period ongoing or evaluating
+                  } else {
+                      completed.push(challenge); // Period ended, move to completed
+                  }
+             } else if (participationStatus === 'approved' || participationStatus === 'rejected') {
+                 completed.push(challenge); // Already evaluated
+             }
+          } else if (challenge.status === 'evaluating') {
+              if (participationStatus === 'accepted' || participationStatus === 'submitted') {
+                  active.push(challenge); // Still active for user until result
+              } else {
+                  completed.push(challenge); // Evaluation started, user didn't submit/accept in time or was rejected
+              }
+          } else if (challenge.status === 'completed') {
+             completed.push(challenge); // Show all completed challenges in history
+          }
+     });
+
+     // Sort completed by end date descending
+     completed.sort((a, b) => parseISO(b.periodEndDate).getTime() - parseISO(a.periodEndDate).getTime());
+     // Sort available by start date ascending
+     available.sort((a, b) => parseISO(a.periodStartDate).getTime() - parseISO(b.periodStartDate).getTime());
+      // Sort active by end date ascending (show soonest ending first)
+     active.sort((a, b) => parseISO(a.periodEndDate).getTime() - parseISO(b.periodEndDate).getTime());
+
+
+     return { available, active, completed };
+  }
 
  // Mock action functions
  const acceptChallenge = async (employeeId: string, challengeId: string): Promise<EmployeeChallengeParticipation> => {
-     await new Promise(resolve => setTimeout(resolve, 300));
+     await new Promise(resolve => setTimeout(resolve, 400)); // Faster accept
      const existingIndex = mockCurrentParticipations.findIndex(p => p.employeeId === employeeId && p.challengeId === challengeId);
      let participation: EmployeeChallengeParticipation;
+     const challenge = allAdminChallenges.find(c => c.id === challengeId);
+      if (!challenge || challenge.status !== 'active' && challenge.status !== 'scheduled') {
+         throw new Error("Não é possível aceitar este desafio no momento.");
+     }
+      if (isPast(parseISO(challenge.periodEndDate))) {
+           throw new Error("O prazo para aceitar este desafio expirou.");
+      }
+
      if (existingIndex > -1) {
+         if (mockCurrentParticipations[existingIndex].status !== 'pending') {
+             throw new Error("Desafio já interagido.");
+         }
          mockCurrentParticipations[existingIndex].status = 'accepted';
          mockCurrentParticipations[existingIndex].acceptedAt = new Date();
          participation = mockCurrentParticipations[existingIndex];
@@ -146,19 +179,22 @@
  };
 
  const submitChallenge = async (employeeId: string, challengeId: string, submissionText?: string, file?: File): Promise<EmployeeChallengeParticipation> => {
-     await new Promise(resolve => setTimeout(resolve, 700));
+     await new Promise(resolve => setTimeout(resolve, 800)); // Submission takes longer
      const participationIndex = mockCurrentParticipations.findIndex(p => p.employeeId === employeeId && p.challengeId === challengeId);
      const challenge = allAdminChallenges.find(c => c.id === challengeId);
 
      if (participationIndex === -1 || !['accepted'].includes(mockCurrentParticipations[participationIndex].status)) {
          throw new Error("Aceite o desafio antes de submeter.");
      }
-     if (!challenge || !['active', 'evaluating'].includes(challenge.status)) {
+     if (!challenge || !['active', 'evaluating', 'scheduled'].includes(challenge.status)) { // Allow submit if scheduled but started
           throw new Error("Não é possível submeter este desafio (não está ativo/em avaliação).");
      }
       if (isPast(parseISO(challenge.periodEndDate)) && challenge.status !== 'evaluating') { // Allow submission if evaluating even if past end date
           throw new Error("O prazo para submissão deste desafio expirou.");
-     }
+      }
+      if (new Date() < parseISO(challenge.periodStartDate)) {
+           throw new Error("O desafio ainda não começou.");
+      }
 
      const participation = mockCurrentParticipations[participationIndex];
      participation.status = 'submitted';
@@ -167,6 +203,25 @@
      participation.submissionFileUrl = file ? `uploads/mock_${employeeId}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}` : undefined; // Basic name sanitization
 
      console.log("Challenge submitted:", participation);
+
+      // Simulate admin evaluation after a short delay for demo purposes
+     setTimeout(async () => {
+         console.log(`[Simulated Eval] Evaluating challenge ${challengeId} for user ${employeeId}`);
+         const evalStatus = Math.random() > 0.2 ? 'approved' : 'rejected'; // 80% approval chance
+         const evalFeedback = evalStatus === 'approved' ? 'Excelente trabalho!' : 'Não atendeu aos critérios. Verifique o feedback.';
+         const finalScore = evalStatus === 'approved' ? challenge.points : 0;
+
+         const finalParticipationIndex = mockCurrentParticipations.findIndex(p => p.employeeId === employeeId && p.challengeId === challengeId && p.status === 'submitted');
+         if (finalParticipationIndex > -1) {
+             mockCurrentParticipations[finalParticipationIndex].status = evalStatus;
+             mockCurrentParticipations[finalParticipationIndex].feedback = evalFeedback;
+             mockCurrentParticipations[finalParticipationIndex].score = finalScore;
+             console.log(`[Simulated Eval] Challenge ${challengeId} evaluated as ${evalStatus}`);
+              // NOTE: In a real app, this would trigger a notification and update the UI via listener,
+              // here we rely on manual refresh or potentially force a state update if needed.
+         }
+     }, 5000); // Evaluate 5 seconds after submission
+
      return participation;
  };
 
@@ -220,6 +275,7 @@
              if (fileInputRef.current) {
                 fileInputRef.current.value = '';
              }
+             setIsSubmitting(false); // Ensure submitting state is reset
          } else if (!isOpen) {
             // Explicitly reset state when modal closes
             setSubmissionText('');
@@ -234,26 +290,50 @@
 
      if (!challenge) return null;
 
-     const isChallengeOver = isPast(parseISO(challenge.periodEndDate));
-     // Allow submission if active/evaluating and not explicitly rejected/approved
-      const canSubmit = participation?.status === 'accepted' &&
-                       (['active', 'evaluating'].includes(challenge.status)) &&
-                       (!isChallengeOver || challenge.status === 'evaluating'); // Allow submit past end date if evaluating
+      // Basic date validation on render
+     const startDateValid = challenge.periodStartDate && isValid(parseISO(challenge.periodStartDate));
+     const endDateValid = challenge.periodEndDate && isValid(parseISO(challenge.periodEndDate));
+     if (!startDateValid || !endDateValid) {
+         return ( // Render an error state inside the modal if dates are invalid
+             <Dialog open={isOpen} onOpenChange={onOpenChange}>
+                 <DialogContent>
+                     <DialogHeader>
+                         <DialogTitle>Erro no Desafio</DialogTitle>
+                         <DialogDescription>Datas inválidas para este desafio.</DialogDescription>
+                     </DialogHeader>
+                     <DialogFooter>
+                         <DialogClose asChild>
+                             <Button variant="secondary">Fechar</Button>
+                         </DialogClose>
+                     </DialogFooter>
+                 </DialogContent>
+             </Dialog>
+         );
+     }
 
+
+     const isChallengeOver = isPast(parseISO(challenge.periodEndDate));
+     const isChallengeNotStarted = new Date() < parseISO(challenge.periodStartDate);
+
+     // Can submit if: accepted, challenge is active OR evaluating, AND (period not over OR challenge is evaluating)
+     const canSubmit = participation?.status === 'accepted' &&
+                       (['active', 'evaluating'].includes(challenge.status) || (challenge.status === 'scheduled' && !isChallengeNotStarted)) &&
+                       (!isChallengeOver || challenge.status === 'evaluating');
+
+     // Can accept if: Optional, user hasn't interacted yet, period not over, challenge not completed/evaluating/draft/archived
      const canAccept = challenge.participationType === 'Opcional' &&
                        (!participation || participation.status === 'pending') &&
-                       !isChallengeOver &&
-                       challenge.status !== 'completed' && // Ensure not already completed
-                       challenge.status !== 'evaluating'; // Cannot accept if already evaluating
+                       !isChallengeOver && !isChallengeNotStarted && // Cannot accept if not started or over
+                       ['active', 'scheduled'].includes(challenge.status); // Must be active or scheduled (and started)
 
      const isReadOnly = !canSubmit && (participation?.status === 'submitted' || participation?.status === 'approved' || participation?.status === 'rejected');
+     const isPendingAcceptance = !participation || participation.status === 'pending';
 
 
      const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
          const file = event.target.files?.[0];
          if (file) {
-              // Simple size check (e.g., 10MB limit)
-             if (file.size > 10 * 1024 * 1024) {
+             if (file.size > 10 * 1024 * 1024) { // 10MB limit example
                 toast({title: "Arquivo Grande", description: "O arquivo não pode exceder 10MB.", variant: "destructive"});
                 if (event.target) event.target.value = ''; // Clear the input
                 setSubmissionFile(null);
@@ -267,7 +347,6 @@
 
      const handleSubmit = async () => {
          if (!onSubmit || !challenge || !canSubmit) return;
-         // Require at least text or file for submission
           if (!submissionText?.trim() && !submissionFile) {
               toast({ title: "Submissão Vazia", description: "Forneça uma descrição ou anexe um arquivo para concluir.", variant: "destructive" });
               return;
@@ -286,49 +365,89 @@
          }
      };
 
-     const daysRemaining = differenceInDays(parseISO(challenge.periodEndDate), new Date());
+     let daysRemaining = -1;
+     try {
+       daysRemaining = differenceInDays(parseISO(challenge.periodEndDate), new Date());
+     } catch (e) {
+         console.error("Error calculating days remaining:", e);
+     }
 
 
      return (
          <Dialog open={isOpen} onOpenChange={onOpenChange}>
-             <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col"> {/* Limit height */}
-                 <DialogHeader className='pr-6'> {/* Add padding for close button */}
-                      <DialogTitle className="text-lg flex items-start gap-2">
-                          <Target className="h-5 w-5 flex-shrink-0 mt-1 text-primary" />
-                          <span className="flex-1">{challenge.title}</span>
-                      </DialogTitle>
-                      <DialogDescription className="text-xs line-clamp-3">
-                          {challenge.description}
-                     </DialogDescription>
-                     {/* Badges - More compact */}
-                      <div className="flex flex-wrap gap-1 pt-2">
-                         <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 border-blue-300 text-blue-700">{challenge.difficulty}</Badge>
-                         <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 border-yellow-400 text-yellow-700"><Award className='h-3 w-3 mr-1'/>{challenge.points} pts</Badge>
-                         <Badge variant={challenge.participationType === 'Obrigatório' ? 'destructive' : 'secondary'} className="text-[10px] px-1.5 py-0.5">{challenge.participationType}</Badge>
-                         {participation && participation.status !== 'pending' && <Badge variant={getSafeStatusBadgeVariant(participation.status)} className="text-[10px] px-1.5 py-0.5">{getStatusText(participation.status)}</Badge>}
+             <DialogContent className="sm:max-w-md max-h-[90svh] flex flex-col p-0"> {/* Use svh, remove default padding */}
+                  {/* Optional Image Header */}
+                 {challenge.imageUrl && (
+                    <div className="relative h-32 sm:h-40 w-full flex-shrink-0">
+                        <img src={challenge.imageUrl} alt={challenge.title} className="absolute inset-0 h-full w-full object-cover" data-ai-hint="challenge competition achievement"/>
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent"></div>
+                         {/* Back Button */}
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-2 left-2 h-8 w-8 rounded-full bg-black/30 text-white hover:bg-black/50"
+                            onClick={() => onOpenChange(false)}
+                         >
+                             <ArrowLeft className="h-5 w-5"/>
+                             <span className="sr-only">Voltar</span>
+                         </Button>
                      </div>
-                 </DialogHeader>
+                  )}
+
+                 {/* Header (without image) */}
+                  {!challenge.imageUrl && (
+                     <DialogHeader className='p-4 pb-2 border-b relative'> {/* Add padding if no image */}
+                          <DialogTitle className="text-lg flex items-center gap-2">
+                              <Target className="h-5 w-5 flex-shrink-0 text-primary" />
+                              <span className="flex-1">{challenge.title}</span>
+                          </DialogTitle>
+                           <DialogDescription className="text-xs line-clamp-3 pt-1">
+                              {challenge.description}
+                         </DialogDescription>
+                         {/* Back Button (if no image) */}
+                         <DialogClose asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="absolute top-3 right-3 h-7 w-7 text-muted-foreground hover:bg-muted"
+                                >
+                                    <X className="h-4 w-4" />
+                                    <span className="sr-only">Fechar</span>
+                                </Button>
+                            </DialogClose>
+                     </DialogHeader>
+                  )}
+
 
                  {/* Scrollable Content Area */}
-                 <ScrollArea className="flex-grow pr-2 -mr-2 my-2">
-                      <div className="space-y-3 text-sm px-1">
+                 <ScrollArea className="flex-grow px-4 py-3">
+                      <div className="space-y-4 text-sm">
+                         {/* Badges - moved below title */}
+                         <div className="flex flex-wrap gap-1">
+                             <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 border-blue-300 text-blue-700 bg-blue-50 dark:bg-blue-900/30">{challenge.difficulty}</Badge>
+                             <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 border-yellow-400 text-yellow-700 bg-yellow-50 dark:bg-yellow-900/30"><Award className='h-3 w-3 mr-1'/>{challenge.points} pts</Badge>
+                             <Badge variant={challenge.participationType === 'Obrigatório' ? 'destructive' : 'secondary'} className="text-[10px] px-1.5 py-0.5">{challenge.participationType}</Badge>
+                             {participation && participation.status !== 'pending' && <Badge variant={getSafeStatusBadgeVariant(participation.status)} className="text-[10px] px-1.5 py-0.5">{getStatusText(participation.status)}</Badge>}
+                         </div>
+
                          {/* Period */}
-                          <div>
-                             <h4 className="font-semibold mb-0.5 text-xs text-muted-foreground flex items-center gap-1"><Calendar className='h-3 w-3'/>Período:</h4>
+                          <div className="bg-muted/50 p-2 rounded-md border border-muted">
+                             <h4 className="font-semibold mb-0.5 text-xs text-muted-foreground flex items-center gap-1"><CalendarDays className='h-3 w-3'/>Período:</h4>
                               <p className="text-xs">
                                  {format(parseISO(challenge.periodStartDate), 'dd/MM/yy')} - {format(parseISO(challenge.periodEndDate), 'dd/MM/yy')}
-                                 {!isChallengeOver && challenge.status !== 'completed' && challenge.status !== 'evaluating' && (
+                                 {!isChallengeOver && challenge.status !== 'completed' && challenge.status !== 'evaluating' && daysRemaining >= 0 && (
                                       <span className={cn("text-[10px] ml-1 font-medium", daysRemaining <= 1 ? 'text-destructive' : 'text-blue-600' )}>
-                                        ({daysRemaining < 0 ? 0 : daysRemaining + 1}d restantes)
+                                        ({daysRemaining + 1}d restantes)
                                        </span>
                                  )}
                                  {(isChallengeOver && challenge.status !== 'evaluating') && <span className="text-xs ml-1 text-destructive font-medium">(Encerrado)</span>}
+                                 {isChallengeNotStarted && <span className="text-xs ml-1 text-blue-600 font-medium">(Aguardando Início)</span>}
                              </p>
                          </div>
                          {/* Evaluation Metrics */}
                           <div>
                              <h4 className="font-semibold mb-0.5 text-xs text-muted-foreground flex items-center gap-1"><Trophy className='h-3 w-3'/>Como Cumprir:</h4>
-                             <p className="text-xs">{challenge.evaluationMetrics}</p>
+                             <p className="text-xs text-foreground/90">{challenge.evaluationMetrics}</p>
                          </div>
                           {/* Support Material */}
                          {challenge.supportMaterialUrl && (
@@ -345,24 +464,24 @@
                              <>
                                  <Separator className="my-3" />
                                  <div>
-                                     <h4 className="font-semibold mb-1 text-sm">{isReadOnly ? 'Sua Conclusão:' : 'Enviar Conclusão:'}</h4>
+                                      <h4 className="font-semibold mb-2 text-sm">{isReadOnly ? 'Sua Conclusão:' : 'Enviar Conclusão:'}</h4>
                                      <div className="space-y-3">
                                           {/* Submission Text */}
                                           <div>
-                                             <Label htmlFor={`submission-text-${challenge.id}`} className="text-xs text-muted-foreground">Descrição (Opcional se anexar arquivo)</Label>
+                                              <Label htmlFor={`submission-text-${challenge.id}`} className="text-xs text-muted-foreground">Descrição {canSubmit && '(Opcional se anexar arquivo)'}</Label>
                                              <Textarea
                                                  id={`submission-text-${challenge.id}`}
-                                                 placeholder="Descreva como cumpriu o desafio..."
+                                                 placeholder={canSubmit ? "Descreva como cumpriu o desafio..." : ""}
                                                  value={submissionText}
                                                  onChange={(e) => setSubmissionText(e.target.value)}
                                                  readOnly={isReadOnly}
                                                  rows={3}
-                                                 className="mt-1 text-xs"
+                                                 className="mt-1 text-xs bg-background"
                                              />
                                           </div>
                                           {/* Submission File */}
                                           <div>
-                                             <Label htmlFor={`evidence-file-${challenge.id}`} className={`text-xs ${isReadOnly ? 'text-muted-foreground' : 'text-muted-foreground'}`}>Anexo (Opcional se descrever)</Label>
+                                             <Label htmlFor={`evidence-file-${challenge.id}`} className={`text-xs ${isReadOnly ? 'text-muted-foreground' : 'text-muted-foreground'}`}>Anexo {canSubmit && '(Opcional se descrever)'}</Label>
                                              {!isReadOnly && (
                                                  <div className="flex items-center gap-2 mt-1">
                                                      <Input
@@ -373,7 +492,7 @@
                                                          className="hidden" // Hide default input
                                                          disabled={isReadOnly}
                                                      />
-                                                      <Button type="button" variant="outline" size="sm" className="text-xs h-8" onClick={() => fileInputRef.current?.click()}>
+                                                      <Button type="button" variant="outline" size="sm" className="text-xs h-8 bg-background" onClick={() => fileInputRef.current?.click()}>
                                                           <Upload className="h-3 w-3 mr-1.5" /> Selecionar Arquivo
                                                       </Button>
                                                      {submissionFile && (
@@ -392,6 +511,9 @@
                                                       </Button>
                                                  </div>
                                              )}
+                                              {isReadOnly && !participation?.submissionFileUrl && !participation?.submissionText && (
+                                                 <p className="text-xs text-muted-foreground italic mt-1">Nenhuma descrição ou anexo fornecido.</p>
+                                              )}
                                          </div>
                                      </div>
                                  </div>
@@ -414,20 +536,32 @@
                                              <p>{participation.feedback}</p>
                                          </div>
                                      )}
+                                     {!participation.feedback && <p className="text-xs italic text-muted-foreground mt-1">Nenhum feedback fornecido.</p>}
                                  </div>
                               </>
+                          )}
+
+                          {/* Show when challenge is pending */}
+                          {isPendingAcceptance && !canAccept && !isReadOnly && (
+                                <>
+                                 <Separator className="my-3"/>
+                                  <div className="text-center text-muted-foreground text-xs p-3 bg-muted/50 rounded-md border">
+                                      {isChallengeNotStarted ? 'Este desafio ainda não começou.' : isChallengeOver ? 'Este desafio já encerrou.' : 'Aguardando início ou status.'}
+                                 </div>
+                               </>
                           )}
 
                      </div>
                   </ScrollArea>
 
                   {/* Footer Actions */}
-                  <DialogFooter className="mt-auto pt-4 border-t gap-2 flex-col sm:flex-row">
-                     <DialogClose asChild>
-                         <Button type="button" variant="secondary" className="w-full sm:w-auto">Fechar</Button>
-                     </DialogClose>
+                  <DialogFooter className="mt-auto p-4 border-t bg-background gap-2 flex-col sm:flex-row">
+                     {/* Close button is implicit with DialogClose now */}
+                      {/* <DialogClose asChild>
+                          <Button type="button" variant="secondary" className="w-full sm:w-auto">Fechar</Button>
+                      </DialogClose> */}
                      {canAccept && onAccept && (
-                         <Button onClick={() => { onAccept(challenge.id); onOpenChange(false); }} className="w-full sm:w-auto">
+                         <Button onClick={() => { onAccept(challenge.id); onOpenChange(false); }} className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white">
                              <CheckCircle className="mr-2 h-4 w-4"/> Aceitar Desafio
                          </Button>
                      )}
@@ -437,6 +571,19 @@
                              {isSubmitting ? 'Enviando...' : 'Enviar Conclusão'}
                           </Button>
                      )}
+                       {/* Read Only State Button */}
+                       {isReadOnly && (
+                             <Button disabled variant="outline" className="w-full sm:w-auto">
+                                 {participation?.status === 'submitted' ? 'Enviado para Avaliação' : 'Avaliação Concluída'}
+                             </Button>
+                       )}
+                        {/* Pending Acceptance State Button */}
+                        {isPendingAcceptance && !canAccept && (
+                             <Button disabled variant="outline" className="w-full sm:w-auto">
+                                 {isChallengeNotStarted ? 'Aguardando Início' : 'Desafio Indisponível'}
+                             </Button>
+                        )}
+
                  </DialogFooter>
              </DialogContent>
          </Dialog>
@@ -452,6 +599,11 @@
      const [isLoading, setIsLoading] = React.useState(true);
      const [selectedChallenge, setSelectedChallenge] = React.useState<Challenge | null>(null);
      const [isDetailsModalOpen, setIsDetailsModalOpen] = React.useState(false);
+     const [searchTerm, setSearchTerm] = React.useState('');
+     const [filterStatus, setFilterStatus] = React.useState<'all' | EmployeeChallengeParticipation['status']>('all');
+     const [filterCategory, setFilterCategory] = React.useState<string>('all');
+     const [filterDifficulty, setFilterDifficulty] = React.useState<'all' | Challenge['difficulty']>('all');
+
      const { toast } = useToast();
 
      // State for participation lookup
@@ -488,22 +640,28 @@
 
 
      const handleAcceptChallenge = async (challengeId: string) => {
+          setIsLoading(true); // Show loading indicator
          try {
              const newParticipation = await acceptChallenge(CURRENT_EMPLOYEE_ID, challengeId);
-             setParticipationMap(prev => new Map(prev).set(challengeId, newParticipation)); // Optimistically update map
-             toast({ title: "Desafio Aceito!", description: "Você começou um novo desafio.", });
-             loadChallengesData(); // Re-fetch to update lists based on new status
+             // No need to manually update map here, loadChallengesData will refresh it
+             toast({ title: "Desafio Aceito!", description: `Você começou o desafio: "${allAdminChallenges.find(c => c.id === challengeId)?.title}".`, });
+             await loadChallengesData(); // Re-fetch to update lists based on new status
          } catch (error: any) {
              console.error("Erro ao aceitar desafio:", error);
              toast({ title: "Erro", description: error.message || "Não foi possível aceitar o desafio.", variant: "destructive" });
+             setIsLoading(false); // Stop loading on error
          }
+         // setIsLoading(false); // Loading state is handled by loadChallengesData
      };
 
-     const handleSubmitChallenge = async (challengeId: string, submissionText?: string, file?: File) => {
-          const updatedParticipation = await submitChallenge(CURRENT_EMPLOYEE_ID, challengeId, submissionText, file);
-          setParticipationMap(prev => new Map(prev).set(challengeId, updatedParticipation)); // Optimistically update map
-          loadChallengesData(); // Re-fetch to update lists
+      const handleSubmitChallenge = async (challengeId: string, submissionText?: string, file?: File) => {
+         // We don't set loading here as the modal handles its own submitting state
+         const updatedParticipation = await submitChallenge(CURRENT_EMPLOYEE_ID, challengeId, submissionText, file);
+         // No need to manually update map here, loadChallengesData will refresh it
+         await loadChallengesData(); // Re-fetch to update lists
+          // Toast is shown in modal on success/error
      };
+
 
      const openDetailsModal = (challenge: Challenge) => {
          setSelectedChallenge(challenge);
@@ -514,40 +672,97 @@
          return participationMap.get(challengeId);
      }
 
+       // Filtering Logic
+      const filterChallenges = (challenges: Challenge[]): Challenge[] => {
+         return challenges.filter(ch => {
+             const participation = getParticipationForChallenge(ch.id);
+             const participationStatus = participation?.status || 'pending';
+
+             // Search Term Filter (Title or Description)
+             const searchTermLower = searchTerm.toLowerCase();
+             const matchesSearch = searchTermLower === '' ||
+                                   ch.title.toLowerCase().includes(searchTermLower) ||
+                                   ch.description.toLowerCase().includes(searchTermLower);
+
+             // Status Filter
+             const matchesStatus = filterStatus === 'all' || participationStatus === filterStatus;
+
+             // Category Filter
+             const matchesCategory = filterCategory === 'all' || (ch.category && ch.category === filterCategory);
+
+             // Difficulty Filter
+             const matchesDifficulty = filterDifficulty === 'all' || ch.difficulty === filterDifficulty;
+
+             return matchesSearch && matchesStatus && matchesCategory && matchesDifficulty;
+         });
+     };
+
+     const filteredAvailable = filterChallenges(availableChallenges);
+     const filteredActive = filterChallenges(activeChallenges);
+     const filteredCompleted = filterChallenges(completedChallenges);
+
+     // Get unique categories for filter dropdown
+     const availableCategories = React.useMemo(() => {
+         const allCats = [...availableChallenges, ...activeChallenges, ...completedChallenges]
+                         .map(c => c.category)
+                         .filter((c): c is string => !!c); // Filter out undefined/empty and type guard
+         return ['all', ...Array.from(new Set(allCats)).sort()];
+     }, [availableChallenges, activeChallenges, completedChallenges]);
+
      const renderChallengeCard = (challenge: Challenge, listType: 'available' | 'active' | 'completed') => {
          const participation = getParticipationForChallenge(challenge.id);
          const participationStatus = participation?.status || 'pending';
          const statusText = getStatusText(participationStatus);
          const statusVariant = getSafeStatusBadgeVariant(participationStatus);
-         const daysRemaining = differenceInDays(parseISO(challenge.periodEndDate), new Date());
-         const isChallengeOver = isPast(parseISO(challenge.periodEndDate));
+
+           // Basic date validation on render
+         const startDateValid = challenge.periodStartDate && isValid(parseISO(challenge.periodStartDate));
+         const endDateValid = challenge.periodEndDate && isValid(parseISO(challenge.periodEndDate));
+         if (!startDateValid || !endDateValid) {
+             return <Card key={challenge.id} className="shadow-sm p-3 text-xs text-destructive border-destructive">Erro: Datas inválidas para o desafio "{challenge.title}".</Card>;
+         }
+
+         const endDate = parseISO(challenge.periodEndDate);
+         const isChallengeOver = isPast(endDate);
+         const daysRemaining = differenceInDays(endDate, new Date());
 
          return (
-              <Card key={challenge.id} className="shadow-sm flex flex-col bg-card hover:shadow-md transition-shadow duration-200 overflow-hidden">
-                 {/* Optional Image Header */}
-                 {challenge.imageUrl && <img src={challenge.imageUrl} alt={challenge.title} className="h-24 w-full object-cover" data-ai-hint="abstract pattern design"/>}
-                 <CardHeader className="p-3">
-                     <div className="flex justify-between items-start gap-2 mb-1">
-                         <CardTitle className="text-sm font-semibold line-clamp-2 flex-1">{challenge.title}</CardTitle>
-                          <Badge variant={statusVariant} className="text-[10px] px-1.5 py-0.5 flex-shrink-0 whitespace-nowrap">{statusText}</Badge>
-                     </div>
-                      <CardDescription className="text-xs pt-0.5 line-clamp-2 h-8">{challenge.description}</CardDescription>
+               <Card key={challenge.id} className="shadow-sm flex flex-col bg-card hover:shadow-lg transition-shadow duration-200 overflow-hidden border rounded-lg">
+                 {/* Image Header */}
+                 <div className="relative h-24 w-full bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30">
+                     {challenge.imageUrl ? (
+                         <img src={challenge.imageUrl} alt="" className="h-full w-full object-cover opacity-80" data-ai-hint="abstract challenge goal achievement"/>
+                     ) : (
+                         <div className="flex items-center justify-center h-full">
+                             <Target className="h-10 w-10 text-purple-300 dark:text-purple-700" />
+                         </div>
+                     )}
+                      {/* Status Badge overlay */}
+                      <Badge variant={statusVariant} className="absolute top-2 right-2 text-[9px] px-1.5 py-0.5 leading-tight shadow">{statusText}</Badge>
+                 </div>
+                 {/* Content */}
+                 <CardHeader className="p-3 pb-1">
+                     <CardTitle className="text-sm font-semibold line-clamp-1">{challenge.title}</CardTitle>
+                     <CardDescription className="text-[10px] pt-0 line-clamp-2 h-7"> {/* Fixed height */}
+                         {challenge.description}
+                     </CardDescription>
                  </CardHeader>
                  <CardContent className="text-[10px] px-3 space-y-0.5 flex-grow">
                      <div className="flex justify-between items-center">
                          <span className="text-muted-foreground flex items-center gap-1"><Award className="h-3 w-3"/>Pontos:</span>
                          <span className="font-semibold">{challenge.points}</span>
                      </div>
-                      <div className="flex justify-between items-center">
-                         <span className="text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3"/>Prazo:</span>
-                         <span className={cn("font-medium", isChallengeOver && listType !== 'completed' ? "text-destructive" : (daysRemaining <= 1 ? "text-orange-600" : ""))}>
-                            {format(parseISO(challenge.periodEndDate), 'dd/MM/yy')}
-                            {!isChallengeOver && ` (${daysRemaining >= 0 ? daysRemaining + 1 : 0}d)`}
+                     <div className="flex justify-between items-center">
+                         <span className="text-muted-foreground flex items-center gap-1"><CalendarDays className="h-3 w-3"/>Prazo:</span>
+                         <span className={cn("font-medium", isChallengeOver && listType !== 'completed' ? "text-destructive" : (daysRemaining >= 0 && daysRemaining <= 1 ? "text-orange-600" : ""))}>
+                             {format(endDate, 'dd/MM/yy')}
+                              {!isChallengeOver && daysRemaining >= 0 && ` (${daysRemaining + 1}d)`}
                          </span>
                      </div>
                  </CardContent>
-                  <CardFooter className="p-2 border-t mt-2 bg-muted/50">
-                     <Button size="xs" variant="secondary" className="w-full h-7 text-xs" onClick={() => openDetailsModal(challenge)}>
+                 {/* Footer Action */}
+                 <CardFooter className="p-2 border-t mt-2 bg-muted/30">
+                     <Button size="xs" variant="secondary" className="w-full h-7 text-xs font-medium" onClick={() => openDetailsModal(challenge)}>
                          <Eye className="h-3 w-3 mr-1"/> Ver Detalhes
                      </Button>
                  </CardFooter>
@@ -555,41 +770,107 @@
          );
      }
 
-     return (
-          <div className="space-y-4">
-                 <Tabs defaultValue="available" className="w-full">
-                      {/* Make TabsList scrollable horizontally on small screens */}
-                     <div className="overflow-x-auto scrollbar-hide pb-1 -mb-1">
-                         <TabsList className="grid w-max grid-cols-3 h-9 min-w-full">
-                             <TabsTrigger value="available" className="text-xs px-2">
-                                 Disponíveis {isLoading ? "" : `(${availableChallenges.length})`}
-                             </TabsTrigger>
-                             <TabsTrigger value="active" className="text-xs px-2">
-                                 Em Andamento {isLoading ? "" : `(${activeChallenges.length})`}
-                             </TabsTrigger>
-                             <TabsTrigger value="completed" className="text-xs px-2">
-                                 Histórico {isLoading ? "" : `(${completedChallenges.length})`}
-                             </TabsTrigger>
-                         </TabsList>
-                     </div>
+     // Render skeleton cards
+      const renderSkeletonCards = (count: number) => (
+         Array.from({ length: count }).map((_, index) => (
+             <Card key={`skeleton-${index}`} className="shadow-sm flex flex-col border rounded-lg overflow-hidden">
+                 <Skeleton className="h-24 w-full bg-muted/50" />
+                 <CardHeader className="p-3 pb-1">
+                     <Skeleton className="h-4 w-3/4 mb-1 bg-muted/50" />
+                     <Skeleton className="h-3 w-full bg-muted/40" />
+                      <Skeleton className="h-3 w-1/2 bg-muted/40" />
+                 </CardHeader>
+                 <CardContent className="text-[10px] px-3 space-y-1.5 flex-grow">
+                      <Skeleton className="h-3 w-3/4 bg-muted/40" />
+                      <Skeleton className="h-3 w-1/2 bg-muted/40" />
+                 </CardContent>
+                 <CardFooter className="p-2 border-t mt-2 bg-muted/30">
+                      <Skeleton className="h-7 w-full bg-muted/50" />
+                 </CardFooter>
+             </Card>
+          ))
+     );
 
-                     {/* Tab Content */}
-                     {[
-                         { value: "available", challenges: availableChallenges, emptyText: "Nenhum desafio novo disponível." },
-                         { value: "active", challenges: activeChallenges, emptyText: "Nenhum desafio em andamento." },
-                         { value: "completed", challenges: completedChallenges, emptyText: "Nenhum desafio concluído ou passado." }
+
+     return (
+          <div className="space-y-4 p-4">
+                {/* Filters Section */}
+                <Card className="p-3 shadow-sm bg-muted/30 border">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 items-center">
+                        <div className="relative">
+                             <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                placeholder="Buscar desafios..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="pl-8 h-8 text-xs"
+                            />
+                        </div>
+                         <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as any)}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all" className="text-xs">Todos Status</SelectItem>
+                                <SelectItem value="pending" className="text-xs">Disponível</SelectItem>
+                                <SelectItem value="accepted" className="text-xs">Aceito</SelectItem>
+                                <SelectItem value="submitted" className="text-xs">Enviado</SelectItem>
+                                <SelectItem value="approved" className="text-xs">Aprovado</SelectItem>
+                                <SelectItem value="rejected" className="text-xs">Rejeitado</SelectItem>
+                             </SelectContent>
+                         </Select>
+                          <Select value={filterCategory} onValueChange={setFilterCategory}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                {availableCategories.map(cat => (
+                                    <SelectItem key={cat} value={cat} className="text-xs capitalize">{cat === 'all' ? 'Todas Categorias' : cat}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                         <Select value={filterDifficulty} onValueChange={(value) => setFilterDifficulty(value as any)}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                             <SelectContent>
+                                <SelectItem value="all" className="text-xs">Toda Dificuldade</SelectItem>
+                                <SelectItem value="Fácil" className="text-xs">Fácil</SelectItem>
+                                <SelectItem value="Médio" className="text-xs">Médio</SelectItem>
+                                <SelectItem value="Difícil" className="text-xs">Difícil</SelectItem>
+                             </SelectContent>
+                        </Select>
+                    </div>
+                 </Card>
+
+                 {/* Tabs and Content */}
+                 <Tabs defaultValue="available" className="w-full">
+                     <TabsList className="grid w-full grid-cols-3 h-9 bg-muted">
+                         <TabsTrigger value="available" className="text-xs px-1 flex items-center gap-1">
+                             <Target className="h-3 w-3"/> Disponíveis {isLoading ? "" : `(${filteredAvailable.length})`}
+                         </TabsTrigger>
+                         <TabsTrigger value="active" className="text-xs px-1 flex items-center gap-1">
+                             <Clock className="h-3 w-3"/> Em Andamento {isLoading ? "" : `(${filteredActive.length})`}
+                         </TabsTrigger>
+                         <TabsTrigger value="completed" className="text-xs px-1 flex items-center gap-1">
+                             <History className="h-3 w-3"/> Histórico {isLoading ? "" : `(${filteredCompleted.length})`}
+                         </TabsTrigger>
+                     </TabsList>
+
+                      {/* Tab Content */}
+                      {[
+                         { value: "available", challenges: filteredAvailable, emptyText: "Nenhum desafio novo disponível com os filtros atuais." },
+                         { value: "active", challenges: filteredActive, emptyText: "Nenhum desafio em andamento com os filtros atuais." },
+                         { value: "completed", challenges: filteredCompleted, emptyText: "Nenhum desafio concluído ou passado com os filtros atuais." }
                      ].map(tab => (
-                         <TabsContent key={tab.value} value={tab.value} className="mt-3">
-                             {isLoading ? (
-                                 <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-primary"/></div>
+                         <TabsContent key={tab.value} value={tab.value} className="mt-4">
+                              {isLoading ? (
+                                 // Grid of Skeleton Cards
+                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                     {renderSkeletonCards(tab.value === 'completed' ? 8 : 4)}
+                                 </div>
                              ) : tab.challenges.length === 0 ? (
                                  <div className="text-center text-muted-foreground py-16 px-4">
-                                     <Target className="h-12 w-12 mx-auto mb-3 text-gray-400"/>
+                                     <Frown className="h-12 w-12 mx-auto mb-3 text-gray-400"/>
                                      <p className="text-sm">{tab.emptyText}</p>
+                                      <Button variant="outline" size="sm" className="mt-4 text-xs" onClick={() => { setSearchTerm(''); setFilterStatus('all'); setFilterCategory('all'); setFilterDifficulty('all'); }}>Limpar Filtros</Button>
                                   </div>
                              ) : (
-                                  // Responsive grid with 1 column on mobile, 2 on sm+, 3 on md+, 4 on lg+
-                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                                      {tab.challenges.map(ch => renderChallengeCard(ch, tab.value as 'available' | 'active' | 'completed'))}
                                  </div>
                              )}
@@ -609,4 +890,3 @@
              </div>
      );
  }
-   

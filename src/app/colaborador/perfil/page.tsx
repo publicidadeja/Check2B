@@ -1,3 +1,4 @@
+
  'use client';
 
  import * as React from 'react';
@@ -21,7 +22,7 @@
 
  // Import types
  import type { Employee } from '@/types/employee';
- import { mockEmployees } from '@/app/employees/page';
+ import { mockEmployees } from '@/lib/mockData/employees'; // Updated import path
 
  // Mock Employee ID
  const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
@@ -235,6 +236,18 @@
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
+     const handlePhotoUrlChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const url = event.target.value;
+        form.setValue('photoUrl', url); // Make sure 'form' is accessible, perhaps profileForm?
+        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+            setPhotoPreview(url);
+            setSelectedFile(null); // Clear file if URL is manually entered
+             if (fileInputRef.current) fileInputRef.current.value = ''; // Clear file input
+        } else {
+            setPhotoPreview(employee?.photoUrl); // Revert if invalid URL
+        }
+    };
+
 
      // Handle Password Change
      const onPasswordSubmit = async (data: PasswordFormData) => {
@@ -296,24 +309,24 @@
       const isGuest = employee.id === 'guest';
 
      return (
-         <div className="space-y-4">
+         <div className="space-y-6 p-4"> {/* Added padding for mobile */}
              {/* --- Profile Info Card --- */}
              <Card className="shadow-sm">
                   <Form {...profileForm}>
                      <form onSubmit={profileForm.handleSubmit(onProfileSubmit)}>
-                         <CardHeader className="flex flex-row items-start justify-between gap-2 p-4">
+                         <CardHeader className="flex flex-col sm:flex-row items-start justify-between gap-2 p-4">
                              <div>
                                  <CardTitle className="text-lg flex items-center gap-2"><User className="h-5 w-5" /> Suas Informações</CardTitle>
                                  {!isGuest && <CardDescription className='text-xs'>Visualize e edite seus dados.</CardDescription>}
                                  {isGuest && <CardDescription className='text-xs'>Você está no modo convidado.</CardDescription>}
                              </div>
                              {!isGuest && !isEditingProfile && (
-                                 <Button type="button" variant="ghost" size="sm" onClick={() => setIsEditingProfile(true)} className="text-xs flex-shrink-0 h-7 px-2">
+                                 <Button type="button" variant="ghost" size="sm" onClick={() => setIsEditingProfile(true)} className="text-xs flex-shrink-0 h-7 px-2 mt-2 sm:mt-0">
                                      <Edit className="mr-1 h-3 w-3" /> Editar
                                  </Button>
                               )}
                               {!isGuest && isEditingProfile && (
-                                 <div className="flex gap-1 flex-shrink-0">
+                                 <div className="flex gap-1 flex-shrink-0 mt-2 sm:mt-0">
                                       <Button type="button" variant="ghost" size="sm" onClick={cancelEditProfile} className="text-xs h-7 px-2">Cancelar</Button>
                                       <Button type="submit" size="sm" disabled={isSavingProfile} className="text-xs h-7 px-2">
                                          {isSavingProfile ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Save className="mr-1 h-3 w-3" />}
@@ -324,18 +337,18 @@
                          </CardHeader>
                          <CardContent className="space-y-4 p-4 pt-0">
                               {/* Avatar and Photo Upload */}
-                              <div className="flex flex-col sm:flex-row items-center gap-4">
+                              <div className="flex flex-col items-center gap-4">
                                  <div className="relative group flex-shrink-0">
-                                     <Avatar className="h-24 w-24 border">
+                                     <Avatar className="h-28 w-28 border-2 border-primary/20">
                                          <AvatarImage src={photoPreview || employee.photoUrl} alt={employee.name} />
-                                         <AvatarFallback className="text-3xl">{getInitials(employee.name)}</AvatarFallback>
+                                         <AvatarFallback className="text-4xl">{getInitials(employee.name)}</AvatarFallback>
                                      </Avatar>
                                      {isEditingProfile && (
                                          <Button
                                             type="button"
                                             variant="outline"
                                             size="icon"
-                                            className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-background border-primary text-primary hover:bg-primary/10"
+                                            className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-background border-primary text-primary hover:bg-primary/10 shadow-md"
                                             onClick={() => fileInputRef.current?.click()}
                                             title="Alterar Foto"
                                          >
@@ -353,66 +366,66 @@
                                      />
                                  </div>
                                   {/* Fields Section */}
-                                 <div className='w-full space-y-2 text-sm'>
+                                 <div className='w-full space-y-3'>
                                      {/* Read Only Name/Email */}
+                                      <div className="space-y-1">
+                                         <Label className="text-xs text-muted-foreground">Nome</Label>
+                                         <p className="font-medium text-base">{employee.name}</p>
+                                     </div>
                                      <div className="space-y-1">
-                                        <Label className="text-xs text-muted-foreground">Nome</Label>
-                                        <p className="font-medium">{employee.name}</p>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <Label className="text-xs text-muted-foreground">Email</Label>
-                                        <p className="font-medium break-all">{employee.email}</p>
-                                    </div>
-                                     {/* Editable Phone */}
-                                     <FormField
-                                         control={profileForm.control}
-                                         name="phone"
-                                         render={({ field }) => (
-                                             <FormItem>
-                                                 <FormLabel className="text-xs">Telefone</FormLabel>
-                                                 <FormControl>
-                                                    <Input className={`h-8 text-sm ${!isEditingProfile ? 'border-none px-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent pointer-events-none' : ''}`} type="tel" placeholder="Não informado" {...field} readOnly={!isEditingProfile || isGuest} value={field.value ?? ''} />
-                                                 </FormControl>
-                                                 <FormMessage className="text-xs"/>
-                                             </FormItem>
-                                         )}
-                                     />
-                                      {/* Optional Photo URL Input (Only visible when editing) */}
-                                     {isEditingProfile && (
-                                         <FormField
-                                             control={profileForm.control}
-                                             name="photoUrl"
-                                             render={({ field }) => (
-                                                 <FormItem>
-                                                     <FormLabel className="text-xs">URL da Foto (Alternativa)</FormLabel>
-                                                     <FormControl>
-                                                         <Input className="h-8 text-xs" placeholder="https://..." {...field} value={field.value ?? ''} onChange={handlePhotoUrlChange} />
-                                                     </FormControl>
-                                                     <FormMessage className="text-xs" />
-                                                 </FormItem>
-                                             )}
-                                          />
-                                     )}
+                                         <Label className="text-xs text-muted-foreground">Email</Label>
+                                         <p className="font-medium break-all text-sm text-foreground/90">{employee.email}</p>
+                                     </div>
+                                      {/* Editable Phone */}
+                                      <FormField
+                                          control={profileForm.control}
+                                          name="phone"
+                                          render={({ field }) => (
+                                              <FormItem>
+                                                  <FormLabel className="text-xs">Telefone</FormLabel>
+                                                  <FormControl>
+                                                     <Input className={`h-9 text-sm ${!isEditingProfile ? 'border-none px-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent pointer-events-none' : 'bg-input/50 dark:bg-input/20'}`} type="tel" placeholder="Não informado" {...field} readOnly={!isEditingProfile || isGuest} value={field.value ?? ''} />
+                                                  </FormControl>
+                                                  <FormMessage className="text-xs"/>
+                                              </FormItem>
+                                          )}
+                                      />
+                                       {/* Optional Photo URL Input (Only visible when editing) */}
+                                      {isEditingProfile && (
+                                          <FormField
+                                              control={profileForm.control}
+                                              name="photoUrl"
+                                              render={({ field }) => (
+                                                  <FormItem>
+                                                      <FormLabel className="text-xs">URL da Foto (Alternativa)</FormLabel>
+                                                      <FormControl>
+                                                          <Input className="h-9 text-xs bg-input/50 dark:bg-input/20" placeholder="https://..." {...field} value={field.value ?? ''} onChange={handlePhotoUrlChange} />
+                                                      </FormControl>
+                                                      <FormMessage className="text-xs" />
+                                                  </FormItem>
+                                              )}
+                                           />
+                                      )}
                                  </div>
                              </div>
                               {/* Read Only Department/Role/Admission */}
-                              <Separator className="my-3" />
-                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-2 text-sm">
-                                 <div className="space-y-1">
-                                    <Label className="text-xs text-muted-foreground">Departamento</Label>
-                                    <p className="font-medium">{employee.department || '-'}</p>
-                                 </div>
-                                 <div className="space-y-1">
-                                     <Label className="text-xs text-muted-foreground">Função</Label>
-                                     <p className="font-medium">{employee.role || '-'}</p>
-                                 </div>
-                                  <div className="space-y-1">
-                                     <Label className="text-xs text-muted-foreground">Data de Admissão</Label>
-                                     <p className="font-medium">
-                                         {employee.admissionDate && !isGuest ? format(parseISO(employee.admissionDate + 'T00:00:00'), 'dd/MM/yyyy', { locale: ptBR }) : '-'}
-                                     </p>
-                                 </div>
-                             </div>
+                               <Separator className="my-4" />
+                              <div className="grid grid-cols-1 gap-y-3 text-sm">
+                                  <div className="flex justify-between items-center">
+                                     <span className="text-xs text-muted-foreground">Departamento</span>
+                                     <span className="font-medium text-right">{employee.department || '-'}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center">
+                                      <span className="text-xs text-muted-foreground">Função</span>
+                                      <span className="font-medium text-right">{employee.role || '-'}</span>
+                                  </div>
+                                   <div className="flex justify-between items-center">
+                                      <span className="text-xs text-muted-foreground">Data de Admissão</span>
+                                      <span className="font-medium text-right">
+                                          {employee.admissionDate && !isGuest ? format(parseISO(employee.admissionDate + 'T00:00:00'), 'dd/MM/yyyy', { locale: ptBR }) : '-'}
+                                      </span>
+                                  </div>
+                              </div>
                          </CardContent>
                      </form>
                   </Form>
@@ -424,7 +437,7 @@
                       <Form {...passwordForm}>
                          <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}>
                              <CardHeader className="p-4 pb-2">
-                                 <CardTitle className="text-lg flex items-center gap-2"><ShieldCheck className="h-5 w-5" /> Alterar Senha</CardTitle>
+                                 <CardTitle className="text-base flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Alterar Senha</CardTitle>
                              </CardHeader>
                              <CardContent className="space-y-3 p-4 pt-0">
                                  <FormField
@@ -435,10 +448,9 @@
                                              <FormLabel className="text-xs">Senha Atual</FormLabel>
                                               <FormControl>
                                                   <div className="relative">
-                                                      <Input className="h-9 text-sm" type={showCurrentPassword ? 'text' : 'password'} placeholder="********" {...field} />
-                                                      <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setShowCurrentPassword(!showCurrentPassword)}>
+                                                      <Input className="h-9 text-sm pr-8" type={showCurrentPassword ? 'text' : 'password'} placeholder="********" {...field} />
+                                                      <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setShowCurrentPassword(!showCurrentPassword)} aria-label={showCurrentPassword ? 'Ocultar senha atual' : 'Mostrar senha atual'}>
                                                           {showCurrentPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
-                                                          <span className="sr-only">{showCurrentPassword ? 'Ocultar' : 'Mostrar'}</span>
                                                       </Button>
                                                   </div>
                                               </FormControl>
@@ -454,10 +466,9 @@
                                              <FormLabel className="text-xs">Nova Senha</FormLabel>
                                               <FormControl>
                                                   <div className="relative">
-                                                      <Input className="h-9 text-sm" type={showNewPassword ? 'text' : 'password'} placeholder="Min. 8 caracteres" {...field} />
-                                                      <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setShowNewPassword(!showNewPassword)}>
+                                                      <Input className="h-9 text-sm pr-8" type={showNewPassword ? 'text' : 'password'} placeholder="Min. 8 caracteres" {...field} />
+                                                      <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setShowNewPassword(!showNewPassword)} aria-label={showNewPassword ? 'Ocultar nova senha' : 'Mostrar nova senha'}>
                                                           {showNewPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
-                                                          <span className="sr-only">{showNewPassword ? 'Ocultar' : 'Mostrar'}</span>
                                                       </Button>
                                                   </div>
                                               </FormControl>
@@ -473,10 +484,9 @@
                                              <FormLabel className="text-xs">Confirmar Nova Senha</FormLabel>
                                               <FormControl>
                                                   <div className="relative">
-                                                     <Input className="h-9 text-sm" type={showConfirmPassword ? 'text' : 'password'} placeholder="Repita a nova senha" {...field} />
-                                                     <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
+                                                     <Input className="h-9 text-sm pr-8" type={showConfirmPassword ? 'text' : 'password'} placeholder="Repita a nova senha" {...field} />
+                                                     <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setShowConfirmPassword(!showConfirmPassword)} aria-label={showConfirmPassword ? 'Ocultar confirmação de senha' : 'Mostrar confirmação de senha'}>
                                                          {showConfirmPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
-                                                         <span className="sr-only">{showConfirmPassword ? 'Ocultar' : 'Mostrar'}</span>
                                                      </Button>
                                                   </div>
                                               </FormControl>
@@ -502,7 +512,7 @@
                       <Form {...notificationForm}>
                           <form onSubmit={notificationForm.handleSubmit(onNotificationSubmit)}>
                              <CardHeader className="p-4 pb-2">
-                                 <CardTitle className="text-lg flex items-center gap-2"><Bell className="h-5 w-5" /> Notificações</CardTitle>
+                                 <CardTitle className="text-base flex items-center gap-2"><Bell className="h-4 w-4" /> Notificações</CardTitle>
                                  <CardDescription className='text-xs'>Gerencie como você recebe alertas.</CardDescription>
                              </CardHeader>
                              <CardContent className="space-y-3 p-4 pt-0">
