@@ -13,6 +13,9 @@ import {
   User,
   LogOut,
   Menu, // Icon for mobile sidebar toggle
+  Bell, // Icon for notifications
+  Check, // Icon for mark as read
+  X, // Icon for close/dismiss
 } from 'lucide-react';
 
 import {
@@ -22,6 +25,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuGroup, // Added DropdownMenuGroup
 } from '@/components/ui/dropdown-menu'; // Import DropdownMenu components
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
@@ -34,10 +38,60 @@ import { useToast } from '@/hooks/use-toast';
 import { BottomNavigation } from '@/components/layout/bottom-navigation'; // Import BottomNavigation
 import { Sheet, SheetContent, SheetTrigger, SheetClose, SheetTitle, SheetHeader } from '@/components/ui/sheet'; // Import Sheet for mobile menu, including SheetTitle and SheetHeader
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge'; // Import Badge for notification count
+import { ScrollArea } from '@/components/ui/scroll-area'; // Import ScrollArea
 
 interface EmployeeLayoutProps {
   children: ReactNode;
 }
+
+// --- Notification Type ---
+interface Notification {
+    id: string;
+    type: 'evaluation' | 'challenge' | 'ranking' | 'announcement' | 'system';
+    message: string;
+    timestamp: Date;
+    read: boolean;
+    link?: string; // Optional link to related page
+}
+
+// --- Mock Notification Data ---
+const initialMockNotifications: Notification[] = [
+    { id: 'n1', type: 'evaluation', message: 'Sua avaliação de 05/08 foi registrada.', timestamp: new Date(Date.now() - 3600000 * 2), read: false, link: '/colaborador/avaliacoes' },
+    { id: 'n2', type: 'challenge', message: 'Novo desafio "Engajamento Total" disponível!', timestamp: new Date(Date.now() - 86400000), read: false, link: '/colaborador/desafios' },
+    { id: 'n3', type: 'ranking', message: 'Você subiu para a 3ª posição no ranking!', timestamp: new Date(Date.now() - 2 * 86400000), read: true, link: '/colaborador/ranking' },
+    { id: 'n4', type: 'announcement', message: 'Reunião geral da empresa na próxima sexta-feira.', timestamp: new Date(Date.now() - 3 * 86400000), read: true },
+    { id: 'n5', type: 'evaluation', message: 'Você recebeu nota 0 na tarefa "Relatório Semanal".', timestamp: new Date(Date.now() - 4 * 86400000), read: false, link: '/colaborador/avaliacoes' },
+];
+
+// --- Mock API Functions (Simulated) ---
+const fetchNotifications = async (employeeId: string): Promise<Notification[]> => {
+    console.log(`[Mock] Fetching notifications for ${employeeId}...`);
+    await new Promise(resolve => setTimeout(resolve, 400)); // Simulate network delay
+    // In a real app, fetch from backend API: GET /api/notifications?employeeId=...
+    return [...initialMockNotifications].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()); // Sort newest first
+};
+
+const markNotificationAsRead = async (employeeId: string, notificationId: string): Promise<boolean> => {
+    console.log(`[Mock] Marking notification ${notificationId} as read for ${employeeId}...`);
+    await new Promise(resolve => setTimeout(resolve, 200));
+    const index = initialMockNotifications.findIndex(n => n.id === notificationId);
+    if (index !== -1) {
+        initialMockNotifications[index].read = true;
+        return true;
+    }
+    // In a real app, send request to backend: PUT /api/notifications/{notificationId}/read
+    return false;
+};
+
+const markAllNotificationsAsRead = async (employeeId: string): Promise<boolean> => {
+    console.log(`[Mock] Marking all notifications as read for ${employeeId}...`);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    initialMockNotifications.forEach(n => n.read = true);
+    // In a real app, send request to backend: POST /api/notifications/mark-all-read
+    return true;
+};
+
 
 const navItems = [
   { href: '/colaborador/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -49,7 +103,7 @@ const navItems = [
 
 // Mock employee data - Replace with actual data fetching/auth context
 const mockEmployee = {
-    id: '1',
+    id: '1', // IMPORTANT: Using ID '1' to match mock data fetching
     name: 'Alice Silva',
     email: 'alice.silva@check2b.com',
     photoUrl: 'https://picsum.photos/id/1027/40/40',
@@ -70,6 +124,60 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
+  const [notifications, setNotifications] = React.useState<Notification[]>([]);
+  const [isLoadingNotifications, setIsLoadingNotifications] = React.useState(true);
+
+  // Fetch notifications on mount
+  React.useEffect(() => {
+      const loadNotifications = async () => {
+          setIsLoadingNotifications(true);
+          try {
+              // Replace mockEmployee.id with actual logged-in user ID from auth context/token
+              const fetchedNotifications = await fetchNotifications(mockEmployee.id);
+              setNotifications(fetchedNotifications);
+          } catch (error) {
+              console.error("Failed to fetch notifications:", error);
+              toast({ title: "Erro", description: "Não foi possível carregar as notificações.", variant: "destructive" });
+          } finally {
+              setIsLoadingNotifications(false);
+          }
+      };
+      loadNotifications();
+  }, [toast]); // Run once on mount
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const handleMarkRead = async (notificationId: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent dropdown from closing
+    try {
+      const success = await markNotificationAsRead(mockEmployee.id, notificationId);
+      if (success) {
+        setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, read: true } : n));
+      } else {
+         toast({ title: "Erro", description: "Não foi possível marcar como lida.", variant: "destructive" });
+      }
+    } catch (error) {
+        console.error("Error marking notification as read:", error);
+        toast({ title: "Erro", description: "Falha ao marcar notificação como lida.", variant: "destructive" });
+    }
+  };
+
+  const handleMarkAllRead = async (e: React.MouseEvent) => {
+     e.stopPropagation(); // Prevent dropdown from closing
+     try {
+        const success = await markAllNotificationsAsRead(mockEmployee.id);
+        if (success) {
+            setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+             toast({ title: "Sucesso", description: "Todas as notificações marcadas como lidas.", duration: 2000 });
+        } else {
+            toast({ title: "Erro", description: "Não foi possível marcar todas como lidas.", variant: "destructive" });
+        }
+    } catch (error) {
+         console.error("Error marking all notifications as read:", error);
+        toast({ title: "Erro", description: "Falha ao marcar todas as notificações como lidas.", variant: "destructive" });
+    }
+  };
+
 
   const getCurrentTitle = () => {
     const currentNavItem = navItems.find(item => pathname?.startsWith(item.href));
@@ -88,19 +196,31 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
   };
 
   const handleGuestLoginRedirect = () => {
-      router.push('/login'); // Redirect guest users to the login page
-       toast({
-           title: "Acesso Requerido",
-           description: "Por favor, faça login para acessar esta área.",
-           variant: "destructive"
-       });
+      // Allow guest access for now based on previous request
+      // router.push('/login'); // Original behavior: Redirect guest users to the login page
+      // toast({
+      //     title: "Acesso Requerido",
+      //     description: "Por favor, faça login para acessar esta área.",
+      //     variant: "destructive"
+      // });
+      console.log("[Guest Mode] Accessing employee area without login."); // Log guest access
    };
 
 
-  // Check if the user is a guest (replace with actual logic if implemented)
-   // For now, assume any access to /colaborador without auth cookie implies guest attempt
-   // This check might be better handled in middleware in a real app
-   const isGuest = typeof window !== 'undefined' && !document.cookie.includes('auth-token=');
+  // Check if the user is a guest (Simplified Check - Allow access for now)
+   const isGuest = false; // Force non-guest for testing authenticated state UI
+   // Original guest check (replace with actual logic if needed):
+   // const isGuest = typeof window !== 'undefined' && !document.cookie.includes('auth-token=');
+
+    // Handle clicking a notification item (navigate if link exists, mark as read)
+    const handleNotificationClick = (notification: Notification) => {
+        if (!notification.read) {
+            handleMarkRead(notification.id, {} as React.MouseEvent); // Mark as read programmatically
+        }
+        if (notification.link) {
+            router.push(notification.link);
+        }
+    };
 
 
   return (
@@ -119,8 +239,8 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
                      {/* Use SheetContent for the mobile sidebar */}
                     <SheetContent side="left" className="flex flex-col p-0">
                         {/* Add a visually hidden title for accessibility */}
-                         <SheetHeader className="sr-only">
-                           <SheetTitle>Menu de Navegação Principal</SheetTitle>
+                         <SheetHeader>
+                           <SheetTitle className="sr-only">Menu de Navegação Principal</SheetTitle>
                          </SheetHeader>
                          <nav className="flex flex-col gap-1 p-4 text-lg font-medium flex-grow">
                              <Link
@@ -159,16 +279,14 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
                                     <span className="text-sm font-medium truncate">{mockEmployee.name}</span>
                                 </div>
                                   {/* Show logout button only if not guest */}
-                                  {!isGuest && (
+                                  {!isGuest ? (
                                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}>
                                           <LogOut className="h-4 w-4" />
                                           <span className="sr-only">Sair</span>
                                       </Button>
-                                  )}
-                                  {/* Show login button if guest */}
-                                  {isGuest && (
+                                  ) : ( // Show Guest login button if guest (now allows access)
                                        <Button variant="ghost" size="sm" onClick={() => { handleGuestLoginRedirect(); setIsMobileMenuOpen(false); }}>
-                                          Entrar
+                                          Acesso Convidado
                                        </Button>
                                   )}
                              </div>
@@ -180,13 +298,81 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
                    {getCurrentTitle()}
                  </h1>
 
-                {/* Right side of Header (User info/logout for desktop) */}
+                {/* Right side of Header (User info/logout & Notifications for desktop) */}
                 <div className="hidden items-center gap-4 md:flex">
-                     {/* Conditionally render DropdownMenu or Login button */}
+                     {/* Notification Dropdown */}
+                     {!isGuest && (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="relative rounded-full h-8 w-8">
+                                <Bell className="h-5 w-5" />
+                                {unreadCount > 0 && (
+                                    <Badge
+                                    variant="destructive"
+                                    className="absolute -top-1 -right-1 h-4 min-w-[1rem] px-1 py-0 text-[10px] flex items-center justify-center"
+                                    >
+                                    {unreadCount}
+                                    </Badge>
+                                )}
+                                <span className="sr-only">Abrir notificações</span>
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-80">
+                                <DropdownMenuLabel className="flex justify-between items-center">
+                                    Notificações
+                                    {unreadCount > 0 && (
+                                        <Button variant="ghost" size="sm" className="h-auto p-0 text-xs" onClick={handleMarkAllRead}>
+                                            Marcar todas como lidas
+                                        </Button>
+                                    )}
+                                </DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <ScrollArea className="h-[300px]">
+                                    {isLoadingNotifications ? (
+                                        <DropdownMenuItem disabled>Carregando...</DropdownMenuItem>
+                                    ) : notifications.length === 0 ? (
+                                        <DropdownMenuItem disabled>Nenhuma notificação</DropdownMenuItem>
+                                    ) : (
+                                        notifications.map((notification) => (
+                                        <DropdownMenuItem
+                                            key={notification.id}
+                                            className={cn("flex items-start gap-2 cursor-pointer", !notification.read && "bg-accent/50")}
+                                            onClick={() => handleNotificationClick(notification)}
+                                        >
+                                            {!notification.read && <div className="h-2 w-2 rounded-full bg-primary mt-1.5 flex-shrink-0" />}
+                                            <div className={cn("flex-1 space-y-0.5", notification.read && "pl-4")}>
+                                                <p className="text-xs font-medium leading-tight">{notification.message}</p>
+                                                <p className="text-[10px] text-muted-foreground">{notification.timestamp.toLocaleTimeString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+                                            </div>
+                                             {!notification.read && (
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                         <Button
+                                                             variant="ghost"
+                                                             size="icon"
+                                                             className="h-6 w-6 text-muted-foreground hover:text-foreground flex-shrink-0"
+                                                             onClick={(e) => handleMarkRead(notification.id, e)}
+                                                         >
+                                                             <Check className="h-4 w-4" />
+                                                             <span className="sr-only">Marcar como lida</span>
+                                                         </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="left"><p>Marcar como lida</p></TooltipContent>
+                                                </Tooltip>
+                                             )}
+                                        </DropdownMenuItem>
+                                        ))
+                                    )}
+                                </ScrollArea>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                     )}
+
+                    {/* User Profile Dropdown or Login Button */}
                     {!isGuest ? (
                         <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button variant="secondary" size="icon" className="rounded-full">
+                            <Button variant="secondary" size="icon" className="rounded-full h-8 w-8">
                             <Avatar className="h-8 w-8">
                                 <AvatarImage src={mockEmployee.photoUrl} alt={mockEmployee.name} />
                                 <AvatarFallback>{getInitials(mockEmployee.name)}</AvatarFallback>
@@ -198,14 +384,13 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
                             <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem asChild><Link href="/colaborador/perfil">Perfil</Link></DropdownMenuItem>
-                            {/* <DropdownMenuItem>Suporte</DropdownMenuItem> */}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={handleLogout}>Sair</DropdownMenuItem>
                         </DropdownMenuContent>
                         </DropdownMenu>
-                    ) : (
+                    ) : ( // Show Guest Access button
                          <Button variant="outline" size="sm" onClick={handleGuestLoginRedirect}>
-                            Entrar / Registrar
+                            Acesso Convidado
                          </Button>
                     )}
                 </div>
