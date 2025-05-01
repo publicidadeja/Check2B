@@ -4,7 +4,7 @@
 import type { ReactNode } from 'react';
 import * as React from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation'; // Import useRouter
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   ClipboardCheck,
@@ -12,6 +12,7 @@ import {
   Trophy,
   User,
   LogOut,
+  Menu, // Icon for mobile sidebar toggle
 } from 'lucide-react';
 
 import {
@@ -25,32 +26,34 @@ import {
   SidebarInset,
   SidebarTrigger,
   SidebarFooter,
-} from '@/components/ui/sidebar';
+} from '@/components/ui/sidebar'; // Keep sidebar components for larger screens
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Toaster } from '@/components/ui/toaster'; // Ensure Toaster is available
-import { logoutUser } from '@/lib/auth'; // Import logout function
-import { useToast } from '@/hooks/use-toast'; // Import useToast
+import { Toaster } from '@/components/ui/toaster';
+import { logoutUser } from '@/lib/auth';
+import { useToast } from '@/hooks/use-toast';
+import { BottomNavigation } from '@/components/layout/bottom-navigation'; // Import BottomNavigation
+import { Sheet, SheetContent, SheetTrigger, SheetClose } from '@/components/ui/sheet'; // Import Sheet for mobile menu
+import { cn } from '@/lib/utils';
 
 interface EmployeeLayoutProps {
   children: ReactNode;
 }
 
-// Simplified navigation for employees
 const navItems = [
   { href: '/colaborador/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/colaborador/avaliacoes', label: 'Minhas Avaliações', icon: ClipboardCheck },
-  { href: '/colaborador/desafios', label: 'Meus Desafios', icon: Target },
-  { href: '/colaborador/ranking', label: 'Meu Ranking', icon: Trophy },
-  { href: '/colaborador/perfil', label: 'Meu Perfil', icon: User },
+  { href: '/colaborador/avaliacoes', label: 'Avaliações', icon: ClipboardCheck },
+  { href: '/colaborador/desafios', label: 'Desafios', icon: Target },
+  { href: '/colaborador/ranking', label: 'Ranking', icon: Trophy },
+  { href: '/colaborador/perfil', label: 'Perfil', icon: User },
 ];
 
-// Mock employee data for layout display
+// Mock employee data - Replace with actual data fetching/auth context
 const mockEmployee = {
-    id: '1', // Assume logged-in employee is Alice Silva
+    id: '1',
     name: 'Alice Silva',
     email: 'alice.silva@check2b.com',
     photoUrl: 'https://picsum.photos/id/1027/40/40',
@@ -68,20 +71,20 @@ const getInitials = (name: string) => {
 export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
   const isMobile = useIsMobile();
   const pathname = usePathname();
-  const router = useRouter(); // Initialize router
-  const { toast } = useToast(); // Initialize toast
+  const router = useRouter();
+  const { toast } = useToast();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
-  // Determine the current section title based on the path
   const getCurrentTitle = () => {
     const currentNavItem = navItems.find(item => pathname?.startsWith(item.href));
-    return currentNavItem?.label || 'Check2B Colaborador';
+    return currentNavItem?.label || 'Check2B'; // Simpler title
   };
 
   const handleLogout = async () => {
     try {
         await logoutUser();
         toast({ title: "Logout", description: "Você saiu com sucesso." });
-        router.push('/login'); // Redirect to login page after logout
+        router.push('/login');
     } catch (error) {
         console.error("Erro ao fazer logout:", error);
         toast({ title: "Erro", description: "Falha ao fazer logout.", variant: "destructive" });
@@ -90,90 +93,104 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
 
   return (
     <TooltipProvider>
-      <SidebarProvider defaultOpen={!isMobile} collapsible="icon">
-        <Sidebar variant="sidebar" side="left" collapsible="icon">
-           <SidebarHeader className="items-center justify-center gap-2 p-4">
-              {/* Simplified Logo */}
-              <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7 text-primary">
-                  <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm13.36-1.814a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z" clipRule="evenodd" />
-                </svg>
-                <span className="text-lg font-semibold text-primary">Check2B</span>
-              </div>
-              <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=offcanvas]:hidden group-data-[state=expanded]:hidden hidden">
-                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7 text-primary">
-                    <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm13.36-1.814a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z" clipRule="evenodd" />
-                  </svg>
-              </div>
-              <SidebarTrigger className="group-data-[collapsible=offcanvas]:flex hidden ml-auto" />
-            </SidebarHeader>
-          <Separator />
-          <SidebarContent className="p-2">
-            <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <Link href={item.href} passHref legacyBehavior>
-                    <SidebarMenuButton
-                      as="a"
-                      isActive={pathname === item.href}
-                      tooltip={item.label}
-                    >
-                      <item.icon />
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                  </Link>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarContent>
-          <SidebarFooter className="p-2">
-              <Separator />
-              <div className="flex items-center justify-between p-2 group-data-[collapsible=icon]:hidden">
-                 <div className="flex items-center gap-2">
-                   <Avatar className="h-8 w-8">
-                     <AvatarImage src={mockEmployee.photoUrl} alt={mockEmployee.name} />
-                     <AvatarFallback>{getInitials(mockEmployee.name)}</AvatarFallback>
-                   </Avatar>
-                   <div className="flex flex-col">
-                       <span className="text-sm font-medium">{mockEmployee.name}</span>
-                       <span className="text-xs text-muted-foreground">{mockEmployee.email}</span>
-                   </div>
-                 </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleLogout}> {/* Call handleLogout */}
-                        <LogOut className="h-4 w-4" />
-                         <span className="sr-only">Sair</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" align="center">Sair</TooltipContent>
-                  </Tooltip>
-              </div>
-               <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=offcanvas]:hidden group-data-[state=expanded]:hidden hidden justify-center p-2">
-                 <Tooltip>
-                    <TooltipTrigger asChild>
-                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleLogout}> {/* Call handleLogout */}
-                         <LogOut className="h-4 w-4" />
-                         <span className="sr-only">Sair</span>
-                       </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" align="center">Sair</TooltipContent>
-                  </Tooltip>
-               </div>
-          </SidebarFooter>
-        </Sidebar>
-        <SidebarInset className="flex flex-col">
-          <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 lg:px-6">
-            <SidebarTrigger className="md:hidden" /> {/* Mobile trigger */}
-            <h1 className="text-lg font-semibold">
-               {getCurrentTitle()}
-            </h1>
-            {/* Header actions specific to employee view if any */}
-          </header>
-          <main className="flex-1 overflow-auto p-4 lg:p-6">{children}</main>
-          <Toaster /> {/* Add Toaster to the layout */}
-        </SidebarInset>
-      </SidebarProvider>
+        <div className="flex min-h-screen w-full flex-col bg-background">
+            {/* Header - Adjusted for Mobile */}
+            <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 md:justify-end">
+                 {/* Mobile Menu Trigger */}
+                 <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+                    <SheetTrigger asChild>
+                        <Button variant="outline" size="icon" className="shrink-0 md:hidden">
+                            <Menu className="h-5 w-5" />
+                            <span className="sr-only">Abrir menu de navegação</span>
+                        </Button>
+                    </SheetTrigger>
+                     {/* Use SheetContent for the mobile sidebar */}
+                    <SheetContent side="left" className="flex flex-col p-0">
+                         <nav className="flex flex-col gap-1 p-4 text-lg font-medium flex-grow">
+                             <Link
+                                href="#"
+                                className="flex items-center gap-2 text-lg font-semibold mb-4"
+                                onClick={() => setIsMobileMenuOpen(false)}
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7 text-primary">
+                                  <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm13.36-1.814a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z" clipRule="evenodd" />
+                                </svg>
+                                <span className="sr-only">Check2B</span>
+                              </Link>
+                            {navItems.map((item) => (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    className={cn(
+                                        "flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary",
+                                        pathname === item.href ? "bg-muted text-primary" : "text-muted-foreground"
+                                    )}
+                                    onClick={() => setIsMobileMenuOpen(false)} // Close menu on navigation
+                                >
+                                    <item.icon className="h-4 w-4" />
+                                    {item.label}
+                                </Link>
+                             ))}
+                         </nav>
+                         {/* Mobile Menu Footer */}
+                         <div className="mt-auto border-t p-4">
+                             <div className="flex items-center justify-between">
+                                 <div className="flex items-center gap-2">
+                                    <Avatar className="h-8 w-8">
+                                        <AvatarImage src={mockEmployee.photoUrl} alt={mockEmployee.name} />
+                                        <AvatarFallback>{getInitials(mockEmployee.name)}</AvatarFallback>
+                                    </Avatar>
+                                    <span className="text-sm font-medium truncate">{mockEmployee.name}</span>
+                                </div>
+                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}>
+                                     <LogOut className="h-4 w-4" />
+                                     <span className="sr-only">Sair</span>
+                                </Button>
+                             </div>
+                         </div>
+                    </SheetContent>
+                </Sheet>
+
+                 <h1 className="text-lg font-semibold md:hidden"> {/* Show title only on mobile header */}
+                   {getCurrentTitle()}
+                 </h1>
+
+                {/* Right side of Header (User info/logout for desktop) */}
+                <div className="hidden items-center gap-4 md:flex">
+                    {/* Maybe add notifications or other icons here */}
+                     <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="secondary" size="icon" className="rounded-full">
+                           <Avatar className="h-8 w-8">
+                              <AvatarImage src={mockEmployee.photoUrl} alt={mockEmployee.name} />
+                              <AvatarFallback>{getInitials(mockEmployee.name)}</AvatarFallback>
+                           </Avatar>
+                          <span className="sr-only">Alternar menu do usuário</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem asChild><Link href="/colaborador/perfil">Perfil</Link></DropdownMenuItem>
+                        {/* <DropdownMenuItem>Suporte</DropdownMenuItem> */}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={handleLogout}>Sair</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
+            </header>
+
+            {/* Main Content Area */}
+            {/* Added pb-16 to account for bottom navigation height */}
+            <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6 pb-20 md:pb-6">
+                 {children}
+            </main>
+
+            {/* Bottom Navigation for Mobile */}
+            {isMobile && <BottomNavigation />}
+
+            <Toaster />
+        </div>
     </TooltipProvider>
   );
 }
