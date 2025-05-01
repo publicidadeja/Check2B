@@ -1,3 +1,4 @@
+
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose'; // Using jose for JWT verification
@@ -73,17 +74,21 @@ export async function middleware(request: NextRequest) {
     }
 
     // --- GUEST MODE / DEVELOPMENT BYPASS ---
-    // This allows accessing collaborator routes *or* the admin root path without a token.
+    // This allows accessing routes without a token for demonstration.
     // REMOVE OR REFINE THIS FOR PRODUCTION!
     if (!token) {
-        if (pathname.startsWith('/colaborador') || pathname === '/') {
-            console.warn(`[Middleware] GUEST/DEV MODE: Allowing unauthenticated access to ${pathname}`);
+        // Allow access to collaborator routes OR any admin route (not starting with /colaborador)
+        if (pathname.startsWith('/colaborador') || !pathname.startsWith('/colaborador')) {
+             const mode = pathname.startsWith('/colaborador') ? 'Colaborador' : 'Admin';
+            console.warn(`[Middleware] GUEST/DEV MODE: Allowing unauthenticated access to ${pathname} (as ${mode})`);
             return NextResponse.next();
-        } else {
-            // Redirect other unauthenticated paths to login
-            console.log(`[Middleware] No token and not allowed guest path. Redirecting to /login from ${pathname}`);
-            return NextResponse.redirect(new URL('/login', request.url));
         }
+        // else {
+        //     // This case is now unlikely with the condition above, but kept for clarity
+        //     // Redirect other unauthenticated paths (if any existed) to login
+        //     console.log(`[Middleware] No token and not allowed guest path. Redirecting to /login from ${pathname}`);
+        //     return NextResponse.redirect(new URL('/login', request.url));
+        // }
     }
     // --- END GUEST MODE / DEVELOPMENT BYPASS ---
 
@@ -95,7 +100,6 @@ export async function middleware(request: NextRequest) {
     } else {
        console.error("[Middleware] Cannot verify token: JWT_SECRET is missing or invalid.");
        // Redirect to login if secret is missing and trying to access protected routes
-       // (Although the bypass above might catch this, keep it for safety)
        return NextResponse.redirect(new URL('/login', request.url));
     }
 
