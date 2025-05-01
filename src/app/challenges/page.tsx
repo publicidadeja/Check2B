@@ -81,9 +81,11 @@ import { Separator } from '@/components/ui/separator'; // Added Separator
 import { Switch } from '@/components/ui/switch'; // Added Switch
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'; // Import Tooltip components
+import { DataTable } from '@/components/ui/data-table'; // Import DataTable
+import type { ColumnDef } from '@tanstack/react-table'; // Import ColumnDef
 
 // --- Mock Data ---
-let mockChallenges: Challenge[] = [
+export let mockChallenges: Challenge[] = [ // Exported
     { id: 'c1', title: 'Engajamento Total', description: 'Participar de todas as reuniões da semana e enviar resumo.', category: 'Comunicação', periodStartDate: '2024-08-05', periodEndDate: '2024-08-09', points: 50, difficulty: 'Médio', participationType: 'Opcional', eligibility: { type: 'all' }, evaluationMetrics: 'Presença confirmada e resumo enviado', status: 'completed' },
     { id: 'c2', title: 'Zero Bugs Críticos', description: 'Entregar a feature X sem nenhum bug crítico reportado na primeira semana.', category: 'Qualidade', periodStartDate: '2024-08-12', periodEndDate: '2024-08-16', points: 150, difficulty: 'Difícil', participationType: 'Obrigatório', eligibility: { type: 'department', entityIds: ['Engenharia'] }, evaluationMetrics: 'Relatório de QA e Jira', status: 'active' },
     { id: 'c3', title: 'Semana da Documentação', description: 'Documentar todas as APIs desenvolvidas no período.', category: 'Documentação', periodStartDate: '2024-08-19', periodEndDate: '2024-08-23', points: 75, difficulty: 'Médio', participationType: 'Obrigatório', eligibility: { type: 'role', entityIds: ['Desenvolvedor Backend', 'Desenvolvedora Frontend'] }, evaluationMetrics: 'Links para documentação no Confluence', status: 'scheduled' },
@@ -105,7 +107,7 @@ interface ChallengeParticipation {
     feedback?: string;
 }
 
-let mockParticipants: ChallengeParticipation[] = [
+export let mockParticipants: ChallengeParticipation[] = [ // Exported
     { id: 'p1', challengeId: 'c2', employeeId: '2', employeeName: 'Beto Santos', status: 'submitted', submission: 'Feature entregue e testada.', submittedAt: new Date(2024, 7, 15) }, // Aug 15
     { id: 'p2', challengeId: 'c2', employeeId: '5', employeeName: 'Eva Pereira', status: 'pending' }, // Didn't participate / submit
     { id: 'p3', challengeId: 'c1', employeeId: '1', employeeName: 'Alice Silva', status: 'approved', score: 50, feedback: 'Ótimo resumo!', submittedAt: new Date(2024, 7, 9) }, // Aug 9
@@ -139,26 +141,7 @@ const getStatusText = (status: Challenge['status']): string => {
     return map[status] || status;
 }
 
-const getStatusBadgeVariant = (status: Challenge['status']): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" => {
-    const map: Record<Challenge['status'], "default" | "secondary" | "destructive" | "outline" | "success" | "warning"> = {
-        active: 'success',       // Green for active
-        scheduled: 'secondary',  // Grey for scheduled
-        evaluating: 'warning',   // Yellow/Orange for evaluating
-        completed: 'default',    // Blue/Default for completed
-        draft: 'outline',        // Outline for draft
-        archived: 'destructive', // Red for archived
-    };
-    // Add custom styles for success/warning if needed or map to existing variants
-     if (status === 'active') return 'success'; // Use custom variant
-     if (status === 'evaluating') return 'warning'; // Use custom variant
-     return map[status] || 'outline';
-}
-
-// Define custom badge variants if not present in globals.css or tailwind config
-// This requires adding styles to globals.css or extending tailwind config.
-// For demonstration, we assume 'success' and 'warning' variants exist or map them.
-// Let's adjust the mapping if they don't exist:
-const getSafeStatusBadgeVariant = (status: Challenge['status']): "default" | "secondary" | "destructive" | "outline" => {
+const getStatusBadgeVariant = (status: Challenge['status']): "default" | "secondary" | "destructive" | "outline" => { // Removed custom variants
     const map: Record<Challenge['status'], "default" | "secondary" | "destructive" | "outline"> = {
         active: 'default',       // Use default (Teal accent) for active
         scheduled: 'secondary',  // Grey for scheduled
@@ -169,6 +152,7 @@ const getSafeStatusBadgeVariant = (status: Challenge['status']): "default" | "se
     };
     return map[status] || 'outline';
 }
+
 
 // --- Mock API Functions ---
 const fetchChallenges = async (): Promise<Challenge[]> => {
@@ -275,9 +259,7 @@ const fetchChallengeDetails = async (challengeId: string): Promise<{ challenge: 
 // ManageChallenges Component
 const ManageChallenges = () => {
     const [challenges, setChallenges] = React.useState<Challenge[]>([]);
-    const [filteredChallenges, setFilteredChallenges] = React.useState<Challenge[]>([]);
     const [isLoading, setIsLoading] = React.useState(true);
-    const [searchTerm, setSearchTerm] = React.useState('');
     const [selectedChallenge, setSelectedChallenge] = React.useState<Challenge | null>(null);
     const [isFormOpen, setIsFormOpen] = React.useState(false);
     const [isDeleting, setIsDeleting] = React.useState(false);
@@ -289,7 +271,6 @@ const ManageChallenges = () => {
         try {
             const data = await fetchChallenges();
             setChallenges(data);
-            setFilteredChallenges(data);
         } catch (error) {
             console.error("Falha ao carregar desafios:", error);
             toast({ title: "Erro", description: "Falha ao carregar desafios.", variant: "destructive" });
@@ -302,16 +283,6 @@ const ManageChallenges = () => {
         loadChallenges();
     }, [loadChallenges]);
 
-    React.useEffect(() => {
-        const lowerCaseSearchTerm = searchTerm.toLowerCase();
-        const filtered = challenges.filter(challenge =>
-        challenge.title.toLowerCase().includes(lowerCaseSearchTerm) ||
-        challenge.description.toLowerCase().includes(lowerCaseSearchTerm) ||
-        (challenge.category && challenge.category.toLowerCase().includes(lowerCaseSearchTerm)) ||
-        challenge.status.toLowerCase().includes(lowerCaseSearchTerm)
-        );
-        setFilteredChallenges(filtered);
-    }, [searchTerm, challenges]);
 
      const handleSaveChallenge = async (data: any) => {
         // The data received here already includes the 'eligibility' object structure
@@ -427,6 +398,82 @@ const ManageChallenges = () => {
         }
     }
 
+    // Define columns for DataTable
+     const columns: ColumnDef<Challenge>[] = [
+        { accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
+        { accessorKey: "period", header: "Período", cell: ({ row }) => formatPeriod(row.original.periodStartDate, row.original.periodEndDate) },
+        { accessorKey: "points", header: () => <div className="text-center"><Award className="inline-block mr-1 h-4 w-4"/>Pontos</div>, cell: ({ row }) => <div className="text-center">{row.original.points}</div>, size: 80, },
+        { accessorKey: "difficulty", header: "Dificuldade" },
+        { accessorKey: "participationType", header: "Participação" },
+        { accessorKey: "status", header: "Status", cell: ({ row }) => <Badge variant={getStatusBadgeVariant(row.original.status)}>{getStatusText(row.original.status)}</Badge> },
+        {
+            id: "actions",
+            cell: ({ row }) => {
+                const challenge = row.original;
+                return (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                                <span className="sr-only">Abrir menu</span>
+                                <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                            <DropdownMenuItem onClick={() => openEditForm(challenge)}>
+                                <Edit className="mr-2 h-4 w-4" /> Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDuplicateChallenge(challenge)}>
+                                <Copy className="mr-2 h-4 w-4" /> Duplicar
+                            </DropdownMenuItem>
+                            {/* Status change actions */}
+                            {challenge.status === 'draft' && (
+                                <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'scheduled')}>
+                                    <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> Agendar/Ativar
+                                </DropdownMenuItem>
+                            )}
+                            {challenge.status === 'scheduled' && isPast(parseISO(challenge.periodStartDate)) && (
+                                <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'active')}>
+                                    <Target className="mr-2 h-4 w-4 text-blue-600" /> Iniciar Agora
+                                </DropdownMenuItem>
+                            )}
+                            {challenge.status === 'active' && (
+                                <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'evaluating')}>
+                                    <ClipboardCheck className="mr-2 h-4 w-4 text-orange-600" /> Iniciar Avaliação
+                                </DropdownMenuItem>
+                            )}
+                            {challenge.status === 'evaluating' && (
+                                <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'completed')}>
+                                    <CheckSquare className="mr-2 h-4 w-4 text-primary" /> Marcar como Concluído
+                                </DropdownMenuItem>
+                            )}
+                            {(challenge.status === 'completed' || challenge.status === 'archived') && (
+                                <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'active')} disabled={!isPast(parseISO(challenge.periodEndDate))}>
+                                    <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> Reativar (se aplicável)
+                                </DropdownMenuItem>
+                            )}
+                            {(challenge.status === 'completed') && (
+                                <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'archived')}>
+                                    <Archive className="mr-2 h-4 w-4 text-muted-foreground" /> Arquivar
+                                </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                                onClick={() => handleDeleteClick(challenge)}
+                                className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                                // Allow deleting drafts and archived, maybe completed ones too?
+                                disabled={challenge.status === 'active' || challenge.status === 'evaluating'}
+                            >
+                                <Trash2 className="mr-2 h-4 w-4" /> Remover
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                );
+            },
+            size: 50,
+        },
+    ];
+
 
     return (
         <Card>
@@ -435,129 +482,26 @@ const ManageChallenges = () => {
                 <CardDescription>Crie, edite, duplique e controle o ciclo de vida dos desafios.</CardDescription>
             </CardHeader>
             <CardContent>
-                <div className="flex items-center justify-between mb-4">
-                    <div className="relative w-full max-w-sm">
-                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            type="search"
-                            placeholder="Buscar por título, categoria, status..."
-                            className="pl-8"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                    </div>
+                 {isLoading ? (
+                     <div className="flex justify-center items-center py-10">
+                        <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+                     </div>
+                 ) : (
+                    <DataTable
+                        columns={columns}
+                        data={challenges}
+                        filterColumn="title"
+                        filterPlaceholder="Buscar por título, categoria, status..."
+                    />
+                 )}
+            </CardContent>
+             <CardFooter className="flex justify-end">
                     <Button onClick={openAddForm}>
                         <PlusCircle className="mr-2 h-4 w-4" />
                         Criar Novo Desafio
                     </Button>
-                </div>
+             </CardFooter>
 
-                <div className="rounded-md border">
-                    <Table>
-                    <TableHeader>
-                        <TableRow>
-                        <TableHead>Título</TableHead>
-                        <TableHead>Período</TableHead>
-                        <TableHead><Award className="inline-block mr-1 h-4 w-4"/>Pontos</TableHead>
-                        <TableHead>Dificuldade</TableHead>
-                         <TableHead>Participação</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Ações</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {isLoading ? (
-                            <TableRow>
-                                <TableCell colSpan={7} className="text-center py-10">
-                                <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
-                                Carregando desafios...
-                                </TableCell>
-                            </TableRow>
-                        ) : filteredChallenges.length === 0 ? (
-                            <TableRow>
-                                <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
-                                    Nenhum desafio encontrado.
-                                </TableCell>
-                            </TableRow>
-                        ) : (
-                        filteredChallenges.map((challenge) => (
-                            <TableRow key={challenge.id}>
-                            <TableCell className="font-medium">{challenge.title}</TableCell>
-                            <TableCell>{formatPeriod(challenge.periodStartDate, challenge.periodEndDate)}</TableCell>
-                            <TableCell className="text-center">{challenge.points}</TableCell>
-                            <TableCell>{challenge.difficulty}</TableCell>
-                            <TableCell>{challenge.participationType}</TableCell>
-                            <TableCell>
-                                <Badge variant={getSafeStatusBadgeVariant(challenge.status)}>
-                                    {getStatusText(challenge.status)}
-                                </Badge>
-                            </TableCell>
-                            <TableCell className="text-right">
-                                <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" className="h-8 w-8 p-0">
-                                    <span className="sr-only">Abrir menu</span>
-                                    <MoreHorizontal className="h-4 w-4" />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                    <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                                    <DropdownMenuItem onClick={() => openEditForm(challenge)}>
-                                        <Edit className="mr-2 h-4 w-4" /> Editar
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleDuplicateChallenge(challenge)}>
-                                        <Copy className="mr-2 h-4 w-4" /> Duplicar
-                                    </DropdownMenuItem>
-                                     {/* Status change actions */}
-                                    {challenge.status === 'draft' && (
-                                        <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'scheduled')}>
-                                             <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> Agendar/Ativar
-                                        </DropdownMenuItem>
-                                    )}
-                                     {challenge.status === 'scheduled' && isPast(parseISO(challenge.periodStartDate)) && (
-                                         <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'active')}>
-                                              <Target className="mr-2 h-4 w-4 text-blue-600" /> Iniciar Agora
-                                         </DropdownMenuItem>
-                                     )}
-                                     {challenge.status === 'active' && (
-                                        <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'evaluating')}>
-                                             <ClipboardCheck className="mr-2 h-4 w-4 text-orange-600" /> Iniciar Avaliação
-                                        </DropdownMenuItem>
-                                     )}
-                                      {challenge.status === 'evaluating' && (
-                                        <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'completed')}>
-                                             <CheckSquare className="mr-2 h-4 w-4 text-primary" /> Marcar como Concluído
-                                        </DropdownMenuItem>
-                                      )}
-                                      {(challenge.status === 'completed' || challenge.status === 'archived') && (
-                                        <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'active')} disabled={!isPast(parseISO(challenge.periodEndDate))}>
-                                             <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> Reativar (se aplicável)
-                                        </DropdownMenuItem>
-                                      )}
-                                      {(challenge.status === 'completed') && (
-                                        <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'archived')}>
-                                             <Archive className="mr-2 h-4 w-4 text-muted-foreground" /> Arquivar
-                                        </DropdownMenuItem>
-                                      )}
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                        onClick={() => handleDeleteClick(challenge)}
-                                        className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                                        // Allow deleting drafts and archived, maybe completed ones too?
-                                        disabled={challenge.status === 'active' || challenge.status === 'evaluating'}
-                                    >
-                                        <Trash2 className="mr-2 h-4 w-4" /> Remover
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                                </DropdownMenu>
-                            </TableCell>
-                            </TableRow>
-                        ))
-                        )}
-                    </TableBody>
-                    </Table>
-                </div>
-            </CardContent>
 
             <ChallengeForm
                 challenge={selectedChallenge}
@@ -970,12 +914,6 @@ const ChallengeDetailsDialog = ({ challengeId, open, onOpenChange }: ChallengeDe
         const map = { pending: 'Pendente', submitted: 'Enviado', approved: 'Aprovado', rejected: 'Rejeitado' };
         return map[status] || status;
     }
-    const getParticipantStatusVariant = (status: ChallengeParticipation['status']): "default" | "secondary" | "destructive" | "outline" | "warning" => {
-        const map = { pending: 'outline', submitted: 'warning', approved: 'success', rejected: 'destructive' };
-        if (status === 'submitted') return 'warning';
-        if (status === 'approved') return 'default'; // Using default for success
-        return map[status] || 'outline';
-    }
 
      const getSafeParticipantStatusVariant = (status: ChallengeParticipation['status']): "default" | "secondary" | "destructive" | "outline" => {
         const map = { pending: 'outline', submitted: 'outline', approved: 'default', rejected: 'destructive' };
@@ -1001,7 +939,7 @@ const ChallengeDetailsDialog = ({ challengeId, open, onOpenChange }: ChallengeDe
                          {/* Column 1: Challenge Info */}
                          <div className="md:col-span-1 space-y-3 border-r pr-4">
                             <h4 className="font-semibold text-base">Informações do Desafio</h4>
-                             <p className="text-sm"><strong className="text-muted-foreground">Status:</strong> <Badge variant={getSafeStatusBadgeVariant(details.challenge.status)}>{getStatusText(details.challenge.status)}</Badge></p>
+                             <p className="text-sm"><strong className="text-muted-foreground">Status:</strong> <Badge variant={getStatusBadgeVariant(details.challenge.status)}>{getStatusText(details.challenge.status)}</Badge></p>
                              <p className="text-sm"><strong className="text-muted-foreground">Período:</strong> {format(parseISO(details.challenge.periodStartDate), 'dd/MM/yy')} - {format(parseISO(details.challenge.periodEndDate), 'dd/MM/yy')}</p>
                              <p className="text-sm"><strong className="text-muted-foreground">Pontos:</strong> {details.challenge.points}</p>
                              <p className="text-sm"><strong className="text-muted-foreground">Dificuldade:</strong> {details.challenge.difficulty}</p>
@@ -1141,6 +1079,27 @@ const ChallengeHistory = () => {
         setIsDetailsOpen(true);
     }
 
+    // Columns for History Table
+     const historyColumns: ColumnDef<Challenge>[] = [
+        { accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
+        { accessorKey: "period", header: "Período", cell: ({ row }) => `${format(parseISO(row.original.periodStartDate), 'dd/MM/yy')} - ${format(parseISO(row.original.periodEndDate), 'dd/MM/yy')}` },
+        { accessorKey: "points", header: () => <div className="text-center">Pontos</div>, cell: ({ row }) => <div className="text-center">{row.original.points}</div>, size: 80, },
+        { accessorKey: "status", header: "Status", cell: ({ row }) => <Badge variant={getStatusBadgeVariant(row.original.status)}>{getStatusText(row.original.status)}</Badge> },
+        { header: () => <div className="text-center"><Users className="inline-block mr-1 h-4 w-4"/>Resultados</div>, cell: ({ row }) => <div className="text-center text-xs">{getParticipantSummary(row.original.id)}</div> },
+        {
+            id: "details",
+            header: () => <div className="text-right">Detalhes</div>,
+            cell: ({ row }) => (
+                <div className="text-right">
+                    <Button variant="outline" size="sm" onClick={() => openDetails(row.original.id)}>
+                        <FileText className="mr-1 h-3 w-3" /> Ver Detalhes
+                    </Button>
+                </div>
+            ),
+            size: 120,
+        },
+    ];
+
 
     return (
         <Card>
@@ -1154,38 +1113,7 @@ const ChallengeHistory = () => {
                  ) : historyChallenges.length === 0 ? (
                      <p className="text-muted-foreground text-center py-5">Nenhum desafio no histórico.</p>
                 ) : (
-                     <div className="rounded-md border max-h-[60vh] overflow-y-auto">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Título</TableHead>
-                                    <TableHead>Período</TableHead>
-                                    <TableHead>Pontos</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead className="text-center"><Users className="inline-block mr-1 h-4 w-4"/>Resultados</TableHead>
-                                     <TableHead className="text-right">Detalhes</TableHead> {/* Action column */}
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {historyChallenges.map(challenge => (
-                                    <TableRow key={challenge.id}>
-                                        <TableCell className="font-medium">{challenge.title}</TableCell>
-                                         <TableCell>{format(parseISO(challenge.periodStartDate), 'dd/MM/yy')} - {format(parseISO(challenge.periodEndDate), 'dd/MM/yy')}</TableCell>
-                                         <TableCell className="text-center">{challenge.points}</TableCell>
-                                         <TableCell><Badge variant={getSafeStatusBadgeVariant(challenge.status)}>{getStatusText(challenge.status)}</Badge></TableCell>
-                                        <TableCell className="text-center text-xs">
-                                            {getParticipantSummary(challenge.id)}
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <Button variant="outline" size="sm" onClick={() => openDetails(challenge.id)}>
-                                                 <FileText className="mr-1 h-3 w-3" /> Ver Detalhes
-                                             </Button>
-                                         </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                     </div>
+                     <DataTable columns={historyColumns} data={historyChallenges} filterColumn='title' filterPlaceholder='Buscar histórico...' />
                 )}
             </CardContent>
             <CardFooter>
@@ -1375,5 +1303,3 @@ export default function ChallengesPage() {
     </div>
   );
 }
-
-    

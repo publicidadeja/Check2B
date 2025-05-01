@@ -41,13 +41,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { DataTable } from '@/components/ui/data-table'; // Import DataTable
 import type { ColumnDef } from '@tanstack/react-table'; // Import ColumnDef
-
+import { format } from 'date-fns'; // Import format for date display
 
 // Mock data (simulated API response) - Manter nomes em português
 // IMPORTANT: This mock data is for frontend display ONLY.
 // Actual user authentication happens via Firebase Authentication.
 // You MUST manually create users in the Firebase Console (Authentication > Users)
-// for them to be able to log in. The password '123456' needs to be set there.
+// for them to be able to log in.
 export let mockEmployees: Employee[] = [ // Changed to let for potential modifications if needed by other functions
   { id: '1', name: 'Alice Silva', email: 'alice.silva@check2b.com', phone: '11987654321', department: 'RH', role: 'Recrutadora', admissionDate: '2023-01-15', isActive: true, photoUrl: 'https://picsum.photos/id/1027/40/40' },
   { id: '2', name: 'Beto Santos', email: 'beto.santos@check2b.com', phone: '21912345678', department: 'Engenharia', role: 'Desenvolvedor Backend', admissionDate: '2022-08-20', isActive: true, photoUrl: 'https://picsum.photos/id/1005/40/40' },
@@ -172,7 +172,8 @@ function EmployeeProfileView({ employee, open, onOpenChange }: EmployeeProfileVi
                      <div className="flex justify-between">
                         <span className="text-muted-foreground">Admissão:</span>
                         <span className="font-medium">
-                            {employee.admissionDate ? new Date(employee.admissionDate + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
+                             {/* Ensure date is handled correctly */}
+                            {employee.admissionDate ? format(new Date(employee.admissionDate + 'T00:00:00Z'), 'dd/MM/yyyy') : '-'}
                         </span>
                     </div>
                     {/* Add more profile details here - performance, history links etc. */}
@@ -293,11 +294,12 @@ export default function EmployeesPage() {
          ? { ...selectedEmployee, ...data }
          : data;
 
+     // Ensure admissionDate is in 'YYYY-MM-DD' string format before saving
      const payload = {
          ...employeeDataToSave,
          admissionDate: employeeDataToSave.admissionDate instanceof Date
-             ? employeeDataToSave.admissionDate.toISOString().split('T')[0]
-             : employeeDataToSave.admissionDate,
+             ? format(employeeDataToSave.admissionDate, 'yyyy-MM-dd')
+             : employeeDataToSave.admissionDate, // Assume it's already a string if not a Date
      };
 
     try {
@@ -437,121 +439,3 @@ export default function EmployeesPage() {
     </div>
   );
 }
-
-```
-  </change>
-  <change>
-    <file>README.md</file>
-    <description>Add a crucial note about Firebase Authentication user creation.</description>
-    <content><![CDATA[# Check2B - Sistema de Avaliação Diária
-
-This is a Next.js application for managing daily employee evaluations using a checklist system.
-
-## Getting Started
-
-1.  **Install Dependencies:**
-    ```bash
-    npm install
-    # or
-    yarn install
-    # or
-    pnpm install
-    ```
-
-2.  **Configure Firebase & Environment Variables:**
-    *   Create a `.env` file in the root directory (you can copy `.env.example`).
-    *   Open the `.env` file and replace the placeholder values with your **actual Firebase project credentials**. You can find these in your Firebase project settings (Project settings > General > Your apps > Web app > SDK setup and configuration > Config).
-    *   **VERY IMPORTANT:** Ensure `NEXT_PUBLIC_FIREBASE_API_KEY` is correct. An invalid key will cause login errors (`auth/api-key-not-valid`). Double-check for typos or copy/paste errors.
-    *   **Important:** Also generate a strong, unique `JWT_SECRET` for token verification in the middleware. You can use an online generator or a command-line tool like `openssl rand -base64 32`.
-    *   **(Optional)** If using AI features, add your `GOOGLE_GENAI_API_KEY`.
-
-    ```env
-    # Firebase Configuration - Replace with your actual project values
-    # FOUND IN: Firebase Console > Project Settings > General > Your Apps > Web App > SDK setup and configuration > Config
-    NEXT_PUBLIC_FIREBASE_API_KEY=YOUR_API_KEY_HERE_COPY_PASTE_CAREFULLY
-    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=YOUR_PROJECT_ID.firebaseapp.com
-    NEXT_PUBLIC_FIREBASE_PROJECT_ID=YOUR_PROJECT_ID
-    NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=YOUR_PROJECT_ID.appspot.com
-    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=YOUR_SENDER_ID
-    NEXT_PUBLIC_FIREBASE_APP_ID=YOUR_APP_ID
-
-    # JWT Secret for token verification (used in middleware) - Generate a strong secret key
-    # Example command: openssl rand -base64 32
-    JWT_SECRET=YOUR_STRONG_SECRET_KEY_FOR_JWT_MUST_BE_SET
-
-    # Google Generative AI API Key (Optional - Needed for AI features)
-    # GOOGLE_GENAI_API_KEY=YOUR_GOOGLE_AI_API_KEY
-    ```
-
-3.  **Create Users in Firebase Authentication:**
-    *   **CRUCIAL:** For users to be able to log in, they **MUST** be created manually in the Firebase Console. Go to your Firebase project -> Authentication -> Users -> Add user.
-    *   Use the email address intended for login (e.g., `admin@check2b.com`, `leocorax@gmail.com`) and set the password you want them to use.
-    *   The "Add Colaborador" feature in the admin panel **only adds mock data** for display; it **does not create authentication users**.
-
-4.  **Run the Development Server:**
-    ```bash
-    npm run dev
-    # or
-    yarn dev
-    # or
-    pnpm dev
-    ```
-
-    Open [http://localhost:9002](http://localhost:9002) (or your configured port) with your browser to see the result.
-
-## Project Structure
-
-*   `src/app/`: Contains the application routes using the Next.js App Router.
-    *   `(admin)`: Route group for administrative pages (Dashboard, Employees, Tasks, Evaluations, Challenges, Ranking, Settings). Root `/` also falls under this.
-    *   `(colaborador)`: Route group for employee pages (Dashboard, Avaliações, Desafios, Ranking, Perfil).
-    *   `login`: Login page.
-*   `src/components/`: Reusable UI components.
-    *   `ui/`: Components from shadcn/ui.
-    *   `layout/`: Layout components (MainLayout, EmployeeLayout).
-    *   Specific components (e.g., `employee/`, `task/`, `challenge/`, `department/`, `role/`).
-*   `src/lib/`: Utility functions and core logic (e.g., `auth.ts`, `utils.ts`).
-*   `src/hooks/`: Custom React hooks.
-*   `src/types/`: TypeScript type definitions.
-*   `src/middleware.ts`: Handles authentication and routing logic based on JWT stored in cookies.
-*   `src/ai/`: Genkit AI related files (flows, instance).
-
-## Key Features
-
-*   **Employee Management:** Add, edit, manage, and view employee information. Activate/deactivate accounts. *(Note: Creates mock data only, Firebase Auth user management is separate)*
-*   **Task Management:** Create, categorize, assign (global, by role, department, or individual), and manage daily tasks. Includes criteria for evaluation.
-*   **Daily Evaluations:** Admins evaluate task completion (10 or 0) with justifications and optional evidence upload.
-*   **Ranking & Awards:** System to rank employees based on performance (checklist + challenges). Admins can configure and manage recurring or specific monthly awards.
-*   **Challenges:** Admins create weekly challenges (optional/mandatory) with points, eligibility rules, and evaluation metrics. Employees can view, accept, and submit challenges.
-*   **Department & Role Management:** Admins can define and manage departments and roles within the organization.
-*   **Separate Interfaces:** Dedicated dashboards and views for Admins and Employees, enforced by middleware.
-*   **Authentication:** Secure login with role-based access control, password management (reset by admin), and admin user management. Uses Firebase Auth and JWT cookies. *(Requires manual user creation in Firebase Console)*
-*   **Settings:** Configure general system parameters (bonus, zero limits), manage admin users, and handle basic backup/restore operations (simulated).
-
-```
-  </change>
-  <change>
-    <file>docs/important_notes.md</file>
-    <description>Add a new documentation file explaining the Firebase Authentication limitation.</description>
-    <content><![CDATA[# Important Notes for Check2B Application
-
-## User Authentication vs. Employee Data
-
-It is crucial to understand the distinction between the **Employee Management** feature within the Check2B admin panel and **Firebase Authentication**.
-
-*   **Employee Management (Admin Panel):**
-    *   The features under "Colaboradores", "Funções", and "Departamentos" manage **mock data** used for display purposes within the application (e.g., listing employees in tables, assigning tasks).
-    *   **Adding, editing, or removing an employee in the admin panel DOES NOT affect Firebase Authentication.**
-
-*   **Firebase Authentication:**
-    *   This is the system responsible for handling user logins (email/password verification).
-    *   **Users MUST be manually created in the Firebase Console (Authentication > Users tab) to be able to log in.**
-    *   When creating a user in the Firebase Console, use the email address the user will use for login and set their password.
-    *   **To assign roles (admin/colaborador)** for proper redirection after login, you need to set **Custom Claims** for the user in Firebase. This typically requires using the Firebase Admin SDK (e.g., in a Cloud Function or a separate backend script). See Firebase documentation on [Custom Claims](https://firebase.google.com/docs/auth/admin/custom-claims). The middleware relies on a `role` claim.
-
-**In summary:**
-
-1.  Use the **Firebase Console** to create and manage actual user accounts for login (set email and password).
-2.  Use a **Firebase Admin SDK method (like Cloud Functions)** to set a `role` custom claim (`admin` or `colaborador`) for each user.
-3.  Use the **Check2B Admin Panel** to manage the *display data* associated with employees (department, role, admission date, etc.) which is used within the application's features but not for login itself.
-
-Failure to create users in Firebase Authentication will result in login errors (`auth/invalid-credential`, `auth/user-not-found`). Failure to set the `role` custom claim will likely result in users being treated as 'colaborador' by default by the middleware.

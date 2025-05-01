@@ -46,7 +46,7 @@ const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
 import { mockEmployees } from '@/app/employees/page'; // Assuming exported
 import { mockTasks as allAdminTasks } from '@/app/tasks/page'; // Assuming exported
 // Assuming mockChallenges is exported from challenges page
-import { mockChallenges as allAdminChallenges, mockParticipants } from '@/app/challenges/page';
+import { mockChallenges as allAdminChallenges, mockParticipants } from '@/app/challenges/page'; // Import from correct location
 
 // Mock evaluations for the current employee
 const mockEvaluations: Evaluation[] = [
