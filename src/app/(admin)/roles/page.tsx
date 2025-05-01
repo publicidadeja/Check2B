@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -223,8 +224,8 @@ export default function RolesPage() {
                      {isLoading ? (
                         <div className="flex justify-center items-center py-10">
                             <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
-                         </div>
-                    ) : (
+                        </div>
+                     ) : (
                         <DataTable
                             columns={columns}
                             data={roles}
@@ -267,4 +268,3 @@ export default function RolesPage() {
         </div>
     );
 }
-

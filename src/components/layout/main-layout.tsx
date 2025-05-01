@@ -91,11 +91,16 @@ export function MainLayout({ children }: MainLayoutProps) {
     if (itemHref === '/') {
       return pathname === '/'; // Exact match for root dashboard
     }
-    return pathname.startsWith(itemHref); // Prefix match for other sections
+    // Use startsWith for other routes within the group
+    return pathname.startsWith(itemHref);
   };
 
   const getCurrentPageTitle = () => {
-    const currentNavItem = [...navItems, ...adminTools].find(item => isNavItemActive(item.href));
+    // Combine both navigation arrays for title lookup
+    const allNavItems = [...navItems, ...adminTools];
+    // Find the *most specific* match first (longer href)
+    const sortedNavItems = [...allNavItems].sort((a, b) => b.href.length - a.href.length);
+    const currentNavItem = sortedNavItems.find(item => isNavItemActive(item.href));
     return currentNavItem?.label || 'Check2B Admin';
   };
 
@@ -165,7 +170,8 @@ export function MainLayout({ children }: MainLayoutProps) {
               <div className="flex items-center justify-between p-2 group-data-[collapsible=icon]:hidden">
                  <div className="flex items-center gap-2">
                    <Avatar className="h-8 w-8">
-                     <AvatarImage src="https://picsum.photos/id/238/40/40" alt="Admin User" />
+                     {/* Placeholder image for admin */}
+                     <AvatarImage src="https://picsum.photos/seed/admin/40/40" alt="Admin User" />
                      <AvatarFallback>AD</AvatarFallback>
                    </Avatar>
                    <div className="flex flex-col">

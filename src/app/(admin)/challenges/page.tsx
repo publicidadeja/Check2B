@@ -539,7 +539,7 @@ const ChallengeDashboard = () => {
              try {
                 const [challengeData, participationData] = await Promise.all([
                      fetchChallenges(),
-                     Promise.resolve(mockParticipants)
+                     Promise.resolve(mockParticipants) // Fetch all participants for calculation
                 ]);
                 setChallenges(challengeData);
                 setParticipations(participationData);
@@ -640,6 +640,7 @@ const ChallengeEvaluation = () => {
                 setCurrentEvaluation({});
                 try {
                     const participantsData = await fetchParticipantsForChallenge(selectedChallengeId);
+                     // Only show submitted participants for evaluation
                      const submittedParticipants = participantsData.filter(p => p.status === 'submitted');
                     setParticipants(submittedParticipants);
                      const initialEvalState: typeof currentEvaluation = {};
@@ -665,6 +666,7 @@ const ChallengeEvaluation = () => {
             [participantId]: {
                 ...(prev[participantId] || { status: 'pending', feedback: '', isSaving: false }),
                 [field]: value,
+                // Auto-set score to 0 if rejected, or default to challenge points if approved and score is not yet set
                 ...(field === 'status' && value === 'rejected' && { score: 0 }),
                  ...(field === 'status' && value === 'approved' && prev[participantId]?.score === undefined && { score: challengesToEvaluate.find(c => c.id === selectedChallengeId)?.points || 0 })
             }
@@ -694,6 +696,7 @@ const ChallengeEvaluation = () => {
              await evaluateSubmission(participantId, evaluationData.status, finalScore, evaluationData.feedback);
              toast({ title: "Sucesso", description: `Avaliação para ${participant.employeeName} salva.` });
 
+             // Remove participant from the list after saving
              setParticipants(prev => prev.filter(p => p.id !== participantId));
              setCurrentEvaluation(prev => {
                  const newState = { ...prev };
@@ -701,13 +704,17 @@ const ChallengeEvaluation = () => {
                  return newState;
              });
 
-             if (participants.length === 1) {
+             // Optional: Check if all participants are evaluated and update challenge status
+             if (participants.length === 1) { // Check if this was the last one
                  toast({ title: "Concluído", description: `Todas as submissões para "${challenge.title}" foram avaliadas.` });
+                 // Consider automatically changing challenge status to 'completed'
+                 // await updateChallengeStatus(challenge.id, 'completed');
              }
 
         } catch (error) {
              console.error("Falha ao salvar avaliação:", error);
              toast({ title: "Erro", description: "Falha ao salvar avaliação.", variant: "destructive" });
+             // Reset saving state for this participant only on error
              setCurrentEvaluation(prev => ({ ...prev, [participantId]: { ...evaluationData, isSaving: false } }));
         }
     };
@@ -740,7 +747,7 @@ const ChallengeEvaluation = () => {
                              ) : (
                                 challengesToEvaluate.map(challenge => (
                                     <SelectItem key={challenge.id} value={challenge.id}>
-                                        {challenge.title} ({format(parseISO(challenge.periodEndDate), 'dd/MM/yy')}) - {challenge.status ? getStatusText(challenge.status) : ''}
+                                        {challenge.title} ({format(parseISO(challenge.periodEndDate), 'dd/MM/yy')}) - {getStatusText(challenge.status)}
                                     </SelectItem>
                                 ))
                              )}
@@ -759,8 +766,8 @@ const ChallengeEvaluation = () => {
                         ) : participants.length === 0 ? (
                             <p className="text-muted-foreground text-center py-4">Nenhuma submissão pendente para este desafio.</p>
                         ) : (
-                            <ScrollArea className="h-[45vh]">
-                                <div className="space-y-4 pr-4">
+                            <ScrollArea className="h-[45vh]"> {/* Limit height and make scrollable */}
+                                <div className="space-y-4 pr-4"> {/* Add padding for scrollbar */}
                                     {participants.map(participant => (
                                         <Card key={participant.id} className="bg-muted/50">
                                             <CardHeader className="pb-2 pt-3 px-4">
@@ -783,6 +790,7 @@ const ChallengeEvaluation = () => {
                                             </CardHeader>
                                             <CardContent className="px-4 pb-3 space-y-2">
                                                 <div className="flex flex-col md:flex-row gap-2 items-start md:items-center">
+                                                    {/* Evaluation Controls */}
                                                     <div className='flex-shrink-0'>
                                                         <Label className="text-xs">Resultado:</Label>
                                                         <Select
@@ -827,10 +835,10 @@ const ChallengeEvaluation = () => {
                                                             disabled={currentEvaluation[participant.id]?.isSaving}
                                                         />
                                                     </div>
-
+                                                    {/* Save Button */}
                                                     <Button
                                                         size="sm"
-                                                        className="mt-4 md:mt-5 self-end md:self-center"
+                                                        className="mt-4 md:mt-5 self-end md:self-center" // Adjust margin for alignment
                                                         onClick={() => handleSaveEvaluation(participant.id)}
                                                         disabled={!currentEvaluation[participant.id] || currentEvaluation[participant.id].status === 'pending' || currentEvaluation[participant.id].isSaving}
                                                     >
@@ -911,7 +919,8 @@ const ChallengeDetailsDialog = ({ challengeId, open, onOpenChange }: ChallengeDe
                         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                      </div>
                  ) : details ? (
-                     <div className="py-4 grid grid-cols-1 md:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto">
+                     <div className="py-4 grid grid-cols-1 md:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto"> {/* Limit height */}
+                         {/* Challenge Info */}
                          <div className="md:col-span-1 space-y-3 border-r pr-4">
                             <h4 className="font-semibold text-base">Informações do Desafio</h4>
                              <p className="text-sm"><strong className="text-muted-foreground">Status:</strong> <Badge variant={getStatusBadgeVariant(details.challenge.status)}>{getStatusText(details.challenge.status)}</Badge></p>
@@ -922,6 +931,7 @@ const ChallengeDetailsDialog = ({ challengeId, open, onOpenChange }: ChallengeDe
                              <p className="text-sm"><strong className="text-muted-foreground">Elegibilidade:</strong> {details.challenge.eligibility.type === 'all' ? 'Todos' : `${details.challenge.eligibility.type}: ${details.challenge.eligibility.entityIds?.join(', ')}`}</p>
                              <p className="text-sm"><strong className="text-muted-foreground">Métricas:</strong> {details.challenge.evaluationMetrics}</p>
                          </div>
+                          {/* Participants Table */}
                          <div className="md:col-span-2 space-y-3">
                             <h4 className="font-semibold text-base">Participantes ({details.participants.length})</h4>
                              {details.participants.length > 0 ? (
@@ -977,8 +987,9 @@ const ChallengeHistory = () => {
             setIsLoading(true);
             try {
                 const allChallenges = await fetchChallenges();
+                // Show challenges that are completed, archived, or evaluating in history
                 setHistoryChallenges(allChallenges.filter(c => ['completed', 'archived', 'evaluating'].includes(c.status))
-                                            .sort((a, b) => parseISO(b.periodEndDate).getTime() - parseISO(a.periodEndDate).getTime())
+                                            .sort((a, b) => parseISO(b.periodEndDate).getTime() - parseISO(a.periodEndDate).getTime()) // Sort by end date desc
                                             );
             } catch (error) {
                  console.error("Failed to load challenge history:", error);
@@ -992,10 +1003,12 @@ const ChallengeHistory = () => {
 
 
     const getParticipantSummary = (challengeId: string) => {
+         // Use current mockParticipants for summary (replace with fetched data if needed)
          const challengeParticipants = mockParticipants.filter(p => p.challengeId === challengeId);
         const totalParticipants = challengeParticipants.length;
          const evaluated = challengeParticipants.filter(p => ['approved', 'rejected'].includes(p.status)).length;
          const approved = challengeParticipants.filter(p => p.status === 'approved').length;
+         // Estimate eligible (might need better logic if complex eligibility exists)
          const eligibleEmployees = mockEmployeesSimple.filter(emp => {
               const challenge = mockChallenges.find(c => c.id === challengeId);
               if (!challenge) return false;
@@ -1008,7 +1021,7 @@ const ChallengeHistory = () => {
 
          if (eligibleEmployees === 0) return "N/A (Sem Elegíveis)";
          if (totalParticipants === 0 && eligibleEmployees > 0) return "0/0 (Sem Participações)";
-         if (totalParticipants === 0) return "N/A";
+         if (totalParticipants === 0) return "N/A"; // No eligible or participants
 
         return `${approved}/${evaluated} Aprovados (${totalParticipants} Partic.)`;
     }
@@ -1019,22 +1032,24 @@ const ChallengeHistory = () => {
             return;
         }
 
+        // Prepare CSV content
         let csvContent = "data:text/csv;charset=utf-8,";
-        csvContent += "ID Desafio,Título,Data Início,Data Fim,Pontos,Status,Resumo Participantes\n";
+        csvContent += "ID Desafio,Título,Data Início,Data Fim,Pontos,Status,Resumo Participantes\n"; // Header row
 
         historyChallenges.forEach(challenge => {
             const row = [
                 challenge.id,
-                `"${challenge.title.replace(/"/g, '""')}"`,
+                `"${challenge.title.replace(/"/g, '""')}"`, // Escape quotes
                 challenge.periodStartDate,
                 challenge.periodEndDate,
                 challenge.points,
                 getStatusText(challenge.status),
-                `"${getParticipantSummary(challenge.id)}"`
+                `"${getParticipantSummary(challenge.id)}"` // Wrap summary in quotes
             ].join(",");
             csvContent += row + "\n";
         });
 
+        // Create and trigger download link
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
         link.setAttribute("href", encodedUri);
@@ -1050,6 +1065,7 @@ const ChallengeHistory = () => {
         setIsDetailsOpen(true);
     }
 
+     // Columns for the History DataTable
      const historyColumns: ColumnDef<Challenge>[] = [
         { accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
         { accessorKey: "period", header: "Período", cell: ({ row }) => `${format(parseISO(row.original.periodStartDate), 'dd/MM/yy')} - ${format(parseISO(row.original.periodEndDate), 'dd/MM/yy')}` },
@@ -1091,6 +1107,7 @@ const ChallengeHistory = () => {
                     <FileClock className="mr-2 h-4 w-4" /> Exportar Histórico
                 </Button>
             </CardFooter>
+            {/* Dialog for displaying details */}
             <ChallengeDetailsDialog
                 challengeId={selectedChallengeIdForDetails}
                 open={isDetailsOpen}
@@ -1105,16 +1122,21 @@ const ChallengeHistory = () => {
 const ChallengeSettings = () => {
     const { toast } = useToast();
     const [isSaving, setIsSaving] = React.useState(false);
+    // Example settings state - Load initial values from API/storage
     const [settings, setSettings] = React.useState({
         rankingFactor: 1.0,
-        enableGamification: false,
-        maxPointsCap: '',
-        defaultParticipation: 'Opcional',
+        enableGamification: false, // Example: Toggle for badges/levels
+        maxPointsCap: '', // Example: Monthly cap for challenge points
+        defaultParticipation: 'Opcional', // Default when creating new challenges
+        // Add more settings as needed
     });
 
      React.useEffect(() => {
+         // TODO: Fetch current settings from backend on load
          const loadSettings = async () => {
+             console.log("Loading challenge settings (simulated)...");
              await new Promise(resolve => setTimeout(resolve, 500));
+             // Example: setSettings(fetchedSettings);
              console.log("Settings loaded (simulated)");
          };
          loadSettings();
@@ -1123,8 +1145,9 @@ const ChallengeSettings = () => {
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { id, value, type } = e.target;
+         // Handle number input specifically, allowing empty string for optional fields
          const newValue = type === 'number'
-            ? (value === '' ? '' : parseFloat(value))
+            ? (value === '' ? '' : parseFloat(value)) // Keep empty string or parse float
             : value;
 
         setSettings(prev => ({
@@ -1145,7 +1168,8 @@ const ChallengeSettings = () => {
     const handleSaveSettings = async () => {
          setIsSaving(true);
          console.log("Saving challenge settings:", settings);
-         await new Promise(resolve => setTimeout(resolve, 800));
+         // TODO: Send settings to backend API for persistence
+         await new Promise(resolve => setTimeout(resolve, 800)); // Simulate API call
          toast({ title: "Sucesso", description: "Configurações de desafios salvas." });
          setIsSaving(false);
     };
@@ -1157,6 +1181,7 @@ const ChallengeSettings = () => {
                 <CardDescription>Ajuste as regras gerais e integração dos desafios com o sistema.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+                {/* Ranking Factor Setting */}
                 <div className="space-y-2">
                     <Label htmlFor="rankingFactor">Fator de Ponderação no Ranking</Label>
                     <Input
@@ -1169,6 +1194,7 @@ const ChallengeSettings = () => {
                     <p className="text-xs text-muted-foreground">Multiplicador para pontos de desafios ao calcular o ranking final (Ex: 1.0 = peso igual; 0.5 = metade do peso).</p>
                 </div>
                 <Separator />
+                 {/* Default Participation Type */}
                  <div className="space-y-2">
                      <Label htmlFor="defaultParticipation">Participação Padrão (ao criar)</Label>
                      <Select value={settings.defaultParticipation} onValueChange={handleSelectChange}>
@@ -1183,12 +1209,14 @@ const ChallengeSettings = () => {
                     <p className="text-xs text-muted-foreground">Define o tipo de participação selecionado por padrão ao criar um novo desafio.</p>
                  </div>
                  <Separator />
+                 {/* Gamification Toggle */}
                  <div className="flex items-center space-x-2">
                     <Switch id="enableGamification" checked={settings.enableGamification} onCheckedChange={handleSwitchChange} />
                     <Label htmlFor="enableGamification" className="text-sm font-normal">Habilitar Emblemas e Conquistas (Gamificação)</Label>
                  </div>
                 <p className="text-xs text-muted-foreground -mt-4 pl-8">Ativa recursos adicionais de gamificação relacionados a desafios (requer implementação).</p>
                  <Separator />
+                 {/* Max Points Cap Setting */}
                 <div className="space-y-2">
                     <Label htmlFor="maxPointsCap">Teto Máximo de Pontos de Desafios por Mês (Opcional)</Label>
                      <TooltipProvider>
@@ -1210,6 +1238,7 @@ const ChallengeSettings = () => {
                     </TooltipProvider>
                     <p className="text-xs text-muted-foreground">Limite máximo de pontos de desafios que podem contar para o ranking em um único mês.</p>
                 </div>
+                {/* Add more settings here as needed */}
             </CardContent>
             <CardFooter>
                 <Button onClick={handleSaveSettings} disabled={isSaving}>
