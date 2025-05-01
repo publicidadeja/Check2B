@@ -66,34 +66,46 @@ export async function middleware(request: NextRequest) {
 
     console.log(`[Middleware] Path: ${pathname}, Token found: ${!!token}`);
 
-    // --- DEVELOPMENT ONLY: Bypass login for /colaborador routes ---
-    // IMPORTANT: Remove this block before deploying to production!
-    if (pathname.startsWith('/colaborador')) {
-        console.warn(`[Middleware] DEVELOPMENT MODE: Bypassing authentication for ${pathname}`);
-        return NextResponse.next();
-    }
-    // --- END DEVELOPMENT ONLY ---
-
     // Allow access to the login page regardless of auth state
     if (pathname === '/login') {
+        console.log("[Middleware] Accessing login page, allowing.");
         return NextResponse.next();
     }
 
-    // Verify token only if the secret is loaded
+    // --- GUEST MODE / DEVELOPMENT BYPASS ---
+    // This allows accessing collaborator routes *or* the admin root path without a token.
+    // REMOVE OR REFINE THIS FOR PRODUCTION!
+    if (!token) {
+        if (pathname.startsWith('/colaborador') || pathname === '/') {
+            console.warn(`[Middleware] GUEST/DEV MODE: Allowing unauthenticated access to ${pathname}`);
+            return NextResponse.next();
+        } else {
+            // Redirect other unauthenticated paths to login
+            console.log(`[Middleware] No token and not allowed guest path. Redirecting to /login from ${pathname}`);
+            return NextResponse.redirect(new URL('/login', request.url));
+        }
+    }
+    // --- END GUEST MODE / DEVELOPMENT BYPASS ---
+
+
+    // If we have a token, proceed with verification
     let verifiedPayload: UserJwtPayload | null = null;
     if (JWT_SECRET) {
-       verifiedPayload = await verifyToken(token || '');
+       verifiedPayload = await verifyToken(token);
     } else {
        console.error("[Middleware] Cannot verify token: JWT_SECRET is missing or invalid.");
        // Redirect to login if secret is missing and trying to access protected routes
+       // (Although the bypass above might catch this, keep it for safety)
        return NextResponse.redirect(new URL('/login', request.url));
     }
 
-
     if (!verifiedPayload) {
-        // No valid token (or secret missing), redirect to login
-        console.log(`[Middleware] No valid token or secret missing. Redirecting to /login from ${pathname}`);
-        return NextResponse.redirect(new URL('/login', request.url));
+        // Token exists but is invalid/expired, redirect to login
+        console.log(`[Middleware] Invalid token. Redirecting to /login from ${pathname}`);
+        const response = NextResponse.redirect(new URL('/login', request.url));
+        // Clear the invalid cookie
+        response.cookies.delete('auth-token');
+        return response;
     }
 
     // User is authenticated, proceed with role-based routing
@@ -103,37 +115,38 @@ export async function middleware(request: NextRequest) {
     // If user is an admin...
     if (userRole === 'admin') {
         // If trying to access employee pages, redirect to admin dashboard (root)
-        // This check is currently bypassed by the DEVELOPMENT ONLY block above
-        // if (pathname.startsWith('/colaborador')) {
-        //     console.log(`[Middleware] Admin user redirected from ${pathname} to /`);
-        //     return NextResponse.redirect(new URL('/', request.url));
-        // }
+        if (pathname.startsWith('/colaborador')) {
+            console.log(`[Middleware] Admin user redirected from ${pathname} to /`);
+            return NextResponse.redirect(new URL('/', request.url));
+        }
         // Allow access to admin pages (including root '/')
+        console.log(`[Middleware] Admin user accessing allowed path: ${pathname}`);
         return NextResponse.next();
     }
 
-    // If user is an employee... (This block is also bypassed for now)
-    // if (userRole === 'colaborador') {
-    //     // If trying to access admin pages (root or anything not starting with /colaborador), redirect to employee dashboard
-    //     if (!pathname.startsWith('/colaborador')) {
-    //         console.log(`[Middleware] Employee user redirected from ${pathname} to /colaborador/dashboard`);
-    //         return NextResponse.redirect(new URL('/colaborador/dashboard', request.url));
-    //     }
-    //     // Allow access to employee pages
-    //     return NextResponse.next();
-    // }
+    // If user is an employee...
+    if (userRole === 'colaborador') {
+        // If trying to access admin pages (root or anything not starting with /colaborador), redirect to employee dashboard
+        if (!pathname.startsWith('/colaborador')) {
+            console.log(`[Middleware] Employee user redirected from ${pathname} to /colaborador/dashboard`);
+            return NextResponse.redirect(new URL('/colaborador/dashboard', request.url));
+        }
+        // Allow access to employee pages
+        console.log(`[Middleware] Colaborador user accessing allowed path: ${pathname}`);
+        return NextResponse.next();
+    }
 
     // Fallback (should not happen if roles are correctly set, but good practice)
     console.warn(`[Middleware] Unknown role '${userRole}' for authenticated user. Redirecting to login.`);
-    return NextResponse.redirect(new URL('/login', request.url));
+    const response = NextResponse.redirect(new URL('/login', request.url));
+    response.cookies.delete('auth-token'); // Clear cookie for unknown role
+    return response;
 }
 
-// Apply middleware to all routes except API, static files, etc., AND the login page
+// Apply middleware to all routes except API, static files, etc.
 export const config = {
   matcher: [
     '/((?!api|_next/static|_next/image|favicon.ico).*)', // Exclude standard Next.js assets and API routes
-    // Ensure login page is NOT included here if you want to allow access to it
-    // If login page was included above, it would require auth to access login page
-    // We handle login page exclusion directly in the middleware logic
+    // Login page is handled explicitly within the middleware logic
   ],
 };
