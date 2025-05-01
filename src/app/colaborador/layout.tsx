@@ -1,4 +1,4 @@
-'use client';
+{'use client';
 
 import type { ReactNode } from 'react';
 import * as React from 'react';
@@ -20,13 +20,13 @@ import {
 import Cookies from 'js-cookie'; // Import js-cookie
 
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  DropdownMenuGroup,
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+    DropdownMenuGroup,
 } from '@/components/ui/dropdown-menu';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
@@ -37,12 +37,12 @@ import { Toaster } from '@/components/ui/toaster';
 import { logoutUser } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { BottomNavigation } from '@/components/layout/bottom-navigation';
-import { Sheet, SheetContent, SheetTrigger, SheetClose, SheetTitle, SheetHeader } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTrigger, SheetClose, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'; // Added SheetTitle, SheetDescription
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { Notification } from '@/types/notification'; // Import Notification type
-import { listenToNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '@/lib/notifications'; // Import notification functions
+import type { Notification as NotificationType } from '@/types/notification'; // Renamed to avoid conflict
+import { listenToNotifications, markNotificationAsRead, markAllNotificationsAsRead, requestBrowserNotificationPermission, triggerTestNotification } from '@/lib/notifications'; // Added requestBrowserNotificationPermission, triggerTestNotification
 
 interface EmployeeLayoutProps {
   children: ReactNode;
@@ -50,7 +50,7 @@ interface EmployeeLayoutProps {
 
 // Moved out of component for clarity
 const navItems = [
-  { href: '/colaborador/dashboard', label: 'Início', icon: LayoutDashboard }, // Renamed Dashboard to Início
+  { href: '/colaborador/dashboard', label: 'Início', icon: LayoutDashboard },
   { href: '/colaborador/avaliacoes', label: 'Avaliações', icon: ClipboardCheck },
   { href: '/colaborador/desafios', label: 'Desafios', icon: Target },
   { href: '/colaborador/ranking', label: 'Ranking', icon: Trophy },
@@ -75,13 +75,14 @@ const getInitials = (name: string) => {
 };
 
 // Function to get notification icon based on type
-const getNotificationIcon = (type: Notification['type']) => {
+const getNotificationIcon = (type: NotificationType['type']) => {
     switch (type) {
         case 'evaluation': return <ClipboardCheck className="h-4 w-4 text-blue-500" />;
         case 'challenge': return <Target className="h-4 w-4 text-purple-500" />;
         case 'ranking': return <Trophy className="h-4 w-4 text-yellow-500" />;
         case 'announcement': return <Bell className="h-4 w-4 text-gray-500" />;
         case 'system': return <Settings className="h-4 w-4 text-red-500" />; // Example for system alert
+        case 'info': return <Settings className="h-4 w-4 text-blue-500" />; // Info icon
         default: return <Bell className="h-4 w-4 text-muted-foreground" />;
     }
 };
@@ -93,9 +94,12 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
-  const [notifications, setNotifications] = React.useState<Notification[]>([]);
+  const [notifications, setNotifications] = React.useState<NotificationType[]>([]);
   const [isLoadingNotifications, setIsLoadingNotifications] = React.useState(true);
   const [isGuest, setIsGuest] = React.useState(true); // Default to guest until checked
+  const [browserNotificationPermission, setBrowserNotificationPermission] = React.useState<NotificationPermission | null>(null);
+  const unsubscribeRef = React.useRef<() => void>(() => {}); // Ref to store unsubscribe function
+
 
   // Check authentication status on mount
   React.useEffect(() => {
@@ -110,27 +114,60 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
   }, []);
 
 
-  // Fetch notifications on mount and listen for changes
+  // Request Browser Notification Permission and Setup Listener
   React.useEffect(() => {
-      if (isGuest) {
-          setIsLoadingNotifications(false);
-          setNotifications([]); // Clear notifications for guest
-          return; // Don't fetch/listen if guest
-      }
+    const setupNotifications = async () => {
+        if (isGuest) {
+            setIsLoadingNotifications(false);
+            setNotifications([]); // Clear notifications for guest
+            return; // Don't fetch/listen if guest
+        }
 
-      setIsLoadingNotifications(true);
-      const unsubscribe = listenToNotifications(mockEmployee.id, (newNotifications) => {
-          console.log("[Notifications] Received update:", newNotifications);
-          setNotifications(newNotifications);
-          setIsLoadingNotifications(false);
-      }, (error) => {
-          console.error("Failed to fetch notifications:", error);
-          toast({ title: "Erro", description: "Não foi possível carregar as notificações.", variant: "destructive" });
-          setIsLoadingNotifications(false);
-      });
+        // Request browser permission on mount if not guest
+        if (typeof window !== 'undefined' && "Notification" in window) {
+             if (Notification.permission === "default") {
+                 const permission = await requestBrowserNotificationPermission();
+                 setBrowserNotificationPermission(permission);
+                 if (permission === 'granted') {
+                    toast({title: "Notificações Ativadas", description: "Você receberá alertas importantes.", duration: 3000});
+                 } else if (permission === 'denied') {
+                    toast({title: "Notificações Bloqueadas", description: "Para receber alertas, ative as notificações nas configurações do seu navegador.", variant: "destructive", duration: 5000});
+                 }
+             } else {
+                  setBrowserNotificationPermission(Notification.permission);
+             }
+         }
 
-      // Cleanup listener on unmount
-      return () => unsubscribe();
+        // Setup Firebase listener
+        setIsLoadingNotifications(true);
+         // Ensure previous listener is unsubscribed before setting up a new one
+        if (unsubscribeRef.current) {
+            unsubscribeRef.current();
+        }
+        unsubscribeRef.current = listenToNotifications(
+            mockEmployee.id,
+            (newNotifications) => {
+                console.log("[Notifications] Received update:", newNotifications);
+                setNotifications(newNotifications);
+                setIsLoadingNotifications(false);
+            },
+            (error) => {
+                console.error("Failed to fetch notifications:", error);
+                toast({ title: "Erro", description: "Não foi possível carregar as notificações.", variant: "destructive" });
+                setIsLoadingNotifications(false);
+            }
+        );
+    };
+
+    setupNotifications();
+
+    // Cleanup listener on component unmount or when guest status changes
+    return () => {
+         if (unsubscribeRef.current) {
+            unsubscribeRef.current();
+            unsubscribeRef.current = () => {}; // Clear the ref
+         }
+    };
   }, [isGuest, toast]); // Re-run if guest status changes
 
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -139,8 +176,7 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
     e?.stopPropagation(); // Prevent dropdown from closing if called from click
     try {
       await markNotificationAsRead(mockEmployee.id, notificationId);
-      // Optimistic update removed, rely on listener
-      // setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, read: true } : n));
+      // Listener will update the state
     } catch (error) {
         console.error("Error marking notification as read:", error);
         toast({ title: "Erro", description: "Falha ao marcar notificação como lida.", variant: "destructive" });
@@ -152,8 +188,7 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
      try {
         await markAllNotificationsAsRead(mockEmployee.id);
          toast({ title: "Sucesso", description: "Todas as notificações marcadas como lidas.", duration: 2000 });
-        // Optimistic update removed, rely on listener
-        // setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+         // Listener will update the state
     } catch (error) {
          console.error("Error marking all notifications as read:", error);
         toast({ title: "Erro", description: "Falha ao marcar todas as notificações como lidas.", variant: "destructive" });
@@ -182,7 +217,7 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
 
 
   // Handle clicking a notification item (navigate if link exists, mark as read)
-  const handleNotificationClick = (notification: Notification) => {
+  const handleNotificationClick = (notification: NotificationType) => {
       if (!notification.read) {
           handleMarkRead(notification.id); // Mark as read programmatically
       }
@@ -191,13 +226,22 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
       }
   };
 
+   // Handler for test notification button (development only)
+   const handleTestNotification = async () => {
+       if (isGuest) return;
+       const success = await triggerTestNotification(mockEmployee.id);
+       if (success) {
+           toast({ title: "Teste Enviado", description: "Notificação de teste enviada para a base de dados." });
+       } else {
+           toast({ title: "Erro Teste", description: "Falha ao enviar notificação de teste.", variant: "destructive" });
+       }
+   };
 
   return (
     <TooltipProvider>
-        {/* Use bg-gradient-to-b from-blue-50 via-white to-white for a subtle top gradient */}
         <div className="flex min-h-screen w-full flex-col bg-gradient-to-b from-sky-50 via-white to-white dark:from-slate-900 dark:via-slate-950 dark:to-background">
             {/* Header - Mobile */}
-            <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 md:hidden">
+             <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 md:hidden">
                  {/* Mobile Menu Trigger (Left) */}
                  <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
                     <SheetTrigger asChild>
@@ -206,7 +250,7 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
                             <span className="sr-only">Abrir menu</span>
                         </Button>
                     </SheetTrigger>
-                    <SheetContent side="left" className="flex flex-col p-0 w-72"> {/* Adjust width if needed */}
+                    <SheetContent side="left" className="flex flex-col p-0 w-72">
                          <SheetHeader className='p-4 border-b'>
                              <SheetTitle className="flex items-center gap-2 text-lg font-semibold">
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7 text-primary">
@@ -214,6 +258,8 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
                                 </svg>
                                 <span>Check2B</span>
                            </SheetTitle>
+                            {/* Optionally add a description */}
+                           {/* <SheetDescription>Menu de Navegação</SheetDescription> */}
                          </SheetHeader>
                          <nav className="flex flex-col gap-1 p-4 text-base font-medium flex-grow">
                             {navItems.map((item) => (
@@ -235,14 +281,14 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
                          <div className="mt-auto border-t p-4">
                             {!isGuest ? (
                                 <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <Avatar className="h-9 w-9">
+                                    <div className="flex items-center gap-2 overflow-hidden">
+                                        <Avatar className="h-9 w-9 flex-shrink-0">
                                             <AvatarImage src={mockEmployee.photoUrl} alt={mockEmployee.name} />
                                             <AvatarFallback>{getInitials(mockEmployee.name)}</AvatarFallback>
                                         </Avatar>
-                                        <span className="text-sm font-medium truncate">{mockEmployee.name}</span>
+                                        <span className="text-sm font-medium truncate flex-1">{mockEmployee.name}</span>
                                     </div>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}>
                                         <LogOut className="h-4 w-4" />
                                         <span className="sr-only">Sair</span>
                                     </Button>
@@ -257,12 +303,12 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
                  </Sheet>
 
                  {/* Title centered on mobile*/}
-                 <h1 className="text-lg font-semibold text-center flex-1">
+                 <h1 className="text-lg font-semibold text-center flex-1 truncate px-2">
                    {getCurrentTitle()}
                  </h1>
 
                  {/* Right side Actions: Notifications Dropdown (Mobile) */}
-                 <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1">
                      {/* Notification Dropdown */}
                      {!isGuest && (
                         <DropdownMenu>
@@ -292,22 +338,22 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
                                 <DropdownMenuSeparator />
                                 <ScrollArea className="h-[300px]">
                                     {isLoadingNotifications ? (
-                                        <DropdownMenuItem disabled className="flex justify-center items-center py-4 text-muted-foreground italic">Carregando...</DropdownMenuItem>
+                                         <div className="flex justify-center items-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
                                     ) : notifications.length === 0 ? (
                                         <DropdownMenuItem disabled className="text-center py-4 text-muted-foreground italic">Nenhuma notificação</DropdownMenuItem>
                                     ) : (
                                         notifications.map((notification) => (
                                         <DropdownMenuItem
                                             key={notification.id}
-                                            className={cn("flex items-start gap-3 cursor-pointer p-2 data-[highlighted]:bg-muted/50 group", !notification.read && "bg-accent/20 dark:bg-accent/10 font-medium")} // Add group class
+                                            className={cn("flex items-start gap-3 cursor-pointer p-2 data-[highlighted]:bg-muted/50 group min-h-[50px]", !notification.read && "bg-accent/20 dark:bg-accent/10 font-medium")}
                                             onClick={() => handleNotificationClick(notification)}
-                                            style={{minHeight: '50px'}} // Ensure minimum height for items
+                                            style={{whiteSpace: 'normal'}} // Allow text wrapping
                                         >
                                             <div className="flex-shrink-0 pt-1 text-muted-foreground">
                                                 {getNotificationIcon(notification.type)}
                                             </div>
                                             <div className={cn("flex-1 space-y-0.5")}>
-                                                <p className="text-xs leading-tight line-clamp-2">{notification.message}</p>
+                                                <p className="text-xs leading-tight">{notification.message}</p>
                                                 <p className="text-[10px] text-muted-foreground/80">{notification.timestamp.toLocaleTimeString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
                                             </div>
                                              {!notification.read && (
@@ -316,7 +362,7 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
                                                          <Button
                                                              variant="ghost"
                                                              size="icon"
-                                                             className="h-6 w-6 text-muted-foreground hover:text-primary flex-shrink-0 ml-2 opacity-0 group-hover:opacity-100 transition-opacity" // Adjust visibility and spacing
+                                                             className="h-6 w-6 text-muted-foreground hover:text-primary flex-shrink-0 ml-1 opacity-0 group-hover:opacity-100 transition-opacity"
                                                              onClick={(e) => handleMarkRead(notification.id, e)}
                                                          >
                                                              <Check className="h-4 w-4" />
@@ -330,6 +376,17 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
                                         ))
                                     )}
                                 </ScrollArea>
+                                 {/* Add Test Button for Development */}
+                                {process.env.NODE_ENV === 'development' && (
+                                    <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="p-1">
+                                         <Button variant="outline" size="sm" className="w-full text-xs" onClick={handleTestNotification}>
+                                            Testar Notificação
+                                         </Button>
+                                    </DropdownMenuItem>
+                                    </>
+                                )}
                             </DropdownMenuContent>
                         </DropdownMenu>
                      )}
