@@ -14,6 +14,7 @@
  import type { ColumnDef } from "@tanstack/react-table";
  import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
  import { Separator } from '@/components/ui/separator';
+ import { ScrollArea } from '@/components/ui/scroll-area'; // Import ScrollArea
  // Removed EmployeeLayout import
 
  // Import Types
@@ -256,4 +257,4 @@
      );
  }
 
-   
+    
