@@ -36,7 +36,8 @@
  // Import types
  import type { Challenge } from '@/types/challenge';
  import { mockEmployees } from '@/app/employees/page';
- import { mockChallenges as allAdminChallenges, mockParticipants } from '@/app/challenges/page';
+ // Correct the import path for admin challenges data - It should point to the admin route group
+ import { mockChallenges as allAdminChallenges, mockParticipants } from '@/app/(admin)/challenges/page';
 
  // Mock Employee ID
  const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
@@ -524,7 +525,7 @@
          return (
               <Card key={challenge.id} className="shadow-sm flex flex-col bg-card hover:shadow-md transition-shadow duration-200 overflow-hidden">
                  {/* Optional Image Header */}
-                 {/* {challenge.imageUrl && <img src={challenge.imageUrl} alt={challenge.title} className="h-24 w-full object-cover"/>} */}
+                 {challenge.imageUrl && <img src={challenge.imageUrl} alt={challenge.title} className="h-24 w-full object-cover" data-ai-hint="abstract pattern design"/>}
                  <CardHeader className="p-3">
                      <div className="flex justify-between items-start gap-2 mb-1">
                          <CardTitle className="text-sm font-semibold line-clamp-2 flex-1">{challenge.title}</CardTitle>
@@ -541,11 +542,11 @@
                          <span className="text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3"/>Prazo:</span>
                          <span className={cn("font-medium", isChallengeOver && listType !== 'completed' ? "text-destructive" : (daysRemaining <= 1 ? "text-orange-600" : ""))}>
                             {format(parseISO(challenge.periodEndDate), 'dd/MM/yy')}
-                            {!isChallengeOver && ` (${daysRemaining + 1}d)`}
+                            {!isChallengeOver && ` (${daysRemaining >= 0 ? daysRemaining + 1 : 0}d)`}
                          </span>
                      </div>
                  </CardContent>
-                  <CardFooter className="p-2 border-t mt-2">
+                  <CardFooter className="p-2 border-t mt-2 bg-muted/50">
                      <Button size="xs" variant="secondary" className="w-full h-7 text-xs" onClick={() => openDetailsModal(challenge)}>
                          <Eye className="h-3 w-3 mr-1"/> Ver Detalhes
                      </Button>
@@ -587,8 +588,8 @@
                                      <p className="text-sm">{tab.emptyText}</p>
                                   </div>
                              ) : (
-                                  // Responsive grid with 2 columns on mobile, 3 on sm+, 4 on lg+
-                                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                                  // Responsive grid with 1 column on mobile, 2 on sm+, 3 on md+, 4 on lg+
+                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                                      {tab.challenges.map(ch => renderChallengeCard(ch, tab.value as 'available' | 'active' | 'completed'))}
                                  </div>
                              )}
@@ -608,3 +609,4 @@
              </div>
      );
  }
+   
