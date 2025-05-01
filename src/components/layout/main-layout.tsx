@@ -4,7 +4,7 @@
 import type { ReactNode } from 'react';
 import * as React from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation'; // Import usePathname and useRouter
+import { usePathname, useRouter } from 'next/navigation';
 import {
   Users,
   ClipboardList,
@@ -15,7 +15,7 @@ import {
   Briefcase,
   Building,
   Trophy,
-  Target, // Added icon for Challenges
+  Target,
 } from 'lucide-react';
 
 import {
@@ -36,9 +36,9 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'; // Ensure TooltipProvider is imported
-import { logoutUser } from '@/lib/auth'; // Import logout function
-import { useToast } from '@/hooks/use-toast'; // Import useToast
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { logoutUser } from '@/lib/auth';
+import { useToast } from '@/hooks/use-toast';
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -49,7 +49,7 @@ const navItems = [
   { href: '/employees', label: 'Colaboradores', icon: Users },
   { href: '/tasks', label: 'Tarefas', icon: ClipboardList },
   { href: '/evaluations', label: 'Avaliações', icon: ClipboardCheck },
-  { href: '/challenges', label: 'Desafios', icon: Target }, // Added Challenges link
+  { href: '/challenges', label: 'Desafios', icon: Target },
   { href: '/ranking', label: 'Ranking', icon: Trophy },
 ];
 
@@ -59,32 +59,54 @@ const adminTools = [
    { href: '/settings', label: 'Configurações', icon: Settings },
 ]
 
+// Helper to get initials from a name
+const getInitials = (name: string = '') => {
+    return name
+        ?.split(' ')
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase() || '??';
+};
+
 export function MainLayout({ children }: MainLayoutProps) {
   const isMobile = useIsMobile();
-  const pathname = usePathname(); // Use the hook to get the current path
-  const router = useRouter(); // Initialize router
-  const { toast } = useToast(); // Initialize toast
+  const pathname = usePathname();
+  const router = useRouter();
+  const { toast } = useToast();
 
    const handleLogout = async () => {
     try {
         await logoutUser();
         toast({ title: "Logout", description: "Você saiu com sucesso." });
-        router.push('/login'); // Redirect to login page after logout
+        router.push('/login');
     } catch (error) {
         console.error("Erro ao fazer logout:", error);
         toast({ title: "Erro", description: "Falha ao fazer logout.", variant: "destructive" });
     }
   };
 
+  // Function to determine if a menu item should be active
+  const isNavItemActive = (itemHref: string) => {
+    if (itemHref === '/') {
+      return pathname === '/'; // Exact match for root dashboard
+    }
+    return pathname.startsWith(itemHref); // Prefix match for other sections
+  };
+
+  const getCurrentPageTitle = () => {
+    const currentNavItem = [...navItems, ...adminTools].find(item => isNavItemActive(item.href));
+    return currentNavItem?.label || 'Check2B Admin';
+  };
+
 
   return (
-    // Ensure TooltipProvider wraps the entire layout content if tooltips are used anywhere within
     <TooltipProvider>
       <SidebarProvider defaultOpen={!isMobile} collapsible="icon">
+        {/* Sidebar Component */}
         <Sidebar variant="sidebar" side="left" collapsible="icon">
           <SidebarHeader className="items-center justify-center gap-2 p-4">
              <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
-               {/* Placeholder Logo */}
                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7 text-primary">
                  <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm13.36-1.814a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z" clipRule="evenodd" />
                </svg>
@@ -98,14 +120,15 @@ export function MainLayout({ children }: MainLayoutProps) {
              <SidebarTrigger className="group-data-[collapsible=offcanvas]:flex hidden ml-auto" />
           </SidebarHeader>
           <Separator />
+          {/* Sidebar Content (Menus) */}
           <SidebarContent className="p-2">
             <SidebarMenu>
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <Link href={item.href} passHref legacyBehavior>
                     <SidebarMenuButton
-                      as="a" // Ensure it renders as an anchor tag
-                      isActive={pathname === item.href}
+                      as="a"
+                      isActive={isNavItemActive(item.href)} // Use updated logic
                       tooltip={item.label}
                     >
                       <item.icon />
@@ -123,8 +146,8 @@ export function MainLayout({ children }: MainLayoutProps) {
                       <SidebarMenuItem key={item.href}>
                         <Link href={item.href} passHref legacyBehavior>
                           <SidebarMenuButton
-                            as="a" // Ensure it renders as an anchor tag
-                            isActive={pathname === item.href}
+                            as="a"
+                            isActive={isNavItemActive(item.href)} // Use updated logic
                             tooltip={item.label}
                           >
                             <item.icon />
@@ -136,6 +159,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                   </SidebarMenu>
               </SidebarGroup>
           </SidebarContent>
+          {/* Sidebar Footer */}
            <SidebarFooter className="p-2">
               <Separator />
               <div className="flex items-center justify-between p-2 group-data-[collapsible=icon]:hidden">
@@ -151,7 +175,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                  </div>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleLogout}> {/* Call handleLogout */}
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleLogout}>
                         <LogOut className="h-4 w-4" />
                          <span className="sr-only">Sair</span>
                       </Button>
@@ -162,7 +186,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=offcanvas]:hidden group-data-[state=expanded]:hidden hidden justify-center p-2">
                  <Tooltip>
                     <TooltipTrigger asChild>
-                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleLogout}> {/* Call handleLogout */}
+                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleLogout}>
                          <LogOut className="h-4 w-4" />
                          <span className="sr-only">Sair</span>
                        </Button>
@@ -172,17 +196,18 @@ export function MainLayout({ children }: MainLayoutProps) {
                </div>
           </SidebarFooter>
         </Sidebar>
+
+        {/* Main Content Area */}
         <SidebarInset className="flex flex-col">
+          {/* Header */}
           <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 lg:px-6">
             <SidebarTrigger className="md:hidden" /> {/* Mobile trigger */}
             <h1 className="text-lg font-semibold">
-               {/* Dynamically set based on current page/route */}
-               {[...navItems, ...adminTools].find(item => pathname?.startsWith(item.href) && (item.href !== '/' || pathname === '/'))?.label || // Match start for nested routes, exact for '/'
-                'Check2B'}
+               {getCurrentPageTitle()} {/* Display dynamic title */}
             </h1>
             {/* Add any header actions here if needed */}
           </header>
-          {/* This is where the page content passed from AdminLayout or EmployeeLayout is rendered */}
+          {/* Page Content */}
           <main className="flex-1 overflow-auto p-4 lg:p-6">{children}</main>
         </SidebarInset>
       </SidebarProvider>

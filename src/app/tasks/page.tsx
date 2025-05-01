@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Copy, ClipboardList, Loader2 } from 'lucide-react'; // Added Icons
+import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Copy, ClipboardList, Loader2 } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -35,24 +35,29 @@ import {
 import { TaskForm } from '@/components/task/task-form';
 import type { Task } from '@/types/task';
 import { useToast } from '@/hooks/use-toast';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'; // Added Card components
-import { DataTable } from '@/components/ui/data-table'; // Import DataTable
-import type { ColumnDef } from '@tanstack/react-table'; // Import ColumnDef
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { DataTable } from '@/components/ui/data-table';
+import type { ColumnDef } from '@tanstack/react-table';
 
-// Mock data (simulated API response) - Manter nomes em português
-export const mockTasks: Task[] = [
+export let mockTasks: Task[] = [
   { id: 't1', title: 'Verificar Emails', description: 'Responder a todos os emails pendentes.', criteria: 'Caixa de entrada zerada ou emails urgentes respondidos.', category: 'Comunicação', periodicity: 'daily', assignedTo: 'role', assignedEntityId: 'Recrutadora' },
   { id: 't2', title: 'Reunião Diária', description: 'Participar da reunião da equipe.', criteria: 'Presença e participação ativa.', category: 'Engenharia', periodicity: 'daily', assignedTo: 'department', assignedEntityId: 'Engenharia' },
   { id: 't3', title: 'Atualizar CRM', description: 'Registrar novas interações no CRM.', criteria: 'CRM atualizado com atividades do dia.', category: 'Vendas', periodicity: 'daily', assignedTo: 'role', assignedEntityId: 'Executivo de Contas' },
   { id: 't4', title: 'Postar em Redes Sociais', description: 'Agendar/publicar post planejado.', criteria: 'Post publicado conforme planejado.', category: 'Marketing', periodicity: 'specific_days', assignedTo: 'role', assignedEntityId: 'Analista de Marketing' },
   { id: 't5', title: 'Revisar Código', description: 'Revisar pull requests designados.', criteria: 'PRs revisados com feedback.', category: 'Engenharia', periodicity: 'daily', assignedTo: 'individual', assignedEntityId: '2' /* Beto Santos ID */ },
-  { id: 't6', title: 'Relatório Semanal', description: 'Compilar dados e criar relatório.', criteria: 'Relatório completo e enviado.', category: 'Geral', periodicity: 'specific_days' /* e.g., Sextas */ }, // Added global task
+  { id: 't6', title: 'Relatório Semanal', description: 'Compilar dados e criar relatório.', criteria: 'Relatório completo e enviado.', category: 'Geral', periodicity: 'specific_days' /* e.g., Sextas */ },
 ];
 
-// Mock API functions
+const mockEmployees: Array<{ id: string; name: string }> = [
+  { id: '1', name: 'Alice Silva' },
+  { id: '2', name: 'Beto Santos' },
+  { id: '4', name: 'Davi Costa' },
+  { id: '5', name: 'Eva Pereira' },
+];
+
 const fetchTasks = async (): Promise<Task[]> => {
   await new Promise(resolve => setTimeout(resolve, 500));
-  return [...mockTasks]; // Return a copy
+  return [...mockTasks];
 };
 
 const saveTask = async (taskData: Omit<Task, 'id'> | Task): Promise<Task> => {
@@ -68,11 +73,9 @@ const saveTask = async (taskData: Omit<Task, 'id'> | Task): Promise<Task> => {
         }
     } else {
         const newTask: Task = {
-            id: `t${Date.now()}`, // Simple ID generation
-            ...(taskData as Omit<Task, 'id'>), // Cast needed here
-             // Ensure required fields have defaults if not provided, matching Task type
-             periodicity: taskData.periodicity || 'daily', // Default if missing
-             // Other required fields should be handled by the form validation
+            id: `t${Date.now()}`,
+            ...(taskData as Omit<Task, 'id'>),
+             periodicity: taskData.periodicity || 'daily',
         };
         mockTasks.push(newTask);
         console.log("Nova tarefa adicionada:", newTask);
@@ -101,7 +104,6 @@ export default function TasksPage() {
   const [taskToDelete, setTaskToDelete] = React.useState<Task | null>(null);
   const { toast } = useToast();
 
-  // Helper Functions
   const getAssignmentText = (task: Task): string => {
       if (!task.assignedTo) return 'Global';
       let typeText = '';
@@ -111,7 +113,6 @@ export default function TasksPage() {
           case 'individual': typeText = 'Indiv.'; break;
           default: typeText = task.assignedTo;
       }
-      // Fetch name for individual if possible, otherwise show ID
       const entityName = task.assignedTo === 'individual' ? mockEmployees.find(e => e.id === task.assignedEntityId)?.name : task.assignedEntityId;
       return `${typeText}${entityName ? `: ${entityName}` : ''}`;
   }
@@ -126,7 +127,6 @@ export default function TasksPage() {
   }
 
 
-  // Define columns for DataTable
   const columns: ColumnDef<Task>[] = [
     { accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
     {
@@ -196,13 +196,13 @@ export default function TasksPage() {
     loadTasks();
   }, [loadTasks]);
 
-  const handleSaveTask = async (data: any) => { // Type any for mock, define properly later
+  const handleSaveTask = async (data: any) => {
      const taskDataToSave = selectedTask ? { ...selectedTask, ...data } : data;
      try {
         await saveTask(taskDataToSave);
         setIsFormOpen(false);
         setSelectedTask(null);
-        await loadTasks(); // Refresh list
+        await loadTasks();
         toast({
           title: "Sucesso!",
           description: `Tarefa ${selectedTask ? 'atualizada' : 'criada'} com sucesso.`,
@@ -239,18 +239,16 @@ export default function TasksPage() {
   };
 
    const handleDuplicateTask = async (task: Task) => {
-    // Exclude ID and create a new title for duplication
     const { id, title, ...taskData } = task;
     const duplicatedTaskData = {
         ...taskData,
-        title: `${title} (Cópia)`, // Indicate it's a copy
-        // Ensure all required fields from Task type are present if needed
+        title: `${title} (Cópia)`,
         description: task.description,
         criteria: task.criteria,
         periodicity: task.periodicity,
     };
     try {
-       await saveTask(duplicatedTaskData as Omit<Task, 'id'>); // Cast as Omit<Task, 'id'>
+       await saveTask(duplicatedTaskData as Omit<Task, 'id'>);
       toast({ title: "Sucesso", description: "Tarefa duplicada com sucesso." });
       await loadTasks();
     } catch (error) {
@@ -265,13 +263,13 @@ export default function TasksPage() {
   };
 
    const openAddForm = () => {
-    setSelectedTask(null); // Ensure no task is selected for adding
+    setSelectedTask(null);
     setIsFormOpen(true);
   };
 
 
   return (
-     <div className="space-y-6"> {/* Added space-y for better spacing */}
+     <div className="space-y-6"> {/* Main container */}
        <Card>
          <CardHeader>
              <CardTitle className="flex items-center gap-2">
@@ -288,8 +286,8 @@ export default function TasksPage() {
                 <DataTable
                     columns={columns}
                     data={tasks}
-                    filterColumn="title" // Specify the column to filter
-                    filterPlaceholder="Buscar por título..." // Custom placeholder
+                    filterColumn="title"
+                    filterPlaceholder="Buscar por título..."
                 />
             )}
          </CardContent>
@@ -301,7 +299,6 @@ export default function TasksPage() {
           </CardFooter>
        </Card>
 
-       {/* Formulário de Tarefa (Dialog) */}
        <TaskForm
           task={selectedTask}
           onSave={handleSaveTask}
@@ -309,7 +306,6 @@ export default function TasksPage() {
           onOpenChange={setIsFormOpen}
         />
 
-       {/* Confirmação de Remoção (AlertDialog) */}
        <AlertDialog open={isDeleting} onOpenChange={setIsDeleting}>
             <AlertDialogContent>
                 <AlertDialogHeader>
@@ -329,11 +325,3 @@ export default function TasksPage() {
     </div>
   );
 }
-
-// Need mockEmployees for getAssignmentText
-const mockEmployees: Array<{ id: string; name: string }> = [
-  { id: '1', name: 'Alice Silva' },
-  { id: '2', name: 'Beto Santos' },
-  { id: '4', name: 'Davi Costa' },
-  { id: '5', name: 'Eva Pereira' },
-];

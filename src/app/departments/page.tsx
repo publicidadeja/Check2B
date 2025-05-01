@@ -31,20 +31,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'; // Added CardFooter
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { DepartmentForm } from '@/components/department/department-form';
-import { DataTable } from '@/components/ui/data-table'; // Import DataTable
-import type { ColumnDef } from '@tanstack/react-table'; // Import ColumnDef
+import { DataTable } from '@/components/ui/data-table';
+import type { ColumnDef } from '@tanstack/react-table';
 
 export interface Department {
     id: string;
     name: string;
     description?: string;
-    headId?: string; // Employee ID of the department head (optional)
+    headId?: string;
 }
 
-// Mock data for departments
 const mockDepartments: Department[] = [
     { id: 'dept1', name: 'RH', description: 'Recursos Humanos', headId: '1' },
     { id: 'dept2', name: 'Engenharia', description: 'Desenvolvimento e Tecnologia' },
@@ -53,7 +52,6 @@ const mockDepartments: Department[] = [
     { id: 'dept5', name: 'Operações', description: 'Operações Gerais' },
 ];
 
-// Mock API functions
 const fetchDepartments = async (): Promise<Department[]> => {
     await new Promise(resolve => setTimeout(resolve, 500));
     return [...mockDepartments];
@@ -84,10 +82,8 @@ const saveDepartment = async (deptData: Omit<Department, 'id'> | Department): Pr
 const deleteDepartment = async (deptId: string): Promise<void> => {
     await new Promise(resolve => setTimeout(resolve, 500));
     const index = mockDepartments.findIndex(d => d.id === deptId);
-    // Basic check: prevent deleting if department has employees (in real app)
-    // For mock, we just check if it's a core dept like 'Engenharia'
     const isCoreDept = ['Engenharia', 'RH', 'Vendas', 'Marketing', 'Operações'].includes(mockDepartments[index]?.name);
-    if (isCoreDept && mockDepartments.length <= 5) { // Simple safeguard for mock
+    if (isCoreDept && mockDepartments.length <= 5) {
         throw new Error("Não é possível remover departamentos essenciais (simulado).");
     }
 
@@ -108,11 +104,9 @@ export default function DepartmentsPage() {
     const [departmentToDelete, setDepartmentToDelete] = React.useState<Department | null>(null);
     const { toast } = useToast();
 
-    // Define columns for DataTable
     const columns: ColumnDef<Department>[] = [
         { accessorKey: "name", header: "Nome", cell: ({ row }) => <span className="font-medium">{row.original.name}</span> },
         { accessorKey: "description", header: "Descrição", cell: ({ row }) => row.original.description || '-' },
-        // { accessorKey: "headId", header: "Responsável", cell: ({ row }) => row.original.headId || '-' }, // Example - Add if needed
         {
             id: "actions",
             cell: ({ row }) => {
@@ -219,7 +213,7 @@ export default function DepartmentsPage() {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6"> {/* Main container */}
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -250,15 +244,13 @@ export default function DepartmentsPage() {
                  </CardFooter>
             </Card>
 
-            {/* Department Form Dialog */}
-             <DepartmentForm
+            <DepartmentForm
                 department={selectedDepartment}
                 onSave={handleSaveDepartment}
                 open={isFormOpen}
                 onOpenChange={setIsFormOpen}
             />
 
-            {/* Delete Confirmation Dialog */}
             <AlertDialog open={isDeleting} onOpenChange={setIsDeleting}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -278,4 +270,3 @@ export default function DepartmentsPage() {
         </div>
     );
 }
-

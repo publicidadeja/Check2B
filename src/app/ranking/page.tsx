@@ -1,11 +1,12 @@
+
 'use client';
 
 import * as React from 'react';
-import { format, parseISO } from 'date-fns'; // Added parseISO
+import { format, parseISO, subMonths, addMonths, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
-import { Trophy, Cog, History, Award as AwardIcon, Crown, Medal, BarChartHorizontal, Loader2, ListFilter, PlusCircle, Edit, Trash2, MoreHorizontal, FileClock } from "lucide-react";
+import { Trophy, Cog, History, Award as AwardIcon, Crown, Medal, BarChartHorizontal, Loader2, ListFilter, PlusCircle, Edit, Trash2, MoreHorizontal, FileClock, User, Activity, AlertTriangle, Eye } from "lucide-react";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -33,7 +34,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'; // Import AlertDialog
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
     Dialog,
     DialogContent,
@@ -42,7 +43,7 @@ import {
     DialogHeader,
     DialogTitle,
     DialogClose
-} from '@/components/ui/dialog'; // Import Dialog components
+} from '@/components/ui/dialog';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -50,27 +51,30 @@ import {
     DropdownMenuLabel,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'; // Import DropdownMenu components
+} from '@/components/ui/dropdown-menu';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'; // Ensure Tooltip components are imported
+import { TrendingDown, TrendingUp, Minus } from 'lucide-react'; // Import trend icons
 
-// Mock Data Types
-export interface Award { // Exported Award interface
+export interface Award {
     id: string;
     title: string;
     description: string;
     monetaryValue?: number;
     nonMonetaryValue?: string;
     imageUrl?: string;
-    period: string; // e.g., "recorrente", "2024-08"
-    eligibilityCriteria?: boolean; // Simplified: Requires excellence?
+    period: string;
+    eligibilityCriteria?: boolean;
     winnerCount: number;
     valuesPerPosition?: { [key: number]: { monetary?: number, nonMonetary?: string } };
-    eligibleDepartments: string[]; // 'all' or list of department names/ids
+    eligibleDepartments: string[];
     status: 'active' | 'inactive' | 'draft';
     isRecurring: boolean;
     specificMonth?: Date;
 }
 
-export interface RankingEntry { // Exported RankingEntry interface
+export interface RankingEntry {
     rank: number;
     employeeId: string;
     employeeName: string;
@@ -83,7 +87,7 @@ export interface RankingEntry { // Exported RankingEntry interface
 }
 
 interface AwardHistoryEntry {
-    id: string; // Added ID for key prop
+    id: string;
     period: string;
     awardTitle: string;
     winners: { rank: number; employeeName: string; prize: string }[];
@@ -91,7 +95,6 @@ interface AwardHistoryEntry {
     notes?: string;
 }
 
-// Zod Schema for Award Form Validation
 const awardSchema = z.object({
     title: z.string().min(3, "Título deve ter pelo menos 3 caracteres."),
     description: z.string().min(5, "Descrição deve ter pelo menos 5 caracteres."),
@@ -102,22 +105,13 @@ const awardSchema = z.object({
     specificMonth: z.date().optional(),
     eligibilityCriteria: z.boolean().default(false),
     winnerCount: z.coerce.number().int("Número de ganhadores deve ser inteiro.").min(1, "Deve haver pelo menos 1 ganhador.").default(1),
-    // TODO: Add validation for valuesPerPosition based on winnerCount
+    valuesPerPosition: z.record(z.object({ monetary: z.number().optional(), nonMonetary: z.string().optional() })).optional(), // Added validation for per-position values
     eligibleDepartments: z.array(z.string()).min(1, "Selecione pelo menos um departamento ou 'Todos'."),
     status: z.enum(['active', 'inactive', 'draft']).default('draft'),
 }).refine(data => data.isRecurring || data.specificMonth, {
     message: "Se não for recorrente, um mês específico deve ser selecionado.",
     path: ["specificMonth"],
-}).refine(data => {
-    // Validate that if multiple winners, values per position might be needed (or handle default logic)
-    if (data.winnerCount > 1 && (!data.valuesPerPosition && !data.monetaryValue && !data.nonMonetaryValue)) {
-         // Allow saving if a default value is provided, otherwise prompt for per-position values later?
-         // For now, let's allow saving and assume default value applies if per-position is missing.
-         // Refinement: A more complex UI would dynamically add fields for each position.
-    }
-    return true;
-}, { message: "Defina valores por posição para múltiplos ganhadores ou forneça um valor padrão.", path: ["valuesPerPosition"] })
-.refine(data => data.eligibleDepartments.length > 0, {
+}).refine(data => data.eligibleDepartments.length > 0, {
     message: "A seleção de departamentos não pode estar vazia (escolha 'Todos' se aplicável).",
     path: ["eligibleDepartments"],
 });
@@ -126,22 +120,19 @@ const awardSchema = z.object({
 type AwardFormData = z.infer<typeof awardSchema>;
 
 
-// Mock Data (Replace with API calls)
-// Export mockAwards
-export let mockAwards: Award[] = [ // Changed to let and exported
+export let mockAwards: Award[] = [
     { id: 'awd1', title: 'Colaborador do Mês', description: 'Reconhecimento pelo desempenho excepcional.', monetaryValue: 500, period: 'recorrente', winnerCount: 1, eligibleDepartments: ['all'], status: 'active', isRecurring: true },
     { id: 'awd2', title: 'Destaque Operacional - Julho', description: 'Melhor performance nas tarefas operacionais.', nonMonetaryValue: 'Folga adicional', period: '2024-07', winnerCount: 1, eligibleDepartments: ['Engenharia', 'RH'], status: 'inactive', isRecurring: false, specificMonth: new Date(2024, 6, 1), eligibilityCriteria: true },
     { id: 'awd3', title: 'Top 3 Vendas', description: 'Maiores resultados em vendas.', monetaryValue: 300, period: 'recorrente', winnerCount: 3, eligibleDepartments: ['Vendas'], status: 'active', isRecurring: true, valuesPerPosition: { 1: { monetary: 300 }, 2: { monetary: 200 }, 3: { monetary: 100 } } },
     { id: 'awd4', title: 'Campeão da Inovação (Rascunho)', description: 'Melhor sugestão de melhoria.', period: 'recorrente', winnerCount: 1, eligibleDepartments: ['all'], status: 'draft', isRecurring: true },
 ];
 
-// Export mockRanking
 export const mockRanking: RankingEntry[] = [
     { rank: 1, employeeId: '1', employeeName: 'Alice Silva', department: 'RH', role: 'Recrutadora', score: 980, zeros: 0, trend: 'up', employeePhotoUrl: 'https://picsum.photos/id/1027/40/40' },
     { rank: 2, employeeId: '4', employeeName: 'Davi Costa', department: 'Vendas', role: 'Executivo de Contas', score: 950, zeros: 1, trend: 'stable', employeePhotoUrl: 'https://picsum.photos/id/338/40/40' },
-    { rank: 3, employeeId: '5', employeeName: 'Eva Pereira', department: 'Engenharia', role: 'Desenvolvedora Frontend', score: 945, zeros: 1, trend: 'down', employeePhotoUrl: 'https://picsum.photos/id/1005/40/40' }, // Updated URL
+    { rank: 3, employeeId: '5', employeeName: 'Eva Pereira', department: 'Engenharia', role: 'Desenvolvedora Frontend', score: 945, zeros: 1, trend: 'down', employeePhotoUrl: 'https://picsum.photos/id/1005/40/40' },
     { rank: 4, employeeId: '2', employeeName: 'Beto Santos', department: 'Engenharia', role: 'Desenvolvedor Backend', score: 920, zeros: 2, trend: 'up', employeePhotoUrl: 'https://picsum.photos/id/1005/40/40' },
-    { rank: 5, employeeId: '6', employeeName: 'Leo Corax', department: 'Engenharia', role: 'Desenvolvedor Frontend', score: 890, zeros: 3, trend: 'stable', employeePhotoUrl: 'https://picsum.photos/seed/leo/40/40' }, // Added Leo
+    { rank: 5, employeeId: '6', employeeName: 'Leo Corax', department: 'Engenharia', role: 'Desenvolvedor Frontend', score: 890, zeros: 3, trend: 'stable', employeePhotoUrl: 'https://picsum.photos/seed/leo/40/40' },
 ];
 
 const mockHistory: AwardHistoryEntry[] = [
@@ -149,10 +140,8 @@ const mockHistory: AwardHistoryEntry[] = [
     { id: 'hist2', period: '2024-06', awardTitle: 'Colaborador do Mês', winners: [{ rank: 1, employeeName: 'Alice Silva', prize: 'R$ 500,00' }], deliveryPhotoUrl: 'https://picsum.photos/seed/award6/200/100' },
 ];
 
-// Mock list of departments for the selector
 const mockDepartments = ['RH', 'Engenharia', 'Marketing', 'Vendas', 'Operações'];
 
-// Mock API functions (basic CRUD for Awards)
 const fetchAwards = async (): Promise<Award[]> => {
     await new Promise(resolve => setTimeout(resolve, 500));
     return [...mockAwards];
@@ -172,8 +161,8 @@ const saveAward = async (awardData: Omit<Award, 'id'> | Award): Promise<Award> =
     } else { // Create
         const newAward: Award = {
             id: `awd${Date.now()}`,
-            status: 'draft', // Default new to draft
-            ...(awardData as Omit<Award, 'id'>), // Cast needed
+            status: 'draft',
+            ...(awardData as Omit<Award, 'id'>),
         };
         mockAwards.push(newAward);
         console.log("Nova premiação adicionada:", newAward);
@@ -195,26 +184,22 @@ const deleteAward = async (awardId: string): Promise<void> => {
     }
 }
 
-// Mock function to fetch ranking data (replace with actual API)
 const fetchRankingData = async (period: Date): Promise<RankingEntry[]> => {
     await new Promise(resolve => setTimeout(resolve, 800));
-    // Simulate data changing slightly based on period (very basic simulation)
     const monthFactor = period.getMonth() + 1;
     return mockRanking.map(entry => ({
         ...entry,
-        score: Math.max(800, entry.score + (monthFactor * 5 - 20)), // Simulate slight score change
-        zeros: Math.max(0, entry.zeros + (Math.random() > 0.7 ? 1 : 0) - (Math.random() > 0.8 ? 1 : 0)), // Simulate zero changes
-    })).sort((a, b) => b.score - a.score || a.zeros - b.zeros) // Sort by score desc, then zeros asc
-      .map((entry, index) => ({ ...entry, rank: index + 1 })); // Recalculate rank
+        score: Math.max(800, entry.score + (monthFactor * 5 - 20)),
+        zeros: Math.max(0, entry.zeros + (Math.random() > 0.7 ? 1 : 0) - (Math.random() > 0.8 ? 1 : 0)),
+    })).sort((a, b) => b.score - a.score || a.zeros - b.zeros)
+      .map((entry, index) => ({ ...entry, rank: index + 1 }));
 }
 
-// Mock function to fetch award history (replace with actual API)
 const fetchAwardHistory = async (): Promise<AwardHistoryEntry[]> => {
      await new Promise(resolve => setTimeout(resolve, 600));
-     return [...mockHistory].sort((a, b) => parseISO(b.period + '-01').getTime() - parseISO(a.period + '-01').getTime()); // Sort by period desc
+     return [...mockHistory].sort((a, b) => parseISO(b.period + '-01').getTime() - parseISO(a.period + '-01').getTime());
 }
 
-// Mock function to confirm winners (replace with actual API)
 const confirmWinners = async (period: string, awardId: string, winners: RankingEntry[]): Promise<AwardHistoryEntry> => {
      await new Promise(resolve => setTimeout(resolve, 1000));
      const award = mockAwards.find(a => a.id === awardId);
@@ -234,18 +219,16 @@ const confirmWinners = async (period: string, awardId: string, winners: RankingE
                  : award.monetaryValue ? `R$ ${award.monetaryValue.toFixed(2)}` : award.nonMonetaryValue || 'Prêmio Indefinido'
          })),
      };
-     mockHistory.unshift(historyEntry); // Add to beginning
+     mockHistory.unshift(historyEntry);
      console.log("Vencedores confirmados e histórico atualizado:", historyEntry);
      return historyEntry;
 }
 
-// Mock function to export data (replace with actual implementation)
 const exportData = (data: any[], filename: string) => {
      if (data.length === 0) {
         alert("Não há dados para exportar.");
         return;
      }
-     // Basic CSV export simulation
      const header = Object.keys(data[0]).join(',');
      const rows = data.map(row => Object.values(row).map(val => `"${String(val).replace(/"/g, '""')}"`).join(','));
      const csvContent = `data:text/csv;charset=utf-8,${header}\n${rows.join('\n')}`;
@@ -259,16 +242,13 @@ const exportData = (data: any[], filename: string) => {
 }
 
 
-// Helper: Get Initials
 const getInitials = (name?: string) => {
     if (!name) return '??';
     return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
 }
 
 
-// DataTable Columns definition (for ranking)
 const rankingColumns: ColumnDef<RankingEntry>[] = [
-    // ... (ranking columns definition remains the same) ...
      {
         accessorKey: "rank",
         header: "#",
@@ -311,246 +291,6 @@ const rankingColumns: ColumnDef<RankingEntry>[] = [
     },
 ];
 
-// DataTable Columns definition (for awards)
-const awardColumns: ColumnDef<Award>[] = [
-     {
-        accessorKey: "title",
-        header: "Título",
-        cell: ({ row }) => <span className="font-medium">{row.original.title}</span>,
-    },
-    {
-        accessorKey: "period",
-        header: "Período",
-        cell: ({ row }) => (
-            <span>
-                {row.original.isRecurring ? 'Recorrente' : row.original.specificMonth ? format(row.original.specificMonth, 'MMMM yyyy', {locale: ptBR}) : 'Inválido'}
-            </span>
-        ),
-    },
-     {
-        accessorKey: "winnerCount",
-        header: "Ganhadores",
-        cell: ({ row }) => <div className="text-center">{row.original.winnerCount}</div>,
-         size: 100,
-    },
-    {
-        accessorKey: "eligibleDepartments",
-        header: "Elegíveis",
-        cell: ({ row }) => (
-            <Badge variant="outline">
-                {row.original.eligibleDepartments.includes('all') ? 'Todos Deptos' : `${row.original.eligibleDepartments.length} Depto(s)`}
-            </Badge>
-        ),
-         size: 120,
-    },
-    {
-        accessorKey: "status",
-        header: "Status",
-        cell: ({ row }) => {
-             const variantMap: Record<Award['status'], "default" | "secondary" | "outline"> = {
-                 active: 'default',
-                 inactive: 'secondary',
-                 draft: 'outline'
-             };
-            return <Badge variant={variantMap[row.original.status]}>{row.original.status === 'active' ? 'Ativa' : row.original.status === 'inactive' ? 'Inativa' : 'Rascunho'}</Badge>;
-        },
-        size: 100,
-    },
-     {
-        id: "actions",
-        cell: ({ row }) => {
-            const award = row.original;
-             // eslint-disable-next-line react-hooks/rules-of-hooks
-            const { openEditForm, handleDeleteClick } = React.useContext(AwardConfigContext);
-
-            return (
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                            <span className="sr-only">Abrir menu</span>
-                            <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                        <DropdownMenuItem onClick={() => openEditForm(award)}>
-                            <Edit className="mr-2 h-4 w-4" /> Editar
-                        </DropdownMenuItem>
-                        {/* Add Activate/Deactivate actions later */}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                            onClick={() => handleDeleteClick(award)}
-                            className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                            disabled={award.status === 'active'} // Prevent deleting active awards
-                        >
-                            <Trash2 className="mr-2 h-4 w-4" /> Remover
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            );
-        },
-        size: 50,
-    },
-];
-
-// --- Component Sections ---
-
-const RankingDashboard = () => {
-    const [rankingData, setRankingData] = React.useState<RankingEntry[]>([]);
-    const [currentMonth, setCurrentMonth] = React.useState(new Date()); // Start with current month
-    const [isLoading, setIsLoading] = React.useState(true);
-    const [isConfirmingWinners, setIsConfirmingWinners] = React.useState(false);
-    const { toast } = useToast();
-
-    // Fetch ranking data based on selected month
-    React.useEffect(() => {
-        const loadRanking = async () => {
-             setIsLoading(true);
-             try {
-                 const data = await fetchRankingData(currentMonth);
-                 setRankingData(data);
-             } catch (error) {
-                 console.error("Falha ao carregar ranking:", error);
-                 toast({ title: "Erro", description: "Não foi possível carregar o ranking.", variant: "destructive" });
-             } finally {
-                 setIsLoading(false);
-             }
-        };
-        loadRanking();
-    }, [currentMonth, toast]); // Reload when month changes
-
-    const calculateRemainingDays = () => {
-        const today = new Date();
-        if (today.getMonth() !== currentMonth.getMonth() || today.getFullYear() !== currentMonth.getFullYear()) {
-            return 0; // No remaining days if viewing past month
-        }
-        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-        const diffTime = Math.abs(endOfMonth.getTime() - today.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return diffDays;
-    };
-
-    const remainingDays = calculateRemainingDays();
-    const activeAward = mockAwards.find(a => a.status === 'active' && (a.isRecurring || (a.specificMonth && a.specificMonth.getMonth() === currentMonth.getMonth() && a.specificMonth.getFullYear() === currentMonth.getFullYear())));
-    const isCurrentMonth = new Date().getMonth() === currentMonth.getMonth() && new Date().getFullYear() === currentMonth.getFullYear();
-    const canConfirmWinners = !isCurrentMonth && activeAward && rankingData.length > 0; // Can only confirm past months with an award and data
-
-    const handlePreviousMonth = () => {
-        setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
-    };
-
-    const handleNextMonth = () => {
-         setCurrentMonth(prev => {
-             const next = new Date(prev.getFullYear(), prev.getMonth() + 1, 1);
-             // Prevent going to future months beyond the current one
-             return next <= new Date() ? next : prev;
-         });
-    };
-
-    const handleConfirmWinners = async () => {
-        if (!canConfirmWinners || !activeAward) return;
-        setIsConfirmingWinners(true);
-        try {
-            const periodStr = format(currentMonth, 'yyyy-MM');
-            await confirmWinners(periodStr, activeAward.id, rankingData);
-             toast({ title: "Sucesso!", description: `Vencedores para ${format(currentMonth, 'MMMM yyyy', { locale: ptBR })} confirmados.` });
-             // Optionally, disable confirm button after success for this period or refresh state
-        } catch (error) {
-            console.error("Erro ao confirmar vencedores:", error);
-            toast({ title: "Erro", description: "Falha ao confirmar vencedores.", variant: "destructive" });
-        } finally {
-            setIsConfirmingWinners(false);
-        }
-    };
-
-    const handleExportRanking = () => {
-         exportData(rankingData, `ranking_${format(currentMonth, 'yyyy-MM')}`);
-    }
-
-
-    return (
-        <div className="space-y-6">
-            <Card>
-                <CardHeader>
-                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                        <div>
-                            <CardTitle className="flex items-center gap-2">
-                                <Trophy className="h-5 w-5" /> Ranking - {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
-                            </CardTitle>
-                            <CardDescription>Visualização do desempenho dos colaboradores.</CardDescription>
-                        </div>
-                         {/* Month Navigation */}
-                        <div className="flex items-center gap-2">
-                             <Button variant="outline" size="sm" onClick={handlePreviousMonth}>Anterior</Button>
-                             <Button variant="outline" size="sm" onClick={handleNextMonth} disabled={isCurrentMonth}>Próximo</Button>
-                        </div>
-                     </div>
-                </CardHeader>
-                <CardContent>
-                     {isLoading ? (
-                        <div className="flex justify-center items-center py-10">
-                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                            <span className="ml-2 text-muted-foreground">Carregando ranking...</span>
-                        </div>
-                    ) : (
-                    <>
-                        {/* Top 3 Cards */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                            {rankingData.slice(0, 3).map((emp, index) => (
-                                <Card key={emp.employeeId} className={`border-2 ${index === 0 ? 'border-yellow-500 shadow-md' : index === 1 ? 'border-slate-400 shadow' : 'border-yellow-700 shadow-sm'}`}>
-                                    <CardHeader className="flex flex-row items-center gap-3 pb-2 pt-3 px-4">
-                                        {index === 0 && <Crown className="h-6 w-6 text-yellow-500 flex-shrink-0" />}
-                                        {index === 1 && <Medal className="h-6 w-6 text-slate-400 flex-shrink-0" />}
-                                        {index === 2 && <Medal className="h-6 w-6 text-yellow-700 flex-shrink-0" />}
-                                        <Avatar className="h-10 w-10">
-                                            <AvatarImage src={emp.employeePhotoUrl} />
-                                            <AvatarFallback>{getInitials(emp.employeeName)}</AvatarFallback>
-                                        </Avatar>
-                                        <div className="flex-1 min-w-0">
-                                            <CardTitle className="text-base truncate">{emp.employeeName}</CardTitle>
-                                            <CardDescription className="truncate">{emp.role}</CardDescription>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent className="text-sm flex justify-between items-center pt-1 pb-3 px-4">
-                                        <span>Pontos: <strong className="font-semibold">{emp.score}</strong></span>
-                                        <Badge variant={emp.zeros > 0 ? "destructive" : "default"} className="text-xs">{emp.zeros} Zero(s)</Badge>
-                                    </CardContent>
-                                </Card>
-                            ))}
-                             {rankingData.length < 3 && Array(3 - rankingData.length).fill(0).map((_, i) => (
-                                <Card key={`placeholder-${i}`} className="border-dashed border-muted flex items-center justify-center h-full min-h-[100px]">
-                                     <p className="text-muted-foreground text-sm">{(rankingData.length + i + 1)}º Lugar</p>
-                                </Card>
-                             ))}
-                        </div>
-
-                        {/* Data Table */}
-                        <DataTable columns={rankingColumns} data={rankingData} filterColumn='employeeName' filterPlaceholder="Filtrar por colaborador..."/>
-                        <p className="text-xs text-muted-foreground mt-4">*Ranking baseado nas avaliações diárias e desafios. Zeros impactam negativamente.</p>
-                    </>
-                    )}
-                </CardContent>
-                <CardFooter className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                    <div className="text-sm text-muted-foreground space-y-1">
-                        <p><strong>Premiação Vigente:</strong> {activeAward?.title || (isCurrentMonth ? 'Nenhuma ativa' : 'Nenhuma definida para o período')}</p>
-                         {isCurrentMonth && <p><strong>Dias Restantes:</strong> {remainingDays}</p>}
-                     </div>
-                    <div className="flex gap-2">
-                         <Button size="sm" variant="outline" onClick={handleExportRanking} disabled={isLoading || rankingData.length === 0}>Exportar Ranking</Button>
-                         {canConfirmWinners && (
-                             <Button size="sm" onClick={handleConfirmWinners} disabled={isConfirmingWinners || isLoading}>
-                                 {isConfirmingWinners && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                                 Confirmar Vencedores
-                             </Button>
-                         )}
-                     </div>
-                 </CardFooter>
-            </Card>
-        </div>
-    );
-};
-
-// Context for Award Configuration actions
 const AwardConfigContext = React.createContext<{
     openEditForm: (award: Award) => void;
     handleDeleteClick: (award: Award) => void;
@@ -570,7 +310,6 @@ const AwardConfiguration = () => {
     const [isDeleting, setIsDeleting] = React.useState(false);
     const { toast } = useToast();
 
-    // Load awards
     const loadAwards = React.useCallback(async () => {
         setIsLoading(true);
         try {
@@ -588,26 +327,24 @@ const AwardConfiguration = () => {
         loadAwards();
     }, [loadAwards]);
 
-    // Form hook
     const form = useForm<AwardFormData>({
         resolver: zodResolver(awardSchema),
         defaultValues: {
             title: '', description: '', monetaryValue: undefined, nonMonetaryValue: '', imageUrl: '',
             isRecurring: true, specificMonth: undefined, eligibilityCriteria: false, winnerCount: 1,
-            eligibleDepartments: ['all'], status: 'draft',
+            eligibleDepartments: ['all'], status: 'draft', valuesPerPosition: {}
         },
     });
     const { control, watch, setValue, handleSubmit, reset } = form;
     const isRecurring = watch('isRecurring');
-    // const eligibilityType = watch('eligibilityType'); // Assuming you add this field later
 
 
     const openAddForm = () => {
         setSelectedAward(null);
-        reset({ // Reset to defaults for new award
+        reset({
              title: '', description: '', monetaryValue: undefined, nonMonetaryValue: '', imageUrl: '',
              isRecurring: true, specificMonth: undefined, eligibilityCriteria: false, winnerCount: 1,
-             eligibleDepartments: ['all'], status: 'draft',
+             eligibleDepartments: ['all'], status: 'draft', valuesPerPosition: {}
         });
         setIsFormOpen(true);
     };
@@ -621,11 +358,12 @@ const AwardConfiguration = () => {
             nonMonetaryValue: award.nonMonetaryValue || '',
             imageUrl: award.imageUrl || '',
             isRecurring: award.isRecurring,
-            specificMonth: award.specificMonth ? new Date(award.specificMonth) : undefined, // Ensure Date object
+            specificMonth: award.specificMonth ? new Date(award.specificMonth) : undefined,
             eligibilityCriteria: award.eligibilityCriteria || false,
             winnerCount: award.winnerCount,
             eligibleDepartments: award.eligibleDepartments || ['all'],
             status: award.status,
+            valuesPerPosition: award.valuesPerPosition || {}
         });
         setIsFormOpen(true);
     }, [reset]);
@@ -641,27 +379,27 @@ const AwardConfiguration = () => {
          }
 
         const awardPayload: Omit<Award, 'id'> | Award = {
-            ...(selectedAward ? { id: selectedAward.id } : {}), // Include ID if editing
+            ...(selectedAward ? { id: selectedAward.id } : {}),
             title: data.title,
             description: data.description,
             monetaryValue: data.monetaryValue,
             nonMonetaryValue: data.nonMonetaryValue,
             imageUrl: data.imageUrl,
-            period: period, // Calculated period string
+            period: period,
             eligibilityCriteria: data.eligibilityCriteria,
             winnerCount: data.winnerCount,
             eligibleDepartments: data.eligibleDepartments,
             status: data.status,
             isRecurring: data.isRecurring,
-            specificMonth: data.isRecurring ? undefined : data.specificMonth, // Only set if not recurring
-            // valuesPerPosition: // Add logic based on winnerCount if needed
+            specificMonth: data.isRecurring ? undefined : data.specificMonth,
+            valuesPerPosition: data.valuesPerPosition
         };
 
         try {
             await saveAward(awardPayload);
             toast({ title: "Sucesso!", description: `Premiação "${data.title}" ${selectedAward ? 'atualizada' : 'criada'}.` });
             setIsFormOpen(false);
-            await loadAwards(); // Refresh the list
+            await loadAwards();
         } catch (error) {
             console.error("Erro ao salvar premiação:", error);
             toast({ title: "Erro", description: `Falha ao salvar premiação.`, variant: "destructive" });
@@ -692,6 +430,83 @@ const AwardConfiguration = () => {
         }
     };
 
+     const awardColumns: ColumnDef<Award>[] = [
+        {
+            accessorKey: "title",
+            header: "Título",
+            cell: ({ row }) => <span className="font-medium">{row.original.title}</span>,
+        },
+        {
+            accessorKey: "period",
+            header: "Período",
+            cell: ({ row }) => (
+                <span>
+                    {row.original.isRecurring ? 'Recorrente' : row.original.specificMonth ? format(row.original.specificMonth, 'MMMM yyyy', {locale: ptBR}) : 'Inválido'}
+                </span>
+            ),
+        },
+        {
+            accessorKey: "winnerCount",
+            header: "Ganhadores",
+            cell: ({ row }) => <div className="text-center">{row.original.winnerCount}</div>,
+            size: 100,
+        },
+        {
+            accessorKey: "eligibleDepartments",
+            header: "Elegíveis",
+            cell: ({ row }) => (
+                <Badge variant="outline">
+                    {row.original.eligibleDepartments.includes('all') ? 'Todos Deptos' : `${row.original.eligibleDepartments.length} Depto(s)`}
+                </Badge>
+            ),
+            size: 120,
+        },
+        {
+            accessorKey: "status",
+            header: "Status",
+            cell: ({ row }) => {
+                const variantMap: Record<Award['status'], "default" | "secondary" | "outline"> = {
+                    active: 'default',
+                    inactive: 'secondary',
+                    draft: 'outline'
+                };
+                return <Badge variant={variantMap[row.original.status]} className={row.original.status === 'active' ? 'bg-green-100 text-green-800' : ''}>{row.original.status === 'active' ? 'Ativa' : row.original.status === 'inactive' ? 'Inativa' : 'Rascunho'}</Badge>;
+            },
+            size: 100,
+        },
+        {
+            id: "actions",
+            cell: ({ row }) => {
+                const award = row.original;
+                return (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                                <span className="sr-only">Abrir menu</span>
+                                <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                            <DropdownMenuItem onClick={() => openEditForm(award)}>
+                                <Edit className="mr-2 h-4 w-4" /> Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                                onClick={() => handleDeleteClick(award)}
+                                className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                                disabled={award.status === 'active'}
+                            >
+                                <Trash2 className="mr-2 h-4 w-4" /> Remover
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                );
+            },
+            size: 50,
+        },
+    ];
+
 
     const contextValue = React.useMemo(() => ({ openEditForm, handleDeleteClick }), [openEditForm, handleDeleteClick]);
 
@@ -720,7 +535,6 @@ const AwardConfiguration = () => {
                     </CardContent>
                 </Card>
 
-                 {/* Award Form Dialog */}
                  <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                      <DialogContent className="sm:max-w-[600px]">
                          <DialogHeader>
@@ -731,7 +545,6 @@ const AwardConfiguration = () => {
                          </DialogHeader>
                         <Form {...form}>
                             <form onSubmit={handleSubmit(handleSaveAward)} className="space-y-4 py-4 max-h-[70vh] overflow-y-auto px-1">
-                                {/* Title */}
                                 <FormField control={control} name="title" render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Título</FormLabel>
@@ -739,7 +552,6 @@ const AwardConfiguration = () => {
                                         <FormMessage />
                                     </FormItem>
                                 )}/>
-                                {/* Description */}
                                 <FormField control={control} name="description" render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Descrição</FormLabel>
@@ -747,12 +559,10 @@ const AwardConfiguration = () => {
                                         <FormMessage />
                                     </FormItem>
                                 )}/>
-                                {/* Monetary & Non-Monetary */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                      <FormField control={control} name="monetaryValue" render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>Valor Monetário (R$) (Opcional)</FormLabel>
-                                             {/* Update Input to handle potential undefined value from field */}
                                             <FormControl><Input type="number" placeholder="Ex: 500.00" step="0.01" {...field} value={field.value ?? ''} onChange={event => field.onChange(event.target.value === '' ? undefined : +event.target.value)} /></FormControl>
                                             <FormMessage />
                                         </FormItem>
@@ -760,20 +570,18 @@ const AwardConfiguration = () => {
                                     <FormField control={control} name="nonMonetaryValue" render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>Prêmio Não-Monetário (Opcional)</FormLabel>
-                                            <FormControl><Input placeholder="Ex: Folga adicional" {...field} /></FormControl>
+                                            <FormControl><Input placeholder="Ex: Folga adicional" {...field} value={field.value ?? ''} /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )}/>
                                 </div>
-                                 {/* Image URL */}
                                 <FormField control={control} name="imageUrl" render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>URL da Imagem (Opcional)</FormLabel>
-                                        <FormControl><Input type="url" placeholder="https://" {...field} /></FormControl>
+                                        <FormControl><Input type="url" placeholder="https://" {...field} value={field.value ?? ''} /></FormControl>
                                         <FormMessage />
                                     </FormItem>
                                 )}/>
-                                 {/* Period */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                                     <FormField control={control} name="isRecurring" render={({ field }) => (
                                         <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm h-[40px]">
@@ -785,7 +593,6 @@ const AwardConfiguration = () => {
                                         <FormField control={control} name="specificMonth" render={({ field }) => (
                                             <FormItem className="flex flex-col">
                                                 <FormLabel>Mês Específico</FormLabel>
-                                                {/* DatePicker might need adjustment for month-only selection */}
                                                 <FormControl>
                                                     <DatePicker date={field.value} setDate={field.onChange} placeholder="Selecione o mês" />
                                                 </FormControl>
@@ -794,7 +601,6 @@ const AwardConfiguration = () => {
                                         )}/>
                                     )}
                                 </div>
-                                 {/* Winner Count */}
                                 <FormField control={control} name="winnerCount" render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Nº de Ganhadores</FormLabel>
@@ -802,25 +608,20 @@ const AwardConfiguration = () => {
                                             <Input
                                                 type="number"
                                                 min="1"
-                                                // Use spread syntax for field props, handle potential undefined value
                                                 {...field}
-                                                value={field.value ?? 1} // Ensure value is number or default
-                                                // Handle onChange specifically for coercion to number
+                                                value={field.value ?? 1}
                                                 onChange={event => field.onChange(+event.target.value)}
                                             />
                                          </FormControl>
                                         <FormMessage />
-                                         {/* TODO: Add fields for different values per position if winnerCount > 1 */}
                                     </FormItem>
                                 )}/>
-                                {/* Eligibility Criteria */}
                                  <FormField control={control} name="eligibilityCriteria" render={({ field }) => (
                                     <FormItem className="flex flex-row items-center space-x-2 pt-2">
                                         <FormControl><Checkbox id="eligibility" checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                                         <Label htmlFor="eligibility" className="text-sm font-normal"> Exigir avaliação de excelência (sem zeros no mês)?</Label>
                                     </FormItem>
                                 )}/>
-                                {/* Eligible Departments */}
                                 <FormField control={control} name="eligibleDepartments" render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Departamentos Elegíveis</FormLabel>
@@ -868,7 +669,6 @@ const AwardConfiguration = () => {
                                         <FormMessage />
                                     </FormItem>
                                 )}/>
-                                {/* Status */}
                                 <FormField control={control} name="status" render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Status</FormLabel>
@@ -897,7 +697,6 @@ const AwardConfiguration = () => {
                      </DialogContent>
                  </Dialog>
 
-                 {/* Delete Confirmation Dialog */}
                  <AlertDialog open={isDeleting} onOpenChange={setIsDeleting}>
                     <AlertDialogContent>
                         <AlertDialogHeader>
@@ -925,7 +724,6 @@ const AwardHistory = () => {
      const [isLoading, setIsLoading] = React.useState(true);
      const { toast } = useToast();
 
-      // Simulate fetching history data
      React.useEffect(() => {
         const loadHistory = async () => {
             setIsLoading(true);
@@ -1008,27 +806,20 @@ const AwardHistory = () => {
 const AdvancedSettings = () => {
      const { toast } = useToast();
      const [isSaving, setIsSaving] = React.useState(false);
-     // Example: State for settings values (fetch from API in real app)
      const [tieBreaker, setTieBreaker] = React.useState('zeros');
      const [includeProbation, setIncludeProbation] = React.useState(false);
      const [publicView, setPublicView] = React.useState(true);
      const [notificationLevel, setNotificationLevel] = React.useState('significant');
 
-     // Simulate fetching settings
      React.useEffect(() => {
-         // Replace with actual API call
          console.log("Fetching advanced settings...");
-         // Example: const loadedSettings = await fetchAdvancedSettingsAPI();
-         // setTieBreaker(loadedSettings.tieBreaker); ... etc
      }, []);
 
 
      const handleSaveSettings = async () => {
          setIsSaving(true);
-         // Simulate API call
          console.log("Salvando configs:", { tieBreaker, includeProbation, publicView, notificationLevel });
          await new Promise(resolve => setTimeout(resolve, 1000));
-         // Example: await saveAdvancedSettingsAPI({ ... });
          toast({ title: "Sucesso", description: "Configurações avançadas salvas." });
          setIsSaving(false);
      }
@@ -1089,11 +880,160 @@ const AdvancedSettings = () => {
     );
 }
 
+const RankingDashboard = () => {
+    const [rankingData, setRankingData] = React.useState<RankingEntry[]>([]);
+    const [currentMonth, setCurrentMonth] = React.useState(new Date());
+    const [isLoading, setIsLoading] = React.useState(true);
+    const [isConfirmingWinners, setIsConfirmingWinners] = React.useState(false);
+    const { toast } = useToast();
+
+    React.useEffect(() => {
+        const loadRanking = async () => {
+             setIsLoading(true);
+             try {
+                 const data = await fetchRankingData(currentMonth);
+                 setRankingData(data);
+             } catch (error) {
+                 console.error("Falha ao carregar ranking:", error);
+                 toast({ title: "Erro", description: "Não foi possível carregar o ranking.", variant: "destructive" });
+             } finally {
+                 setIsLoading(false);
+             }
+        };
+        loadRanking();
+    }, [currentMonth, toast]);
+
+    const calculateRemainingDays = () => {
+        const today = new Date();
+        if (today.getMonth() !== currentMonth.getMonth() || today.getFullYear() !== currentMonth.getFullYear()) {
+            return 0;
+        }
+        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        const diffTime = Math.abs(endOfMonth.getTime() - today.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays;
+    };
+
+    const remainingDays = calculateRemainingDays();
+    const activeAward = mockAwards.find(a => a.status === 'active' && (a.isRecurring || (a.specificMonth && a.specificMonth.getMonth() === currentMonth.getMonth() && a.specificMonth.getFullYear() === currentMonth.getFullYear())));
+    const isCurrentMonth = new Date().getMonth() === currentMonth.getMonth() && new Date().getFullYear() === currentMonth.getFullYear();
+    const canConfirmWinners = !isCurrentMonth && activeAward && rankingData.length > 0;
+
+    const handlePreviousMonth = () => {
+        setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+    };
+
+    const handleNextMonth = () => {
+         setCurrentMonth(prev => {
+             const next = new Date(prev.getFullYear(), prev.getMonth() + 1, 1);
+             return next <= new Date() ? next : prev;
+         });
+    };
+
+    const handleConfirmWinners = async () => {
+        if (!canConfirmWinners || !activeAward) return;
+        setIsConfirmingWinners(true);
+        try {
+            const periodStr = format(currentMonth, 'yyyy-MM');
+            await confirmWinners(periodStr, activeAward.id, rankingData);
+             toast({ title: "Sucesso!", description: `Vencedores para ${format(currentMonth, 'MMMM yyyy', { locale: ptBR })} confirmados.` });
+        } catch (error) {
+            console.error("Erro ao confirmar vencedores:", error);
+            toast({ title: "Erro", description: "Falha ao confirmar vencedores.", variant: "destructive" });
+        } finally {
+            setIsConfirmingWinners(false);
+        }
+    };
+
+    const handleExportRanking = () => {
+         exportData(rankingData, `ranking_${format(currentMonth, 'yyyy-MM')}`);
+    }
+
+
+    return (
+        <div className="space-y-6">
+            <Card>
+                <CardHeader>
+                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                        <div>
+                            <CardTitle className="flex items-center gap-2">
+                                <Trophy className="h-5 w-5" /> Ranking - {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
+                            </CardTitle>
+                            <CardDescription>Visualização do desempenho dos colaboradores.</CardDescription>
+                        </div>
+                        <div className="flex items-center gap-2">
+                             <Button variant="outline" size="sm" onClick={handlePreviousMonth}>Anterior</Button>
+                             <Button variant="outline" size="sm" onClick={handleNextMonth} disabled={isCurrentMonth}>Próximo</Button>
+                        </div>
+                     </div>
+                </CardHeader>
+                <CardContent>
+                     {isLoading ? (
+                        <div className="flex justify-center items-center py-10">
+                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                            <span className="ml-2 text-muted-foreground">Carregando ranking...</span>
+                        </div>
+                    ) : (
+                    <>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            {rankingData.slice(0, 3).map((emp, index) => (
+                                <Card key={emp.employeeId} className={`border-2 ${index === 0 ? 'border-yellow-500 shadow-md' : index === 1 ? 'border-slate-400 shadow' : 'border-yellow-700 shadow-sm'}`}>
+                                    <CardHeader className="flex flex-row items-center gap-3 pb-2 pt-3 px-4">
+                                        {index === 0 && <Crown className="h-6 w-6 text-yellow-500 flex-shrink-0" />}
+                                        {index === 1 && <Medal className="h-6 w-6 text-slate-400 flex-shrink-0" />}
+                                        {index === 2 && <Medal className="h-6 w-6 text-yellow-700 flex-shrink-0" />}
+                                        <Avatar className="h-10 w-10">
+                                            <AvatarImage src={emp.employeePhotoUrl} />
+                                            <AvatarFallback>{getInitials(emp.employeeName)}</AvatarFallback>
+                                        </Avatar>
+                                        <div className="flex-1 min-w-0">
+                                            <CardTitle className="text-base truncate">{emp.employeeName}</CardTitle>
+                                            <CardDescription className="truncate">{emp.role}</CardDescription>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent className="text-sm flex justify-between items-center pt-1 pb-3 px-4">
+                                        <span>Pontos: <strong className="font-semibold">{emp.score}</strong></span>
+                                        <Badge variant={emp.zeros > 0 ? "destructive" : "default"} className="text-xs">{emp.zeros} Zero(s)</Badge>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                             {rankingData.length < 3 && Array(3 - rankingData.length).fill(0).map((_, i) => (
+                                <Card key={`placeholder-${i}`} className="border-dashed border-muted flex items-center justify-center h-full min-h-[100px]">
+                                     <p className="text-muted-foreground text-sm">{(rankingData.length + i + 1)}º Lugar</p>
+                                </Card>
+                             ))}
+                        </div>
+
+                        <DataTable columns={rankingColumns} data={rankingData} filterColumn='employeeName' filterPlaceholder="Filtrar por colaborador..."/>
+                        <p className="text-xs text-muted-foreground mt-4">*Ranking baseado nas avaliações diárias e desafios. Zeros impactam negativamente.</p>
+                    </>
+                    )}
+                </CardContent>
+                <CardFooter className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                    <div className="text-sm text-muted-foreground space-y-1">
+                        <p><strong>Premiação Vigente:</strong> {activeAward?.title || (isCurrentMonth ? 'Nenhuma ativa' : 'Nenhuma definida para o período')}</p>
+                         {isCurrentMonth && <p><strong>Dias Restantes:</strong> {remainingDays}</p>}
+                     </div>
+                    <div className="flex gap-2">
+                         <Button size="sm" variant="outline" onClick={handleExportRanking} disabled={isLoading || rankingData.length === 0}>Exportar Ranking</Button>
+                         {canConfirmWinners && (
+                             <Button size="sm" onClick={handleConfirmWinners} disabled={isConfirmingWinners || isLoading}>
+                                 {isConfirmingWinners && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                                 Confirmar Vencedores
+                             </Button>
+                         )}
+                     </div>
+                 </CardFooter>
+            </Card>
+        </div>
+    );
+};
+
 
 // Main Page Component
 export default function RankingPage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6"> {/* Main container */}
         <h1 className="text-3xl font-bold flex items-center gap-2">
              <Trophy className="h-7 w-7" /> Ranking e Premiações
         </h1>

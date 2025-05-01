@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -7,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, UserPlus, DatabaseBackup, Settings2, UserCog, FileClock, PlusCircle } from 'lucide-react'; // Added PlusCircle
+import { Loader2, UserPlus, DatabaseBackup, Settings2, UserCog, FileClock, PlusCircle } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
@@ -19,33 +20,28 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 
-// --- General Settings ---
 const generalSettingsSchema = z.object({
     bonusValue: z.coerce.number().min(0, "Valor não pode ser negativo.").default(100),
     zeroLimit: z.coerce.number().int("Deve ser um número inteiro.").min(0, "Limite não pode ser negativo.").default(3),
 });
 type GeneralSettingsFormData = z.infer<typeof generalSettingsSchema>;
 
-// --- Admin Management ---
 interface AdminUser {
     id: string;
     name: string;
     email: string;
     lastLogin?: Date;
 }
-// Mock Admin Users
 const mockAdmins: AdminUser[] = [
-    { id: 'admin1', name: 'Admin Principal', email: 'admin@check2b.com', lastLogin: new Date(Date.now() - 86400000) }, // Yesterday
-    { id: 'admin2', name: 'Joana Silva RH', email: 'joana.rh@check2b.com', lastLogin: new Date(Date.now() - 3600000) }, // 1 hour ago
+    { id: 'admin1', name: 'Admin Principal', email: 'admin@check2b.com', lastLogin: new Date(Date.now() - 86400000) },
+    { id: 'admin2', name: 'Joana Silva RH', email: 'joana.rh@check2b.com', lastLogin: new Date(Date.now() - 3600000) },
 ];
-// Mock API for Admins (Simplified)
 const fetchAdmins = async (): Promise<AdminUser[]> => {
     await new Promise(resolve => setTimeout(resolve, 300));
     return [...mockAdmins];
 }
 const addAdminUser = async (email: string): Promise<AdminUser> => {
     await new Promise(resolve => setTimeout(resolve, 500));
-    // In a real app, this would send an invite or create the user
     const newAdmin: AdminUser = { id: `admin${Date.now()}`, name: `Novo Admin (${email.split('@')[0]})`, email: email };
     mockAdmins.push(newAdmin);
     console.log("Admin adicionado (simulado):", newAdmin);
@@ -53,7 +49,7 @@ const addAdminUser = async (email: string): Promise<AdminUser> => {
 }
 const removeAdminUser = async (adminId: string): Promise<void> => {
      await new Promise(resolve => setTimeout(resolve, 500));
-     if (adminId === 'admin1') throw new Error("Não é possível remover o administrador principal."); // Safeguard
+     if (adminId === 'admin1') throw new Error("Não é possível remover o administrador principal.");
      const index = mockAdmins.findIndex(a => a.id === adminId);
      if (index !== -1) {
         mockAdmins.splice(index, 1);
@@ -64,25 +60,22 @@ const removeAdminUser = async (adminId: string): Promise<void> => {
 }
 
 
-// --- Backup/Restore ---
 interface BackupInfo {
     id: string;
     timestamp: Date;
-    size: string; // e.g., "15.2 MB"
-    initiator: string; // Admin user who initiated
+    size: string;
+    initiator: string;
 }
-// Mock Backup History
 const mockBackups: BackupInfo[] = [
     { id: 'bkp1', timestamp: new Date(Date.now() - 7 * 86400000), size: '14.8 MB', initiator: 'Admin Principal' },
     { id: 'bkp2', timestamp: new Date(Date.now() - 1 * 86400000), size: '15.2 MB', initiator: 'System' },
 ];
-// Mock API for Backup
 const createBackup = async (initiator: string): Promise<BackupInfo> => {
-     await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate longer process
+     await new Promise(resolve => setTimeout(resolve, 2000));
      const newBackup: BackupInfo = {
          id: `bkp${Date.now()}`,
          timestamp: new Date(),
-         size: `${(15 + Math.random()).toFixed(1)} MB`, // Random size
+         size: `${(15 + Math.random()).toFixed(1)} MB`,
          initiator: initiator,
      };
      mockBackups.push(newBackup);
@@ -90,9 +83,8 @@ const createBackup = async (initiator: string): Promise<BackupInfo> => {
      return newBackup;
 }
 const restoreBackup = async (backupId: string): Promise<void> => {
-     await new Promise(resolve => setTimeout(resolve, 3000)); // Simulate very long process
+     await new Promise(resolve => setTimeout(resolve, 3000));
      console.log("Restaurando backup (simulado):", backupId);
-     // No actual state change in mock, just log
 }
 
 
@@ -112,7 +104,6 @@ export default function SettingsPage() {
     const [backupToRestore, setBackupToRestore] = React.useState<BackupInfo | null>(null);
 
 
-    // Load initial settings values (replace with API call)
     const [initialBonusValue] = React.useState(100.00);
     const [initialZeroLimit] = React.useState(3);
 
@@ -126,21 +117,16 @@ export default function SettingsPage() {
 
     const handleSaveGeneralSettings = async (data: GeneralSettingsFormData) => {
         setIsLoadingGeneral(true);
-        // Simulate API call
         await new Promise(resolve => setTimeout(resolve, 1000));
         console.log("Salvando config geral:", data);
-        // Update initial values on success (in a real app, re-fetch or trust saved data)
-        // setInitialBonusValue(data.bonusValue);
-        // setInitialZeroLimit(data.zeroLimit);
         toast({
             title: "Sucesso!",
             description: "Configurações gerais salvas.",
         });
-        form.reset(data); // Reset form with saved values to clear dirty state
+        form.reset(data);
         setIsLoadingGeneral(false);
     };
 
-    // Load Admins
     const loadAdmins = React.useCallback(async () => {
         setIsLoadingAdmins(true);
         try {
@@ -158,7 +144,6 @@ export default function SettingsPage() {
         loadAdmins();
     }, [loadAdmins]);
 
-    // Handle Add Admin
     const handleAddAdmin = async () => {
         if (!newAdminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newAdminEmail)) {
              toast({ title: "Erro", description: "Por favor, insira um email válido.", variant: "destructive" });
@@ -168,8 +153,8 @@ export default function SettingsPage() {
         try {
              await addAdminUser(newAdminEmail);
              toast({ title: "Sucesso", description: `Convite enviado para ${newAdminEmail} (simulado).` });
-             setNewAdminEmail(""); // Clear input
-             await loadAdmins(); // Refresh list
+             setNewAdminEmail("");
+             await loadAdmins();
         } catch (error) {
              console.error("Falha ao adicionar admin:", error);
              toast({ title: "Erro", description: "Falha ao adicionar administrador.", variant: "destructive" });
@@ -178,9 +163,8 @@ export default function SettingsPage() {
         }
     };
 
-    // Handle Remove Admin
      const handleDeleteAdminClick = (admin: AdminUser) => {
-        if (admin.id === 'admin1') { // Prevent deleting primary admin
+        if (admin.id === 'admin1') {
              toast({ title: "Ação Bloqueada", description: "Não é possível remover o administrador principal.", variant: "destructive" });
              return;
         }
@@ -205,13 +189,11 @@ export default function SettingsPage() {
      };
 
 
-    // Load Backups
     const loadBackups = React.useCallback(async () => {
         setIsLoadingBackups(true);
         try {
-            // Simulate fetching - in real app, call API
             await new Promise(resolve => setTimeout(resolve, 400));
-            setBackups([...mockBackups].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())); // Sort newest first
+            setBackups([...mockBackups].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()));
         } catch (error) {
             console.error("Falha ao carregar backups:", error);
             toast({ title: "Erro", description: "Falha ao carregar histórico de backups.", variant: "destructive" });
@@ -224,13 +206,12 @@ export default function SettingsPage() {
         loadBackups();
     }, [loadBackups]);
 
-    // Handle Create Backup
     const handleCreateBackup = async () => {
         setIsCreatingBackup(true);
         try {
-            await createBackup("Usuário Admin"); // Pass current admin user
+            await createBackup("Usuário Admin");
             toast({ title: "Sucesso", description: "Backup criado com sucesso." });
-            await loadBackups(); // Refresh list
+            await loadBackups();
         } catch (error) {
              console.error("Falha ao criar backup:", error);
              toast({ title: "Erro", description: "Falha ao criar backup.", variant: "destructive" });
@@ -239,7 +220,6 @@ export default function SettingsPage() {
         }
     };
 
-    // Handle Restore Backup
      const handleRestoreClick = (backup: BackupInfo) => {
         setBackupToRestore(backup);
     };
@@ -250,21 +230,19 @@ export default function SettingsPage() {
              try {
                  await restoreBackup(backupToRestore.id);
                  toast({ title: "Restauração Iniciada", description: `Restaurando a partir do backup de ${backupToRestore.timestamp.toLocaleString()}. O sistema pode ficar indisponível brevemente.`, duration: 5000 });
-                 // Optionally, you might want to disable parts of the UI during restore
              } catch (error) {
                  console.error("Falha ao restaurar backup:", error);
                  toast({ title: "Erro", description: "Falha ao iniciar a restauração do backup.", variant: "destructive" });
              } finally {
                  setIsRestoringBackup(false);
                  setBackupToRestore(null);
-                 // Might need to reload the page or app state after restore
              }
         }
      };
 
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6"> {/* Main container */}
             <Card>
                  <Form {...form}>
                     <form onSubmit={form.handleSubmit(handleSaveGeneralSettings)}>
@@ -319,7 +297,6 @@ export default function SettingsPage() {
                               )}
                             />
                             <Separator />
-                            {/* Adicionar mais configurações gerais aqui se necessário */}
                         </CardContent>
                         <CardFooter>
                             <Button type="submit" disabled={isLoadingGeneral || !form.formState.isDirty}>
@@ -378,7 +355,7 @@ export default function SettingsPage() {
                                             <TableCell>{admin.email}</TableCell>
                                              <TableCell>{admin.lastLogin ? admin.lastLogin.toLocaleString('pt-BR') : 'Nunca'}</TableCell>
                                              <TableCell className="text-right">
-                                                {admin.id !== 'admin1' && ( // Don't allow actions on primary admin
+                                                {admin.id !== 'admin1' && (
                                                      <DropdownMenu>
                                                          <DropdownMenuTrigger asChild>
                                                              <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -387,7 +364,6 @@ export default function SettingsPage() {
                                                              </Button>
                                                          </DropdownMenuTrigger>
                                                          <DropdownMenuContent align="end">
-                                                             {/* Add other actions like 'Edit Permissions' later */}
                                                              <DropdownMenuItem
                                                                  onClick={() => handleDeleteAdminClick(admin)}
                                                                  className="text-destructive focus:text-destructive focus:bg-destructive/10"
@@ -407,7 +383,6 @@ export default function SettingsPage() {
                 </CardContent>
             </Card>
 
-             {/* Admin Deletion Confirmation */}
              <AlertDialog open={isDeletingAdmin} onOpenChange={setIsDeletingAdmin}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -481,7 +456,6 @@ export default function SettingsPage() {
                 </CardContent>
             </Card>
 
-             {/* Backup Restore Confirmation */}
              <AlertDialog open={!!backupToRestore} onOpenChange={(open) => !open && setBackupToRestore(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>

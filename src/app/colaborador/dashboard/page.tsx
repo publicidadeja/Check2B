@@ -51,179 +51,78 @@
  // Import mock data (Ensure paths are correct)
  import { mockEmployees } from '@/app/employees/page';
  import { mockTasks as allAdminTasks } from '@/app/tasks/page';
- import { mockChallenges as allAdminChallenges, mockParticipants } from '@/app/challenges/page'; // Updated import
+ import { mockChallenges as allAdminChallenges, mockParticipants } from '@/app/(admin)/challenges/page'; // Updated import
 
  // Mock Employee ID for demonstration
  const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
 
- // Enhanced mock evaluations for the current employee
- const generateMockEvaluations = (employeeId: string, monthsBack: number = 1): Evaluation[] => {
-    const evals: Evaluation[] = [];
-    const today = new Date();
-    for (let m = 0; m <= monthsBack; m++) {
-        const monthToProcess = new Date(today.getFullYear(), today.getMonth() - m, 1);
-        const start = startOfMonth(monthToProcess);
-        const end = m === 0 ? today : endOfMonth(monthToProcess);
-
-        let days = [];
-        if(start <= end) {
-            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                 days.push(new Date(d));
-            }
-        }
-
-        days.forEach(day => {
-            // Ensure employee '1' exists in mockEmployees before filtering tasks
-            const employee = mockEmployees.find(e => e.id === employeeId);
-            if (!employee) return; // Skip if employee not found
-
-            const tasksForDay = allAdminTasks.filter(task => {
-                 let applies = false;
-                 const dayOfWeek = day.getDay(); // 0 = Sunday
-
-                 // Check periodicity
-                 if (task.periodicity === 'daily') applies = true;
-                 else if (task.periodicity === 'specific_days') {
-                      // Example: Friday only for t6
-                     if (task.id === 't6' && dayOfWeek === 5) applies = true;
-                     // Add more specific day logic here
-                 }
-                  // Add specific_dates logic here if needed
-
-                 if (!applies) return false; // Stop if periodicity doesn't match
-
-                 // Check assignment
-                 if (!task.assignedTo) return true; // Global task
-                 if (task.assignedTo === 'role' && task.assignedEntityId === employee.role) return true;
-                 if (task.assignedTo === 'department' && task.assignedEntityId === employee.department) return true;
-                 if (task.assignedTo === 'individual' && task.assignedEntityId === employee.id) return true;
-                 return false;
-            });
-
-            if (tasksForDay.length > 0) {
-                tasksForDay.forEach(task => {
-                    if (day > today) return; // Don't evaluate future dates
-                    const score = Math.random() > 0.1 ? 10 : 0; // 10% chance of getting 0
-                    evals.push({
-                        id: `eval${employeeId}-${task.id}-${format(day, 'yyyy-MM-dd')}`,
-                        employeeId: employeeId,
-                        taskId: task.id,
-                        evaluationDate: format(day, 'yyyy-MM-dd'),
-                        score: score,
-                        justification: score === 0 ? `Item não concluído (${task.title}).` : undefined,
-                        evaluatorId: 'admin1',
-                        isDraft: false,
-                    });
-                });
-            }
-        });
-    }
-    return evals;
- };
-
- const mockEvaluations = generateMockEvaluations(CURRENT_EMPLOYEE_ID, 2); // Generate for last 2 months
-
-
  interface EmployeeDashboardData {
-     todayStatus: 'pending' | 'evaluated' | 'no_tasks'; // Added 'no_tasks' state
+     todayStatus: 'evaluated' | 'pending' | 'no_tasks';
      zerosThisMonth: number;
      projectedBonus: number;
-     // Removed last30DaysPerformance - calculate on demand if needed
      tasksToday: Task[];
      activeChallenges: Challenge[];
-     recentNotifications: Notification[]; // Use imported Notification type
-     monthlyPerformanceTrend?: 'up' | 'down' | 'stable'; // Optional trend
+     recentNotifications: Notification[];
+     monthlyPerformanceTrend?: 'up' | 'down' | 'stable';
  }
 
- // Mock fetching function for employee dashboard
  const fetchEmployeeDashboardData = async (employeeId: string): Promise<EmployeeDashboardData> => {
-     await new Promise(resolve => setTimeout(resolve, 600)); // Simulate network delay
+     await new Promise(resolve => setTimeout(resolve, 700));
 
-     const todayStr = format(new Date(), 'yyyy-MM-dd');
-     const employee = mockEmployees.find(e => e.id === employeeId);
-     if (!employee) throw new Error("Colaborador não encontrado.");
+     const today = new Date();
+     const todayStr = format(today, 'yyyy-MM-dd');
+     const emp = mockEmployees.find(e => e.id === employeeId);
 
-     const getTasksForEmployee = (emp: typeof employee, date: Date): Task[] => {
-         return allAdminTasks.filter(task => {
-             let applies = false;
-             const dayOfWeek = date.getDay(); // 0 = Sunday
-             if (task.periodicity === 'daily') applies = true;
-             else if (task.periodicity === 'specific_days') {
-                  // Example: Friday only for t6
-                 if (task.id === 't6' && dayOfWeek === 5) applies = true;
-                 // Add more specific day logic here
-             }
-              // Add specific_dates logic here if needed
-
-             if (!applies) return false;
-             if (!task.assignedTo) return true;
-             if (task.assignedTo === 'role' && task.assignedEntityId === emp.role) return true;
-             if (task.assignedTo === 'department' && task.assignedEntityId === emp.department) return true;
-             if (task.assignedTo === 'individual' && task.assignedEntityId === emp.id) return true;
-             return false;
-         });
-     };
-     const tasksToday = getTasksForEmployee(employee, new Date());
-
-     const todayEvaluations = mockEvaluations.filter(e => e.employeeId === employeeId && e.evaluationDate === todayStr);
-     let todayStatus: EmployeeDashboardData['todayStatus'];
-      if (tasksToday.length === 0) {
-         todayStatus = 'no_tasks';
-     } else if (todayEvaluations.length >= tasksToday.length) { // Assuming all tasks for the day get an eval record
-          todayStatus = 'evaluated';
-     } else {
-         todayStatus = 'pending';
+     if (!emp) {
+         throw new Error("Colaborador não encontrado.");
      }
 
+     const evaluationsToday = mockEvaluations.filter(e => e.employeeId === employeeId && e.evaluationDate === todayStr);
+     const todayStatus = evaluationsToday.length > 0 ? 'evaluated' : getTasksForEmployee(employeeId, today).length > 0 ? 'pending' : 'no_tasks';
 
-     const start = startOfMonth(new Date());
-     const currentMonthEvaluations = mockEvaluations.filter(e =>
-         e.employeeId === employeeId &&
-         parseISO(e.evaluationDate) >= start &&
-         parseISO(e.evaluationDate) <= new Date() // Only count up to today
-     );
-     const zerosThisMonth = currentMonthEvaluations.filter(e => e.score === 0).length;
-
+     // Zeros this month calculation (all months prior to current month are complete)
+     let zerosThisMonth = 0;
+     mockEvaluations.filter(e => e.employeeId === employeeId && format(parseISO(e.evaluationDate), 'yyyy-MM') === format(today, 'yyyy-MM')).forEach(evalItem => {
+          if (evalItem.score === 0) zerosThisMonth++;
+     });
 
      const ZERO_LIMIT = 3;
-     const BONUS_LOW = 70;
-     const BONUS_HIGH = 90;
-     let projectedBonus = 0;
-     if (zerosThisMonth < ZERO_LIMIT) projectedBonus = BONUS_HIGH;
-     else if (zerosThisMonth === ZERO_LIMIT) projectedBonus = BONUS_LOW;
+     const baseBonus = 100;
+     const bonusPerZero = baseBonus / ZERO_LIMIT;
+     const projectedBonus = Math.max(0, baseBonus - (zerosThisMonth * bonusPerZero)); // Prevent negative
 
-     // Calculate Trend (Simplified Example: Compare this month's average score to last month's)
-      const lastMonthStart = startOfMonth(new Date(new Date().setMonth(new Date().getMonth() - 1)));
-      const lastMonthEnd = endOfMonth(lastMonthStart);
-      const lastMonthEvaluations = mockEvaluations.filter(e =>
-         e.employeeId === employeeId &&
-         parseISO(e.evaluationDate) >= lastMonthStart &&
-         parseISO(e.evaluationDate) <= lastMonthEnd
-      );
+     const getTasksForEmployee = (employeeId: string, date: Date): Task[] => {
+          if (!employeeId || !emp.isActive) return [];
 
-     const currentMonthAvg = currentMonthEvaluations.length > 0
-         ? currentMonthEvaluations.reduce((sum, e) => sum + e.score, 0) / currentMonthEvaluations.length
-         : 0;
-     const lastMonthAvg = lastMonthEvaluations.length > 0
-         ? lastMonthEvaluations.reduce((sum, e) => sum + e.score, 0) / lastMonthEvaluations.length
-         : 0;
+          return allAdminTasks.filter(task => {
+              let applies = false;
+              const dayOfWeek = date.getDay();
 
-      let monthlyPerformanceTrend: EmployeeDashboardData['monthlyPerformanceTrend'];
-      if (currentMonthEvaluations.length > 0 && lastMonthEvaluations.length > 0) {
-          if (currentMonthAvg > lastMonthAvg + 0.5) monthlyPerformanceTrend = 'up';
-          else if (currentMonthAvg < lastMonthAvg - 0.5) monthlyPerformanceTrend = 'down';
-          else monthlyPerformanceTrend = 'stable';
-      } else {
-          monthlyPerformanceTrend = undefined; // Not enough data
-      }
+              if (task.periodicity === 'daily') {
+                  applies = true;
+              } else if (task.periodicity === 'specific_days') {
+                  if (task.id === 't6' && dayOfWeek === 5) {
+                      applies = true;
+                  }
+              }
 
+              if (!applies) return false;
 
+              if (!task.assignedTo) return true;
+              if (task.assignedTo === 'role' && task.assignedEntityId === emp.role) return true;
+              if (task.assignedTo === 'department' && task.assignedEntityId === emp.department) return true;
+              if (task.assignedTo === 'individual' && task.assignedEntityId === emp.id) return true;
+
+              return false;
+          });
+      };
+     const tasksToday = getTasksForEmployee(employeeId, today);
      const activeChallenges = allAdminChallenges.filter(ch => {
          if (ch.status !== 'active') return false;
          if (ch.eligibility.type === 'all') return true;
-         if (ch.eligibility.type === 'department' && ch.eligibility.entityIds?.includes(employee.department)) return true;
-         if (ch.eligibility.type === 'role' && ch.eligibility.entityIds?.includes(employee.role)) return true;
-         if (ch.eligibility.type === 'individual' && ch.eligibility.entityIds?.includes(employee.id)) return true;
+         if (ch.eligibility.type === 'department' && ch.eligibility.entityIds?.includes(emp.department)) return true;
+         if (ch.eligibility.type === 'role' && ch.eligibility.entityIds?.includes(emp.role)) return true;
+         if (ch.eligibility.type === 'individual' && ch.eligibility.entityIds?.includes(emp.id)) return true;
          return false;
      });
 
@@ -244,7 +143,7 @@
          tasksToday,
          activeChallenges,
          recentNotifications,
-         monthlyPerformanceTrend,
+         monthlyPerformanceTrend: 'stable', // You can calculate trend based on past data if needed
      };
  };
 
@@ -333,7 +232,7 @@
                              {format(new Date(), "eeee, d 'de' MMMM", { locale: ptBR })}
                          </CardDescription>
                      </CardHeader>
-                     <CardContent className="p-4 grid grid-cols-2 gap-4">
+                     <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                          {/* Today's Evaluation Status */}
                          <div className="flex flex-col items-center justify-center text-center p-3 rounded-lg bg-white/20 backdrop-blur-sm">
                              <Label className="text-xs text-primary-foreground/80 mb-1">Status Diário</Label>
@@ -472,3 +371,4 @@
 
  // Assuming Trophy and Settings are imported elsewhere or need importing if used in getNotificationIcon
  import { Settings, Trophy } from 'lucide-react';
+

@@ -31,20 +31,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'; // Added CardFooter
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { RoleForm } from '@/components/role/role-form';
-import { DataTable } from '@/components/ui/data-table'; // Import DataTable
-import type { ColumnDef } from '@tanstack/react-table'; // Import ColumnDef
+import { DataTable } from '@/components/ui/data-table';
+import type { ColumnDef } from '@tanstack/react-table';
 
 export interface Role {
     id: string;
-    name: string; // e.g., 'Desenvolvedor Backend', 'Analista de RH'
+    name: string;
     description?: string;
-    permissions?: string[]; // Example of potential future feature
+    permissions?: string[];
 }
 
-// Mock data for roles
 const mockRoles: Role[] = [
     { id: 'role1', name: 'Recrutadora', description: 'Responsável pelo processo de recrutamento e seleção.' },
     { id: 'role2', name: 'Desenvolvedor Backend', description: 'Desenvolve e mantém a lógica do servidor.' },
@@ -53,7 +52,6 @@ const mockRoles: Role[] = [
     { id: 'role5', name: 'Desenvolvedora Frontend', description: 'Desenvolve interfaces de usuário.' },
 ];
 
-// Mock API functions
 const fetchRoles = async (): Promise<Role[]> => {
     await new Promise(resolve => setTimeout(resolve, 500));
     return [...mockRoles];
@@ -84,10 +82,8 @@ const saveRole = async (roleData: Omit<Role, 'id'> | Role): Promise<Role> => {
 const deleteRole = async (roleId: string): Promise<void> => {
     await new Promise(resolve => setTimeout(resolve, 500));
     const index = mockRoles.findIndex(r => r.id === roleId);
-     // Basic check: prevent deleting if role is assigned to employees (in real app)
-    // For mock, we just check if it's one of the initial core roles
     const isCoreRole = ['Recrutadora', 'Desenvolvedor Backend', 'Analista de Marketing', 'Executivo de Contas', 'Desenvolvedora Frontend'].includes(mockRoles[index]?.name);
-     if (isCoreRole && mockRoles.length <= 5) { // Simple safeguard for mock
+     if (isCoreRole && mockRoles.length <= 5) {
         throw new Error("Não é possível remover funções essenciais (simulado).");
     }
     if (index !== -1) {
@@ -107,7 +103,6 @@ export default function RolesPage() {
     const [roleToDelete, setRoleToDelete] = React.useState<Role | null>(null);
     const { toast } = useToast();
 
-    // Define columns for DataTable
     const columns: ColumnDef<Role>[] = [
         { accessorKey: "name", header: "Nome da Função", cell: ({ row }) => <span className="font-medium">{row.original.name}</span> },
         { accessorKey: "description", header: "Descrição", cell: ({ row }) => row.original.description || '-' },
@@ -216,7 +211,7 @@ export default function RolesPage() {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6"> {/* Main container */}
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -247,15 +242,13 @@ export default function RolesPage() {
                 </CardFooter>
             </Card>
 
-            {/* Role Form Dialog */}
-             <RoleForm
+            <RoleForm
                 role={selectedRole}
                 onSave={handleSaveRole}
                 open={isFormOpen}
                 onOpenChange={setIsFormOpen}
             />
 
-            {/* Delete Confirmation Dialog */}
             <AlertDialog open={isDeleting} onOpenChange={setIsDeleting}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -275,4 +268,3 @@ export default function RolesPage() {
         </div>
     );
 }
-

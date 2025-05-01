@@ -28,6 +28,7 @@ import {
   BarChartHorizontal, // For status bar
   AlertTriangle, // For warning
   FileText, // For details
+  Eye, // Added Eye icon
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -259,6 +260,7 @@ const fetchChallengeDetails = async (challengeId: string): Promise<{ challenge: 
 // ManageChallenges Component
 const ManageChallenges = () => {
     const [challenges, setChallenges] = React.useState<Challenge[]>([]);
+    const [filteredChallenges, setFilteredChallenges] = React.useState<Challenge[]>([]);
     const [isLoading, setIsLoading] = React.useState(true);
     const [selectedChallenge, setSelectedChallenge] = React.useState<Challenge | null>(null);
     const [isFormOpen, setIsFormOpen] = React.useState(false);
@@ -271,6 +273,7 @@ const ManageChallenges = () => {
         try {
             const data = await fetchChallenges();
             setChallenges(data);
+            setFilteredChallenges(data);
         } catch (error) {
             console.error("Falha ao carregar desafios:", error);
             toast({ title: "Erro", description: "Falha ao carregar desafios.", variant: "destructive" });
@@ -285,19 +288,17 @@ const ManageChallenges = () => {
 
 
      const handleSaveChallenge = async (data: any) => {
-        // The data received here already includes the 'eligibility' object structure
-        // and dates as strings, as prepared in the ChallengeForm.
          const challengeDataToSave = selectedChallenge
-            ? { ...selectedChallenge, ...data, id: selectedChallenge.id } // Ensure ID is kept for update
+            ? { ...selectedChallenge, ...data, id: selectedChallenge.id }
             : data;
 
-        setIsLoading(true); // Indicate loading state
+        setIsLoading(true);
 
         try {
             await saveChallenge(challengeDataToSave);
             setIsFormOpen(false);
             setSelectedChallenge(null);
-            await loadChallenges(); // Refresh the list after saving
+            await loadChallenges();
             toast({
                 title: "Sucesso!",
                 description: `Desafio ${selectedChallenge ? 'atualizado' : 'criado'} com sucesso.`,
@@ -310,7 +311,7 @@ const ManageChallenges = () => {
                 variant: "destructive",
             });
         } finally {
-             setIsLoading(false); // End loading state
+             setIsLoading(false);
         }
     };
 
@@ -322,16 +323,16 @@ const ManageChallenges = () => {
 
      const confirmDelete = async () => {
         if (challengeToDelete) {
-             setIsLoading(true); // Indicate loading state for deletion
+             setIsLoading(true);
             try {
                 await deleteChallenge(challengeToDelete.id);
                 toast({ title: "Sucesso", description: "Desafio removido com sucesso." });
-                await loadChallenges(); // Refresh list
+                await loadChallenges();
             } catch (error: any) {
                 console.error("Falha ao remover desafio:", error);
                 toast({ title: "Erro", description: error.message || "Falha ao remover desafio.", variant: "destructive" });
             } finally {
-                 setIsLoading(false); // End loading state
+                 setIsLoading(false);
                 setIsDeleting(false);
                 setChallengeToDelete(null);
             }
@@ -340,38 +341,35 @@ const ManageChallenges = () => {
 
     const handleDuplicateChallenge = async (challenge: Challenge) => {
         const { id, title, status, ...challengeData } = challenge;
-        // Ensure eligibility object is duplicated correctly
         const duplicatedChallengeData = {
             ...challengeData,
             title: `${title} (Cópia)`,
-             // New challenges from duplication start as draft
-             eligibility: { ...challengeData.eligibility }, // Deep copy eligibility if needed
+             eligibility: { ...challengeData.eligibility },
         };
-         setIsLoading(true); // Indicate loading state
+         setIsLoading(true);
         try {
-            // Save without id and status
             await saveChallenge(duplicatedChallengeData as Omit<Challenge, 'id' | 'status'>);
             toast({ title: "Sucesso", description: "Desafio duplicado com sucesso." });
-            await loadChallenges(); // Refresh list
+            await loadChallenges();
         } catch (error) {
             console.error("Falha ao duplicar desafio:", error);
             toast({ title: "Erro", description: "Falha ao duplicar desafio.", variant: "destructive" });
         } finally {
-             setIsLoading(false); // End loading state
+             setIsLoading(false);
         }
     };
 
     const handleStatusChange = async (challenge: Challenge, newStatus: Challenge['status']) => {
-          setIsLoading(true); // Indicate loading state
+          setIsLoading(true);
          try {
             await updateChallengeStatus(challenge.id, newStatus);
              toast({ title: "Sucesso", description: `Status do desafio "${challenge.title}" alterado para ${getStatusText(newStatus)}.` });
-             await loadChallenges(); // Refresh list
+             await loadChallenges();
          } catch (error) {
              console.error("Falha ao alterar status:", error);
              toast({ title: "Erro", description: "Falha ao alterar status do desafio.", variant: "destructive" });
          } finally {
-             setIsLoading(false); // End loading state
+             setIsLoading(false);
          }
     }
 
@@ -398,7 +396,6 @@ const ManageChallenges = () => {
         }
     }
 
-    // Define columns for DataTable
      const columns: ColumnDef<Challenge>[] = [
         { accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
         { accessorKey: "period", header: "Período", cell: ({ row }) => formatPeriod(row.original.periodStartDate, row.original.periodEndDate) },
@@ -426,7 +423,6 @@ const ManageChallenges = () => {
                             <DropdownMenuItem onClick={() => handleDuplicateChallenge(challenge)}>
                                 <Copy className="mr-2 h-4 w-4" /> Duplicar
                             </DropdownMenuItem>
-                            {/* Status change actions */}
                             {challenge.status === 'draft' && (
                                 <DropdownMenuItem onClick={() => handleStatusChange(challenge, 'scheduled')}>
                                     <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> Agendar/Ativar
@@ -461,7 +457,6 @@ const ManageChallenges = () => {
                             <DropdownMenuItem
                                 onClick={() => handleDeleteClick(challenge)}
                                 className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                                // Allow deleting drafts and archived, maybe completed ones too?
                                 disabled={challenge.status === 'active' || challenge.status === 'evaluating'}
                             >
                                 <Trash2 className="mr-2 h-4 w-4" /> Remover
@@ -544,8 +539,7 @@ const ChallengeDashboard = () => {
              try {
                 const [challengeData, participationData] = await Promise.all([
                      fetchChallenges(),
-                     // In a real app, fetch all relevant participations
-                     Promise.resolve(mockParticipants) // Using mock data for now
+                     Promise.resolve(mockParticipants)
                 ]);
                 setChallenges(challengeData);
                 setParticipations(participationData);
@@ -604,13 +598,11 @@ const ChallengeDashboard = () => {
                     </Card>
                 </div>
              )}
-             {/* TODO: Add Chart placeholder here */}
              <div className="mt-6 text-center text-muted-foreground">
                   (Gráficos e relatórios detalhados serão implementados aqui)
               </div>
         </CardContent>
         <CardFooter>
-             {/* Placeholder for a future action button */}
             <Button variant="outline" disabled>Ver Relatórios Detalhados</Button>
         </CardFooter>
       </Card>
@@ -623,7 +615,7 @@ const ChallengeEvaluation = () => {
     const [participants, setParticipants] = React.useState<ChallengeParticipation[]>([]);
     const [isLoadingChallenges, setIsLoadingChallenges] = React.useState(true);
     const [isLoadingParticipants, setIsLoadingParticipants] = React.useState(false);
-    const [currentEvaluation, setCurrentEvaluation] = React.useState<{ [key: string]: { status: 'approved' | 'rejected' | 'pending', feedback: string, score?: number, isSaving: boolean } }>({}); // Added isSaving
+    const [currentEvaluation, setCurrentEvaluation] = React.useState<{ [key: string]: { status: 'approved' | 'rejected' | 'pending', feedback: string, score?: number, isSaving: boolean } }>({});
     const { toast } = useToast();
 
     React.useEffect(() => {
@@ -631,7 +623,6 @@ const ChallengeEvaluation = () => {
             setIsLoadingChallenges(true);
             try {
                 const allChallenges = await fetchChallenges();
-                // Consider 'evaluating' status primarily for evaluation
                  setChallengesToEvaluate(allChallenges.filter(c => c.status === 'evaluating'));
             } catch {
                  toast({ title: "Erro", description: "Falha ao carregar desafios para avaliação.", variant: "destructive" });
@@ -646,16 +637,14 @@ const ChallengeEvaluation = () => {
         if (selectedChallengeId) {
             const fetchParticipants = async () => {
                 setIsLoadingParticipants(true);
-                setCurrentEvaluation({}); // Reset evaluation state when changing challenge
+                setCurrentEvaluation({});
                 try {
                     const participantsData = await fetchParticipantsForChallenge(selectedChallengeId);
-                    // Filter to show only submitted or already evaluated (for editing maybe?) for this screen
-                     const submittedParticipants = participantsData.filter(p => p.status === 'submitted'); // Only evaluate submitted ones
+                     const submittedParticipants = participantsData.filter(p => p.status === 'submitted');
                     setParticipants(submittedParticipants);
-                     // Initialize evaluation state for submitted participants
                      const initialEvalState: typeof currentEvaluation = {};
                      submittedParticipants.forEach(p => {
-                         initialEvalState[p.id] = { status: 'pending', feedback: '', isSaving: false }; // Initialize isSaving
+                         initialEvalState[p.id] = { status: 'pending', feedback: '', isSaving: false };
                      });
                      setCurrentEvaluation(initialEvalState);
                 } catch {
@@ -674,11 +663,9 @@ const ChallengeEvaluation = () => {
         setCurrentEvaluation(prev => ({
             ...prev,
             [participantId]: {
-                ...(prev[participantId] || { status: 'pending', feedback: '', isSaving: false }), // Ensure state exists
+                ...(prev[participantId] || { status: 'pending', feedback: '', isSaving: false }),
                 [field]: value,
-                 // Reset score if rejected
-                ...(field === 'status' && value === 'rejected' && { score: 0 }), // Score is 0 if rejected
-                // Use default challenge points if approved and score not set
+                ...(field === 'status' && value === 'rejected' && { score: 0 }),
                  ...(field === 'status' && value === 'approved' && prev[participantId]?.score === undefined && { score: challengesToEvaluate.find(c => c.id === selectedChallengeId)?.points || 0 })
             }
         }));
@@ -700,7 +687,6 @@ const ChallengeEvaluation = () => {
             return;
          }
 
-         // Mark as saving
          setCurrentEvaluation(prev => ({ ...prev, [participantId]: { ...evaluationData, isSaving: true } }));
 
         try {
@@ -708,27 +694,20 @@ const ChallengeEvaluation = () => {
              await evaluateSubmission(participantId, evaluationData.status, finalScore, evaluationData.feedback);
              toast({ title: "Sucesso", description: `Avaliação para ${participant.employeeName} salva.` });
 
-             // Remove evaluated participant from the list
              setParticipants(prev => prev.filter(p => p.id !== participantId));
-             // Clean up evaluation state for the saved participant
              setCurrentEvaluation(prev => {
                  const newState = { ...prev };
                  delete newState[participantId];
                  return newState;
              });
 
-             // Check if all participants for this challenge are evaluated
-             if (participants.length === 1) { // If this was the last one
+             if (participants.length === 1) {
                  toast({ title: "Concluído", description: `Todas as submissões para "${challenge.title}" foram avaliadas.` });
-                 // Optionally, change challenge status to 'completed'
-                 // await updateChallengeStatus(challenge.id, 'completed');
-                 // setSelectedChallengeId(null); // Reset selection
              }
 
         } catch (error) {
              console.error("Falha ao salvar avaliação:", error);
              toast({ title: "Erro", description: "Falha ao salvar avaliação.", variant: "destructive" });
-             // Revert saving state on error
              setCurrentEvaluation(prev => ({ ...prev, [participantId]: { ...evaluationData, isSaving: false } }));
         }
     };
@@ -761,7 +740,7 @@ const ChallengeEvaluation = () => {
                              ) : (
                                 challengesToEvaluate.map(challenge => (
                                     <SelectItem key={challenge.id} value={challenge.id}>
-                                        {challenge.title} ({format(parseISO(challenge.periodEndDate), 'dd/MM/yy')}) - {getStatusText(challenge.status)}
+                                        {challenge.title} ({format(parseISO(challenge.periodEndDate), 'dd/MM/yy')}) - {challenge.status ? getStatusText(challenge.status) : ''}
                                     </SelectItem>
                                 ))
                              )}
@@ -780,7 +759,7 @@ const ChallengeEvaluation = () => {
                         ) : participants.length === 0 ? (
                             <p className="text-muted-foreground text-center py-4">Nenhuma submissão pendente para este desafio.</p>
                         ) : (
-                            <ScrollArea className="h-[45vh]"> {/* Add ScrollArea for many participants */}
+                            <ScrollArea className="h-[45vh]">
                                 <div className="space-y-4 pr-4">
                                     {participants.map(participant => (
                                         <Card key={participant.id} className="bg-muted/50">
@@ -791,7 +770,6 @@ const ChallengeEvaluation = () => {
                                                         Enviado em: {participant.submittedAt ? format(participant.submittedAt, 'dd/MM/yy HH:mm', { locale: ptBR }) : '-'}
                                                     </span>
                                                 </CardTitle>
-                                                {/* Display submission details */}
                                                 <CardDescription className="text-sm pt-1">
                                                     <strong>Submissão:</strong>{' '}
                                                     {participant.submission?.startsWith('http') ? (
@@ -801,7 +779,6 @@ const ChallengeEvaluation = () => {
                                                     ) : (
                                                         participant.submission || <span className="italic text-muted-foreground">Nenhuma descrição fornecida.</span>
                                                     )}
-                                                    {/* TODO: Handle file uploads if needed */}
                                                 </CardDescription>
                                             </CardHeader>
                                             <CardContent className="px-4 pb-3 space-y-2">
@@ -833,7 +810,7 @@ const ChallengeEvaluation = () => {
                                                                 onChange={(e) => handleEvaluationChange(participant.id, 'score', e.target.value ? parseInt(e.target.value) : undefined)}
                                                                 placeholder={selectedChallenge?.points.toString()}
                                                                 min="0"
-                                                                max={selectedChallenge?.points} // Set max based on challenge points
+                                                                max={selectedChallenge?.points}
                                                                 disabled={currentEvaluation[participant.id]?.isSaving}
                                                             />
                                                         </div>
@@ -899,14 +876,13 @@ const ChallengeDetailsDialog = ({ challengeId, open, onOpenChange }: ChallengeDe
                     setDetails(data);
                 } catch (error) {
                     console.error("Failed to load challenge details:", error);
-                    // Handle error (e.g., show toast)
                 } finally {
                     setIsLoading(false);
                 }
             };
             loadDetails();
         } else {
-            setDetails(null); // Reset details when closed or no ID
+            setDetails(null);
         }
     }, [open, challengeId]);
 
@@ -923,7 +899,7 @@ const ChallengeDetailsDialog = ({ challengeId, open, onOpenChange }: ChallengeDe
 
     return (
          <Dialog open={open} onOpenChange={onOpenChange}>
-             <DialogContent className="sm:max-w-3xl"> {/* Wider dialog */}
+             <DialogContent className="sm:max-w-3xl">
                  <DialogHeader>
                      <DialogTitle>Detalhes do Desafio: {details?.challenge.title ?? 'Carregando...'}</DialogTitle>
                      <DialogDescription>
@@ -936,7 +912,6 @@ const ChallengeDetailsDialog = ({ challengeId, open, onOpenChange }: ChallengeDe
                      </div>
                  ) : details ? (
                      <div className="py-4 grid grid-cols-1 md:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto">
-                         {/* Column 1: Challenge Info */}
                          <div className="md:col-span-1 space-y-3 border-r pr-4">
                             <h4 className="font-semibold text-base">Informações do Desafio</h4>
                              <p className="text-sm"><strong className="text-muted-foreground">Status:</strong> <Badge variant={getStatusBadgeVariant(details.challenge.status)}>{getStatusText(details.challenge.status)}</Badge></p>
@@ -947,7 +922,6 @@ const ChallengeDetailsDialog = ({ challengeId, open, onOpenChange }: ChallengeDe
                              <p className="text-sm"><strong className="text-muted-foreground">Elegibilidade:</strong> {details.challenge.eligibility.type === 'all' ? 'Todos' : `${details.challenge.eligibility.type}: ${details.challenge.eligibility.entityIds?.join(', ')}`}</p>
                              <p className="text-sm"><strong className="text-muted-foreground">Métricas:</strong> {details.challenge.evaluationMetrics}</p>
                          </div>
-                         {/* Column 2: Participants List */}
                          <div className="md:col-span-2 space-y-3">
                             <h4 className="font-semibold text-base">Participantes ({details.participants.length})</h4>
                              {details.participants.length > 0 ? (
@@ -996,16 +970,15 @@ const ChallengeHistory = () => {
      const [isLoading, setIsLoading] = React.useState(true);
      const [selectedChallengeIdForDetails, setSelectedChallengeIdForDetails] = React.useState<string | null>(null);
      const [isDetailsOpen, setIsDetailsOpen] = React.useState(false);
-     const { toast } = useToast(); // Added toast
+     const { toast } = useToast();
 
      React.useEffect(() => {
         const fetchHistory = async () => {
             setIsLoading(true);
             try {
                 const allChallenges = await fetchChallenges();
-                // Filter only completed/archived challenges for history
-                setHistoryChallenges(allChallenges.filter(c => ['completed', 'archived', 'evaluating'].includes(c.status)) // Include evaluating for potential results view
-                                            .sort((a, b) => parseISO(b.periodEndDate).getTime() - parseISO(a.periodEndDate).getTime()) // Sort by end date desc
+                setHistoryChallenges(allChallenges.filter(c => ['completed', 'archived', 'evaluating'].includes(c.status))
+                                            .sort((a, b) => parseISO(b.periodEndDate).getTime() - parseISO(a.periodEndDate).getTime())
                                             );
             } catch (error) {
                  console.error("Failed to load challenge history:", error);
@@ -1015,7 +988,7 @@ const ChallengeHistory = () => {
             }
         };
         fetchHistory();
-    }, [toast]); // Added toast dependency
+    }, [toast]);
 
 
     const getParticipantSummary = (challengeId: string) => {
@@ -1023,7 +996,6 @@ const ChallengeHistory = () => {
         const totalParticipants = challengeParticipants.length;
          const evaluated = challengeParticipants.filter(p => ['approved', 'rejected'].includes(p.status)).length;
          const approved = challengeParticipants.filter(p => p.status === 'approved').length;
-         // If no one could participate based on eligibility, reflect that
          const eligibleEmployees = mockEmployeesSimple.filter(emp => {
               const challenge = mockChallenges.find(c => c.id === challengeId);
               if (!challenge) return false;
@@ -1036,25 +1008,24 @@ const ChallengeHistory = () => {
 
          if (eligibleEmployees === 0) return "N/A (Sem Elegíveis)";
          if (totalParticipants === 0 && eligibleEmployees > 0) return "0/0 (Sem Participações)";
-         if (totalParticipants === 0) return "N/A"; // Should not happen if eligible > 0
+         if (totalParticipants === 0) return "N/A";
 
         return `${approved}/${evaluated} Aprovados (${totalParticipants} Partic.)`;
     }
 
      const handleExportHistory = () => {
-        // Simulate CSV export
         if (historyChallenges.length === 0) {
             toast({ title: "Atenção", description: "Não há histórico para exportar.", variant: "destructive"});
             return;
         }
 
         let csvContent = "data:text/csv;charset=utf-8,";
-        csvContent += "ID Desafio,Título,Data Início,Data Fim,Pontos,Status,Resumo Participantes\n"; // Header row
+        csvContent += "ID Desafio,Título,Data Início,Data Fim,Pontos,Status,Resumo Participantes\n";
 
         historyChallenges.forEach(challenge => {
             const row = [
                 challenge.id,
-                `"${challenge.title.replace(/"/g, '""')}"`, // Escape quotes
+                `"${challenge.title.replace(/"/g, '""')}"`,
                 challenge.periodStartDate,
                 challenge.periodEndDate,
                 challenge.points,
@@ -1079,7 +1050,6 @@ const ChallengeHistory = () => {
         setIsDetailsOpen(true);
     }
 
-    // Columns for History Table
      const historyColumns: ColumnDef<Challenge>[] = [
         { accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
         { accessorKey: "period", header: "Período", cell: ({ row }) => `${format(parseISO(row.original.periodStartDate), 'dd/MM/yy')} - ${format(parseISO(row.original.periodEndDate), 'dd/MM/yy')}` },
@@ -1092,7 +1062,7 @@ const ChallengeHistory = () => {
             cell: ({ row }) => (
                 <div className="text-right">
                     <Button variant="outline" size="sm" onClick={() => openDetails(row.original.id)}>
-                        <FileText className="mr-1 h-3 w-3" /> Ver Detalhes
+                        <Eye className="mr-1 h-3 w-3" /> Ver Detalhes {/* Changed Icon */}
                     </Button>
                 </div>
             ),
@@ -1121,7 +1091,6 @@ const ChallengeHistory = () => {
                     <FileClock className="mr-2 h-4 w-4" /> Exportar Histórico
                 </Button>
             </CardFooter>
-            {/* Details Dialog */}
             <ChallengeDetailsDialog
                 challengeId={selectedChallengeIdForDetails}
                 open={isDetailsOpen}
@@ -1136,31 +1105,24 @@ const ChallengeHistory = () => {
 const ChallengeSettings = () => {
     const { toast } = useToast();
     const [isSaving, setIsSaving] = React.useState(false);
-    // Default values - load from backend in real app
     const [settings, setSettings] = React.useState({
         rankingFactor: 1.0,
-        enableGamification: false, // Feature flag
-        maxPointsCap: '', // Empty string for no limit
-        defaultParticipation: 'Opcional', // 'Opcional' or 'Obrigatório'
+        enableGamification: false,
+        maxPointsCap: '',
+        defaultParticipation: 'Opcional',
     });
 
-    // Load settings from backend on component mount (simulation)
      React.useEffect(() => {
-        // Simulate loading saved settings
          const loadSettings = async () => {
-             // Replace with actual API call
              await new Promise(resolve => setTimeout(resolve, 500));
-             // Example: const savedSettings = await fetchChallengeSettingsAPI();
-             // setSettings(savedSettings);
              console.log("Settings loaded (simulated)");
          };
          loadSettings();
      }, []);
 
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => { // Updated type
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { id, value, type } = e.target;
-         // Handle number input properly, allowing empty string for optional fields
          const newValue = type === 'number'
             ? (value === '' ? '' : parseFloat(value))
             : value;
@@ -1182,13 +1144,10 @@ const ChallengeSettings = () => {
 
     const handleSaveSettings = async () => {
          setIsSaving(true);
-         // Simulate API call
          console.log("Saving challenge settings:", settings);
          await new Promise(resolve => setTimeout(resolve, 800));
-         // Example: await saveChallengeSettingsAPI(settings);
          toast({ title: "Sucesso", description: "Configurações de desafios salvas." });
          setIsSaving(false);
-         // In real app, might need to refetch or update state based on response
     };
 
     return (
@@ -1251,7 +1210,6 @@ const ChallengeSettings = () => {
                     </TooltipProvider>
                     <p className="text-xs text-muted-foreground">Limite máximo de pontos de desafios que podem contar para o ranking em um único mês.</p>
                 </div>
-                 {/* Add more settings as needed */}
             </CardContent>
             <CardFooter>
                 <Button onClick={handleSaveSettings} disabled={isSaving}>
@@ -1267,7 +1225,7 @@ const ChallengeSettings = () => {
 // Main Page Component
 export default function ChallengesPage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6"> {/* Added container */}
         <h1 className="text-3xl font-bold flex items-center gap-2">
              <Target className="h-7 w-7" /> Sistema de Desafios
         </h1>

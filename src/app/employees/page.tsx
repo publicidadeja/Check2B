@@ -1,9 +1,8 @@
 
-
 'use client';
 
 import * as React from 'react';
-import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Eye, UserX, UserCheck, Loader2, Users } from 'lucide-react'; // Added Users icon
+import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Eye, UserX, UserCheck, Loader2, Users } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -37,41 +36,28 @@ import {
 import { EmployeeForm } from '@/components/employee/employee-form';
 import type { Employee } from '@/types/employee';
 import { useToast } from '@/hooks/use-toast';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'; // Ensure CardFooter is imported
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { DataTable } from '@/components/ui/data-table'; // Import DataTable
-import type { ColumnDef } from '@tanstack/react-table'; // Import ColumnDef
-import { format } from 'date-fns'; // Import format for date display
+import { DataTable } from '@/components/ui/data-table';
+import type { ColumnDef } from '@tanstack/react-table';
+import { format } from 'date-fns';
 
-// Mock data (simulated API response) - Manter nomes em português
-// IMPORTANT: This mock data is for frontend display ONLY.
-// Actual user authentication happens via Firebase Authentication.
-// You MUST manually create users in the Firebase Console (Authentication > Users)
-// for them to be able to log in.
-export let mockEmployees: Employee[] = [ // Changed to let for potential modifications if needed by other functions
+export let mockEmployees: Employee[] = [
   { id: '1', name: 'Alice Silva', email: 'alice.silva@check2b.com', phone: '11987654321', department: 'RH', role: 'Recrutadora', admissionDate: '2023-01-15', isActive: true, photoUrl: 'https://picsum.photos/id/1027/40/40' },
   { id: '2', name: 'Beto Santos', email: 'beto.santos@check2b.com', phone: '21912345678', department: 'Engenharia', role: 'Desenvolvedor Backend', admissionDate: '2022-08-20', isActive: true, photoUrl: 'https://picsum.photos/id/1005/40/40' },
-  { id: '3', name: 'Carla Mendes', email: 'carla.mendes@check2b.com', phone: '31999998888', department: 'Marketing', role: 'Analista de Marketing', admissionDate: '2023-05-10', isActive: false }, // Exemplo inativo
+  { id: '3', name: 'Carla Mendes', email: 'carla.mendes@check2b.com', phone: '31999998888', department: 'Marketing', role: 'Analista de Marketing', admissionDate: '2023-05-10', isActive: false },
   { id: '4', name: 'Davi Costa', email: 'davi.costa@check2b.com', phone: '41988887777', department: 'Vendas', role: 'Executivo de Contas', admissionDate: '2021-11-01', isActive: true, photoUrl: 'https://picsum.photos/id/338/40/40' },
   { id: '5', name: 'Eva Pereira', email: 'eva.pereira@check2b.com', phone: '51977776666', department: 'Engenharia', role: 'Desenvolvedora Frontend', admissionDate: '2023-03-22', isActive: true },
-  { id: '6', name: 'Leo Corax', email: 'leocorax@gmail.com', phone: '61988885555', department: 'Engenharia', role: 'Desenvolvedor Frontend', admissionDate: '2024-01-10', isActive: true }, // Ensure Leo exists
+  { id: '6', name: 'Leo Corax', email: 'leocorax@gmail.com', phone: '61988885555', department: 'Engenharia', role: 'Desenvolvedor Frontend', admissionDate: '2024-01-10', isActive: true },
 ];
 
-// Mock API functions
 const fetchEmployees = async (): Promise<Employee[]> => {
   await new Promise(resolve => setTimeout(resolve, 500));
-  return [...mockEmployees]; // Return a copy to avoid direct mutation
+  return [...mockEmployees];
 };
 
 const saveEmployee = async (employeeData: Omit<Employee, 'id'> | Employee): Promise<Employee> => {
     await new Promise(resolve => setTimeout(resolve, 500));
-
-    // --- IMPORTANT NOTE ---
-    // Saving here only updates the *mock* data array.
-    // It DOES NOT create a user in Firebase Authentication.
-    // User creation MUST be done manually in the Firebase Console.
-    // --- ---
-
     if ('id' in employeeData && employeeData.id) {
         const index = mockEmployees.findIndex(emp => emp.id === employeeData.id);
         if (index !== -1) {
@@ -83,14 +69,12 @@ const saveEmployee = async (employeeData: Omit<Employee, 'id'> | Employee): Prom
         }
     } else {
         const newEmployee: Employee = {
-            id: String(Date.now()), // Simple ID for mock
+            id: String(Date.now()),
             ...employeeData,
-            isActive: employeeData.isActive !== undefined ? employeeData.isActive : true, // Default to active
+            isActive: employeeData.isActive !== undefined ? employeeData.isActive : true,
         };
-        // Add to mock array
         mockEmployees.push(newEmployee);
         console.log("Novo colaborador adicionado (mock):", newEmployee);
-        // Remind user to add to Firebase Auth
         alert(`Mock user ${newEmployee.name} added. REMEMBER TO CREATE THE USER IN FIREBASE AUTHENTICATION MANUALLY!`);
         return newEmployee;
     }
@@ -102,7 +86,6 @@ const deleteEmployee = async (employeeId: string): Promise<void> => {
     if (index !== -1) {
         mockEmployees.splice(index, 1);
         console.log("Colaborador removido com ID:", employeeId);
-         // Remind user to remove from Firebase Auth
          alert(`Mock user removed. REMEMBER TO DELETE THE USER FROM FIREBASE AUTHENTICATION MANUALLY!`);
     } else {
          throw new Error("Colaborador não encontrado para remoção");
@@ -115,7 +98,6 @@ const toggleEmployeeStatus = async (employeeId: string): Promise<Employee | unde
     if (index !== -1) {
         mockEmployees[index].isActive = !mockEmployees[index].isActive;
         console.log("Status alterado para o colaborador:", mockEmployees[index]);
-         // Remind user about Firebase Auth status
          alert(`Mock user status changed. REMEMBER TO ${mockEmployees[index].isActive ? 'ENABLE' : 'DISABLE'} THE USER IN FIREBASE AUTHENTICATION MANUALLY!`);
         return mockEmployees[index];
     } else {
@@ -124,7 +106,6 @@ const toggleEmployeeStatus = async (employeeId: string): Promise<Employee | unde
 };
 
 
-// --- Helper Function ---
 const getInitials = (name: string) => {
     if (!name) return '??';
     return name
@@ -136,7 +117,6 @@ const getInitials = (name: string) => {
 };
 
 
-// --- Employee Profile View Component ---
 interface EmployeeProfileViewProps {
     employee: Employee | null;
     open: boolean;
@@ -172,13 +152,10 @@ function EmployeeProfileView({ employee, open, onOpenChange }: EmployeeProfileVi
                      <div className="flex justify-between">
                         <span className="text-muted-foreground">Admissão:</span>
                         <span className="font-medium">
-                             {/* Ensure date is handled correctly */}
                             {employee.admissionDate ? format(new Date(employee.admissionDate + 'T00:00:00Z'), 'dd/MM/yyyy') : '-'}
                         </span>
                     </div>
-                    {/* Add more profile details here - performance, history links etc. */}
                      <div className="pt-4 text-center">
-                        {/* Placeholder for actions like 'View Performance History' */}
                         <Button variant="outline" size="sm" disabled>Ver Histórico de Desempenho</Button>
                     </div>
                 </div>
@@ -193,7 +170,6 @@ function EmployeeProfileView({ employee, open, onOpenChange }: EmployeeProfileVi
 }
 
 
-// --- Main Page Component ---
 export default function EmployeesPage() {
   const [employees, setEmployees] = React.useState<Employee[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -205,7 +181,6 @@ export default function EmployeesPage() {
   const [employeeToView, setEmployeeToView] = React.useState<Employee | null>(null);
   const { toast } = useToast();
 
-  // Define columns for DataTable
   const columns: ColumnDef<Employee>[] = [
     {
       accessorKey: "photoUrl",
@@ -220,7 +195,7 @@ export default function EmployeesPage() {
       enableSorting: false,
     },
     { accessorKey: "name", header: "Nome", cell: ({ row }) => <span className="font-medium">{row.original.name}</span> },
-    { accessorKey: "email", header: "Email", cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.email}</span> }, // Added email column
+    { accessorKey: "email", header: "Email", cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.email}</span> },
     { accessorKey: "department", header: "Departamento" },
     { accessorKey: "role", header: "Função" },
     {
@@ -294,12 +269,11 @@ export default function EmployeesPage() {
          ? { ...selectedEmployee, ...data }
          : data;
 
-     // Ensure admissionDate is in 'YYYY-MM-DD' string format before saving
      const payload = {
          ...employeeDataToSave,
          admissionDate: employeeDataToSave.admissionDate instanceof Date
              ? format(employeeDataToSave.admissionDate, 'yyyy-MM-dd')
-             : employeeDataToSave.admissionDate, // Assume it's already a string if not a Date
+             : employeeDataToSave.admissionDate,
      };
 
     try {
@@ -370,7 +344,7 @@ export default function EmployeesPage() {
     };
 
   return (
-    <div className="space-y-6"> {/* Added space-y for better spacing */}
+    <div className="space-y-6"> {/* Main container */}
         <Card>
             <CardHeader>
                  <CardTitle className="flex items-center gap-2">
@@ -379,7 +353,6 @@ export default function EmployeesPage() {
                 <CardDescription>Adicione, edite, visualize e gerencie os colaboradores da organização.</CardDescription>
              </CardHeader>
              <CardContent>
-                 {/* Actions moved into DataTable component */}
                 {isLoading ? (
                      <div className="flex justify-center items-center py-10">
                         <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
@@ -388,8 +361,8 @@ export default function EmployeesPage() {
                     <DataTable
                         columns={columns}
                         data={employees}
-                        filterColumn="name" // Specify the column to filter
-                        filterPlaceholder="Buscar por nome..." // Custom placeholder
+                        filterColumn="name"
+                        filterPlaceholder="Buscar por nome..."
                     />
                  )}
              </CardContent>
@@ -402,7 +375,6 @@ export default function EmployeesPage() {
         </Card>
 
 
-       {/* Formulário de Colaborador (Dialog) */}
        <EmployeeForm
             employee={selectedEmployee}
             onSave={handleSaveEmployee}
@@ -410,7 +382,6 @@ export default function EmployeesPage() {
             onOpenChange={setIsFormOpen}
         />
 
-        {/* Visualização de Perfil (Dialog) */}
         <EmployeeProfileView
             employee={employeeToView}
             open={isProfileViewOpen}
@@ -418,7 +389,6 @@ export default function EmployeesPage() {
         />
 
 
-       {/* Confirmação de Remoção (AlertDialog) */}
        <AlertDialog open={isDeleting} onOpenChange={setIsDeleting}>
             <AlertDialogContent>
                 <AlertDialogHeader>
