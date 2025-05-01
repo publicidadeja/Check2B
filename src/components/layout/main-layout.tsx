@@ -182,6 +182,7 @@ export function MainLayout({ children }: MainLayoutProps) {
             </h1>
             {/* Add any header actions here if needed */}
           </header>
+          {/* This is where the page content passed from AdminLayout or EmployeeLayout is rendered */}
           <main className="flex-1 overflow-auto p-4 lg:p-6">{children}</main>
         </SidebarInset>
       </SidebarProvider>
