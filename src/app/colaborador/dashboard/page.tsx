@@ -1,3 +1,4 @@
+
  'use client';
 
  import * as React from 'react';
@@ -23,6 +24,10 @@
    Minus, // Added for stable trend
    ListChecks, // For tasks list icon
    Award, // For bonus
+   Gift, // New icon for bonus card
+   ClipboardX, // New icon for zeros card
+   CalendarDays, // New icon for status card
+   Sparkles, // New icon for challenge card
  } from 'lucide-react';
  import { Progress } from '@/components/ui/progress';
  import { Badge } from '@/components/ui/badge';
@@ -35,6 +40,16 @@
  import Link from 'next/link';
  import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
  import { cn } from '@/lib/utils'; // Import cn
+ import { Label } from "@/components/ui/label"; // Import Label component
+ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'; // Import Avatar components
+ import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'; // Import DropdownMenu components
 
  // Import types
  import type { Evaluation } from '@/types/evaluation';
@@ -273,9 +288,9 @@
         switch (type) {
             case 'evaluation': return <ClipboardCheck className="h-4 w-4 text-blue-500" />;
             case 'challenge': return <Target className="h-4 w-4 text-purple-500" />;
-            case 'ranking': return <Trophy className="h-4 w-4 text-yellow-500" />;
+            case 'ranking': return <Trophy className="h-4 w-4 text-yellow-500" />; // Assuming Trophy exists
             case 'announcement': return <Bell className="h-4 w-4 text-gray-500" />;
-            case 'system': return <Settings className="h-4 w-4 text-red-500" />; // Use imported Settings
+            case 'system': return <Settings className="h-4 w-4 text-red-500" />; // Assuming Settings exists
             default: return <Info className="h-4 w-4 text-muted-foreground" />; // Default to Info
         }
      };
@@ -284,7 +299,7 @@
      if (isLoading) {
          return (
              <div className="flex justify-center items-center h-full py-20">
-                 <Loader2 className="h-12 w-12 animate-spin text-primary" /> {/* Slightly smaller loader */}
+                 <Loader2 className="h-12 w-12 animate-spin text-primary" />
              </div>
          );
      }
@@ -301,7 +316,7 @@
      }
 
      const zeroProgress = Math.min((data.zerosThisMonth / ZERO_LIMIT) * 100, 100);
-     const progressColor = zeroProgress > 80 ? 'bg-destructive' : zeroProgress > 50 ? 'bg-yellow-500' : 'bg-primary'; // Dynamic color for progress
+     const progressColor = zeroProgress > 80 ? 'bg-destructive' : zeroProgress > 50 ? 'bg-yellow-500' : 'bg-green-500'; // Changed to green for low zeros
 
 
      const getTrendIcon = (trend?: 'up' | 'down' | 'stable') => {
@@ -316,92 +331,90 @@
 
      return (
          <TooltipProvider>
-             <div className="space-y-4"> {/* Reduced spacing */}
+             <div className="space-y-4 p-4 md:p-0"> {/* Add padding for mobile */}
 
-                 {/* Welcome/Status Card - Enhanced */}
-                 <Card className="shadow-md overflow-hidden">
-                    <CardHeader className="bg-gradient-to-br from-primary/90 to-primary/70 text-primary-foreground p-4 pb-2">
+                 {/* Welcome/Status Card - Enhanced and Illustrated */}
+                 <Card className="shadow-md overflow-hidden border-none bg-gradient-to-br from-primary to-teal-600 dark:from-slate-800 dark:to-teal-900 text-primary-foreground">
+                     <CardHeader className="p-4 pb-2">
                          <div className="flex justify-between items-center">
-                            <CardTitle className="text-lg">Seu Desempenho Hoje</CardTitle>
-                            {getTrendIcon(data.monthlyPerformanceTrend)}
+                             <CardTitle className="text-lg">Seu Dia</CardTitle>
+                             {getTrendIcon(data.monthlyPerformanceTrend)}
                          </div>
-                        <CardDescription className="text-primary-foreground/80 text-xs">
+                         <CardDescription className="text-primary-foreground/80 text-xs">
                              {format(new Date(), "eeee, d 'de' MMMM", { locale: ptBR })}
-                        </CardDescription>
+                         </CardDescription>
                      </CardHeader>
                      <CardContent className="p-4 grid grid-cols-2 gap-4">
                          {/* Today's Evaluation Status */}
-                         <div className="flex flex-col items-center justify-center text-center p-3 rounded-lg bg-muted/50">
-                             <Label className="text-xs text-muted-foreground mb-1">Status Diário</Label>
-                              {data.todayStatus === 'evaluated' && <CheckCircle className="h-8 w-8 text-green-500 mb-1" />}
-                             {data.todayStatus === 'pending' && <Loader2 className="h-8 w-8 text-yellow-500 animate-spin mb-1" />}
-                             {data.todayStatus === 'no_tasks' && <CalendarCheck className="h-8 w-8 text-muted-foreground mb-1" />}
-                            <Badge variant={data.todayStatus === 'evaluated' ? 'default' : data.todayStatus === 'pending' ? 'secondary' : 'outline'} className={cn("text-[10px] px-1.5 py-0.5", data.todayStatus === 'evaluated' && 'bg-green-600')}>
+                         <div className="flex flex-col items-center justify-center text-center p-3 rounded-lg bg-white/20 backdrop-blur-sm">
+                             <Label className="text-xs text-primary-foreground/80 mb-1">Status Diário</Label>
+                              {data.todayStatus === 'evaluated' && <CheckCircle className="h-8 w-8 text-green-300 mb-1" />}
+                             {data.todayStatus === 'pending' && <Loader2 className="h-8 w-8 text-yellow-300 animate-spin mb-1" />}
+                             {data.todayStatus === 'no_tasks' && <CalendarDays className="h-8 w-8 text-primary-foreground/70 mb-1" />}
+                            <Badge variant={data.todayStatus === 'evaluated' ? 'default' : data.todayStatus === 'pending' ? 'secondary' : 'outline'} className={cn("text-[10px] px-1.5 py-0.5", data.todayStatus === 'evaluated' && 'bg-green-500 text-white border-green-400', data.todayStatus === 'pending' && 'bg-yellow-400 text-yellow-900 border-yellow-300', data.todayStatus === 'no_tasks' && 'bg-white/10 text-primary-foreground/80 border-white/20')}>
                                 {data.todayStatus === 'evaluated' ? 'Avaliado' : data.todayStatus === 'pending' ? 'Pendente' : 'Sem Tarefas'}
                              </Badge>
                          </div>
 
                          {/* Monthly Zeros */}
-                         <div className="flex flex-col items-center justify-center text-center p-3 rounded-lg bg-muted/50">
-                            <Label className="text-xs text-muted-foreground mb-1">Zeros no Mês</Label>
-                             <div className={`text-3xl font-bold mb-1 ${data.zerosThisMonth > ZERO_LIMIT ? 'text-destructive' : ''}`}>
+                         <div className="flex flex-col items-center justify-center text-center p-3 rounded-lg bg-white/20 backdrop-blur-sm">
+                            <Label className="text-xs text-primary-foreground/80 mb-1">Zeros no Mês</Label>
+                             <div className={`text-3xl font-bold mb-1 ${data.zerosThisMonth > ZERO_LIMIT ? 'text-red-300' : ''}`}>
                                  {data.zerosThisMonth}
-                                 <span className="text-sm text-muted-foreground"> / {ZERO_LIMIT}</span>
+                                 <span className="text-sm text-primary-foreground/70"> / {ZERO_LIMIT}</span>
                              </div>
                              <Tooltip>
                                 <TooltipTrigger asChild>
-                                     <Progress value={zeroProgress} aria-label={`${data.zerosThisMonth} de ${ZERO_LIMIT} zeros permitidos`} className="h-1.5 w-full" indicatorClassName={progressColor} />
+                                     <Progress value={zeroProgress} aria-label={`${data.zerosThisMonth} de ${ZERO_LIMIT} zeros permitidos`} className="h-1.5 w-full bg-white/30" indicatorClassName={progressColor} />
                                 </TooltipTrigger>
                                  <TooltipContent>
-                                    <p>{data.zerosThisMonth > ZERO_LIMIT ? 'Limite de zeros excedido.' : `${ZERO_LIMIT - data.zerosThisMonth} zero(s) restante(s).`}</p>
+                                    <p>{data.zerosThisMonth >= ZERO_LIMIT ? 'Limite de zeros atingido/excedido.' : `${ZERO_LIMIT - data.zerosThisMonth} zero(s) restante(s).`}</p>
                                  </TooltipContent>
                              </Tooltip>
                          </div>
 
                           {/* Projected Bonus */}
-                         <div className="col-span-2 flex items-center justify-between p-3 rounded-lg border border-dashed border-primary/50 bg-primary/5">
+                         <div className="col-span-2 flex items-center justify-between p-3 rounded-lg border border-white/30 bg-white/10 backdrop-blur-sm">
                              <div className="flex items-center gap-2">
-                                <Award className="h-5 w-5 text-primary"/>
-                                <span className="text-sm font-medium text-primary">Bônus Projetado</span>
+                                <Gift className="h-5 w-5 text-yellow-300"/>
+                                <span className="text-sm font-medium text-primary-foreground">Bônus Projetado</span>
                                  <Tooltip>
                                     <TooltipTrigger asChild>
-                                        <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                                        <Info className="h-3 w-3 text-primary-foreground/70 cursor-help" />
                                     </TooltipTrigger>
                                     <TooltipContent side="top">
                                          <p className="text-xs max-w-[180px]">Baseado no desempenho atual. Valor final definido no fechamento do mês.</p>
                                     </TooltipContent>
                                 </Tooltip>
                              </div>
-                             <span className="text-lg font-bold text-green-600">
+                             <span className="text-lg font-bold text-yellow-300">
                                 R$ {data.projectedBonus.toFixed(2)}
                             </span>
                          </div>
                      </CardContent>
-                      <CardFooter className="bg-muted/30 px-4 py-2">
+                      <CardFooter className="bg-black/10 px-4 py-2">
                          <Link href="/colaborador/avaliacoes" passHref className='w-full'>
-                            <Button variant="ghost" size="sm" className="w-full text-xs text-primary">Ver Histórico Completo</Button>
+                            <Button variant="link" size="sm" className="w-full text-xs text-primary-foreground/90 hover:text-primary-foreground justify-center">Ver Histórico Completo</Button>
                         </Link>
                      </CardFooter>
                  </Card>
 
-                 {/* Tasks for Today - Improved Layout */}
-                 <Card className="shadow-sm">
+                 {/* Tasks for Today - Cleaner List */}
+                 <Card className="shadow-sm border">
                      <CardHeader className="p-3 pb-1">
-                         <CardTitle className="flex items-center gap-2 text-base"><ListChecks className="h-4 w-4 text-primary" /> Tarefas de Hoje</CardTitle>
+                         <CardTitle className="flex items-center gap-2 text-base font-semibold"><ListChecks className="h-5 w-5 text-primary" /> Tarefas de Hoje</CardTitle>
                      </CardHeader>
                      <CardContent className="p-3">
                          {data.tasksToday.length > 0 ? (
                              <ul className="space-y-2">
                                  {data.tasksToday.map(task => (
-                                     <li key={task.id} className="flex items-center justify-between p-2 border rounded-md bg-background hover:bg-muted/50 transition-colors">
+                                     <li key={task.id} className="flex items-center justify-between p-2.5 border rounded-md bg-background hover:bg-muted/50 transition-colors">
                                         <div className='min-w-0'>
                                             <p className="text-sm font-medium truncate">{task.title}</p>
-                                            <p className="text-xs text-muted-foreground truncate">{task.criteria}</p>
                                         </div>
                                          <Tooltip>
                                              <TooltipTrigger asChild>
-                                                 {/* Use a non-interactive span or div if no action is needed */}
-                                                 <span className="ml-2 text-muted-foreground flex-shrink-0">
+                                                 <span className="ml-2 text-muted-foreground flex-shrink-0 cursor-help">
                                                      <Info className="h-4 w-4" />
                                                   </span>
                                              </TooltipTrigger>
@@ -419,23 +432,23 @@
                      </CardContent>
                  </Card>
 
-                 {/* Active Challenges - Enhanced Card */}
-                 <Card className="shadow-sm">
+                 {/* Active Challenges - Illustrated Card */}
+                 <Card className="shadow-sm border">
                      <CardHeader className="p-3 pb-1">
-                         <CardTitle className="flex items-center gap-2 text-base"><Target className="h-4 w-4 text-primary" /> Desafios Ativos</CardTitle>
+                         <CardTitle className="flex items-center gap-2 text-base font-semibold"><Sparkles className="h-5 w-5 text-purple-500" /> Desafios Ativos</CardTitle>
                          {data.activeChallenges.length > 0 && <CardDescription className="text-xs">Participe e ganhe pontos extras!</CardDescription>}
                      </CardHeader>
                      <CardContent className="p-3">
                          {data.activeChallenges.length > 0 ? (
                              <ul className="space-y-3">
                                  {data.activeChallenges.map(challenge => (
-                                     <li key={challenge.id} className="border rounded-lg p-3 hover:shadow-md transition-shadow bg-background">
+                                     <li key={challenge.id} className="border rounded-lg p-3 hover:shadow-md transition-shadow bg-gradient-to-r from-purple-50 via-fuchsia-50 to-pink-50 dark:from-purple-900/30 dark:via-fuchsia-900/30 dark:to-pink-900/30">
                                          <div className="flex justify-between items-start mb-1 gap-2">
-                                             <h4 className="font-semibold text-sm">{challenge.title}</h4>
-                                             <Badge variant="secondary" className="text-xs flex-shrink-0 whitespace-nowrap bg-yellow-100 text-yellow-800 border-yellow-200">{challenge.points} pts</Badge>
+                                             <h4 className="font-semibold text-sm text-purple-800 dark:text-purple-200">{challenge.title}</h4>
+                                             <Badge variant="secondary" className="text-xs flex-shrink-0 whitespace-nowrap bg-yellow-400 text-yellow-900 border-yellow-500">{challenge.points} pts</Badge>
                                          </div>
-                                         <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{challenge.description}</p>
-                                         <div className="flex justify-between items-center text-xs text-muted-foreground">
+                                         <p className="text-xs text-muted-foreground dark:text-slate-400 mb-2 line-clamp-2">{challenge.description}</p>
+                                         <div className="flex justify-between items-center text-xs text-muted-foreground dark:text-slate-400">
                                              <span>Termina: {format(parseISO(challenge.periodEndDate), 'dd/MM/yy')}</span>
                                               <Link href="/colaborador/desafios" passHref>
                                                   <Button variant="link" size="sm" className="p-0 h-auto text-accent text-xs font-semibold">Ver Detalhes</Button>
@@ -448,44 +461,22 @@
                              <p className="text-sm text-muted-foreground text-center py-4">Nenhum desafio ativo no momento.</p>
                          )}
                      </CardContent>
-                     <CardFooter className="p-3 border-t mt-2">
+                     <CardFooter className="p-3 border-t mt-2 bg-muted/50">
                          <Link href="/colaborador/desafios" passHref className="w-full">
-                             <Button variant="outline" size="sm" className="w-full text-xs">Ver Todos Desafios</Button>
+                             <Button variant="ghost" size="sm" className="w-full text-xs text-primary">Ver Todos Desafios</Button>
                          </Link>
                      </CardFooter>
                  </Card>
 
-                 {/* Notifications Card - Improved Spacing and Readability */}
-                 <Card className="shadow-sm">
-                     <CardHeader className="p-3 pb-1">
-                         <CardTitle className="flex items-center gap-2 text-base"><Bell className="h-4 w-4 text-primary" /> Notificações Recentes</CardTitle>
-                     </CardHeader>
-                     <CardContent className="p-0">
-                         {data.recentNotifications.length > 0 ? (
-                             <div className="divide-y">
-                                 {data.recentNotifications.slice(0, 5).map(notification => ( // Limit to 5 recent
-                                     <div key={notification.id} className="flex items-start gap-3 p-3 text-xs hover:bg-muted/30 transition-colors">
-                                         <div className="flex-shrink-0 pt-0.5 mt-0.5">
-                                             {getNotificationIcon(notification.type)}
-                                         </div>
-                                         <div className="flex-grow">
-                                             <p className={cn("leading-tight", !notification.read && "font-medium")}>{notification.message}</p>
-                                             <p className="text-muted-foreground/80 text-[10px]">{format(notification.timestamp, 'dd/MM HH:mm', { locale: ptBR })}</p>
-                                         </div>
-                                         {!notification.read && <div className="h-2 w-2 rounded-full bg-primary mt-1 flex-shrink-0" />}
-                                     </div>
-                                 ))}
-                             </div>
-                         ) : (
-                             <div className="p-3">
-                                 <p className="text-sm text-muted-foreground text-center py-4">Nenhuma notificação recente.</p>
-                             </div>
-                         )}
-                     </CardContent>
-                     {/* Optionally add a footer link to see all notifications */}
-                 </Card>
+                 {/* Notifications Card - Removed as it's in header now */}
+                 {/* Keep if you want a dedicated notification list here */}
 
              </div>
          </TooltipProvider>
      );
  }
+
+ // Assuming Trophy and Settings are imported elsewhere or need importing if used in getNotificationIcon
+ import { Settings, Trophy } from 'lucide-react';
+
+    
