@@ -38,26 +38,14 @@ import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
+import { mockTasks } from '@/lib/mockData/tasks'; // Import from the new data file
+import { mockEmployees } from '@/lib/mockData/employees'; // Import employees for name lookup
 
-export let mockTasks: Task[] = [
-  { id: 't1', title: 'Verificar Emails', description: 'Responder a todos os emails pendentes.', criteria: 'Caixa de entrada zerada ou emails urgentes respondidos.', category: 'Comunicação', periodicity: 'daily', assignedTo: 'role', assignedEntityId: 'Recrutadora' },
-  { id: 't2', title: 'Reunião Diária', description: 'Participar da reunião da equipe.', criteria: 'Presença e participação ativa.', category: 'Engenharia', periodicity: 'daily', assignedTo: 'department', assignedEntityId: 'Engenharia' },
-  { id: 't3', title: 'Atualizar CRM', description: 'Registrar novas interações no CRM.', criteria: 'CRM atualizado com atividades do dia.', category: 'Vendas', periodicity: 'daily', assignedTo: 'role', assignedEntityId: 'Executivo de Contas' },
-  { id: 't4', title: 'Postar em Redes Sociais', description: 'Agendar/publicar post planejado.', criteria: 'Post publicado conforme planejado.', category: 'Marketing', periodicity: 'specific_days', assignedTo: 'role', assignedEntityId: 'Analista de Marketing' },
-  { id: 't5', title: 'Revisar Código', description: 'Revisar pull requests designados.', criteria: 'PRs revisados com feedback.', category: 'Engenharia', periodicity: 'daily', assignedTo: 'individual', assignedEntityId: '2' /* Beto Santos ID */ },
-  { id: 't6', title: 'Relatório Semanal', description: 'Compilar dados e criar relatório.', criteria: 'Relatório completo e enviado.', category: 'Geral', periodicity: 'specific_days' /* e.g., Sextas */ },
-];
-
-const mockEmployees: Array<{ id: string; name: string }> = [
-  { id: '1', name: 'Alice Silva' },
-  { id: '2', name: 'Beto Santos' },
-  { id: '4', name: 'Davi Costa' },
-  { id: '5', name: 'Eva Pereira' },
-];
+// Removed mock data definition from here
 
 const fetchTasks = async (): Promise<Task[]> => {
   await new Promise(resolve => setTimeout(resolve, 500));
-  return [...mockTasks];
+  return [...mockTasks]; // Use imported data
 };
 
 const saveTask = async (taskData: Omit<Task, 'id'> | Task): Promise<Task> => {

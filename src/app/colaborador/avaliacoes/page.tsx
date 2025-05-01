@@ -1,3 +1,4 @@
+
  'use client';
 
  import * as React from 'react';
@@ -36,7 +37,7 @@
  } from '@/components/ui/dialog';
  import { ScrollArea } from '@/components/ui/scroll-area';
  import { Separator } from '@/components/ui/separator';
- import { Badge } from '@/components/ui/badge'; // Ensure Badge is imported
+ import { Badge } from '@/components/ui/badge';
  import { useToast } from '@/hooks/use-toast';
  import { cn } from '@/lib/utils';
  import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -49,7 +50,7 @@
  const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
 
  // --- Mock Data & Fetching ---
- import { mockTasks as allAdminTasks } from '@/app/tasks/page'; // Reuse tasks
+ import { mockTasks as allAdminTasks } from '@/lib/mockData/tasks'; // Corrected import path
 
  // Simplified mock evaluations generation for demo
  const generateMockEvaluations = (employeeId: string, monthsBack: number = 2): Evaluation[] => {
@@ -244,7 +245,7 @@
 
      return (
          <TooltipProvider>
-             <div className="space-y-4">
+             <div className="space-y-4 p-4"> {/* Add padding for mobile view */}
                  {/* Header Card for Navigation */}
                  <Card className="shadow-sm">
                      <CardHeader className="p-3">

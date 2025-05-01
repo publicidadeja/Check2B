@@ -4,7 +4,7 @@
  import * as React from 'react';
  import { format, parseISO, subMonths, addMonths, startOfMonth, endOfMonth } from 'date-fns'; // Added endOfMonth
  import { ptBR } from 'date-fns/locale';
- import { Trophy, Crown, Medal, ChevronLeft, ChevronRight, HelpCircle, Loader2, BarChartHorizontal, Info, Award as AwardIcon, TrendingUp, TrendingDown, Minus, User, Activity, AlertTriangle, Eye } from 'lucide-react'; // Added more icons
+ import { Trophy, Crown, Medal, ChevronLeft, ChevronRight, HelpCircle, Loader2, BarChartHorizontal, Info, Award as AwardIcon, TrendingUp, TrendingDown, Minus, User, Activity, AlertTriangle, Eye, CheckCircle } from 'lucide-react'; // Added more icons
  import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
  import { Button } from '@/components/ui/button';
  import { Badge } from '@/components/ui/badge';
@@ -26,8 +26,8 @@
 
  // --- Mock Data & Fetching ---
  // Use exported mock data from admin page
- import { mockRanking as allAdminRanking, mockAwards as allAdminAwards } from '@/app/(admin)/ranking/page';
-
+ import { mockRanking as allAdminRanking } from '@/app/(admin)/ranking/page'; // Reuse admin mock data
+ import { mockAwards as allAdminAwards } from '@/lib/mockData/awards'; // Update import path
 
  // Function to fetch ranking data for a specific month, adapted for employee view
  const fetchEmployeeRankingData = async (employeeId: string, period: Date): Promise<{ ranking: RankingEntry[], userEntry?: RankingEntry, award?: AdminAward }> => {
@@ -336,8 +336,9 @@
                                 ))}
                              </div>
                          ) : (
-                             // Remove ScrollArea, let page handle scroll
-                             <DataTable columns={rankingColumns(CURRENT_EMPLOYEE_ID)} data={rankingData} noPagination />
+                             <div className="overflow-x-auto"> {/* Ensure table scrolls horizontally if needed */}
+                                <DataTable columns={rankingColumns(CURRENT_EMPLOYEE_ID)} data={rankingData} noPagination /> {/* Remove internal pagination */}
+                             </div>
                           )}
                      </CardContent>
                  </Card>
@@ -346,3 +347,4 @@
           </TooltipProvider>
      );
  }
+

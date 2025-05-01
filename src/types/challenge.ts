@@ -1,3 +1,4 @@
+
 export interface Challenge {
   id: string;
   title: string;
@@ -18,21 +19,19 @@ export interface Challenge {
   status: 'draft' | 'active' | 'scheduled' | 'evaluating' | 'completed' | 'archived'; // Lifecycle status
 }
 
-// Example of a more complex point system if needed later
-// interface ChallengePoints {
-//   base: number;
-//   levels?: { [level: string]: number }; // e.g., { Bronze: 50, Silver: 100, Gold: 150 }
-//   earlyCompletionBonus?: number;
-// }
 
-// Example of participation tracking (might need separate type)
-// export interface ChallengeParticipation {
-//   challengeId: string;
-//   employeeId: string;
-//   accepted: boolean; // For optional challenges
-//   status: 'pending' | 'in_progress' | 'submitted' | 'evaluated';
-//   submissionUrl?: string; // Link to evidence submitted by employee
-//   evaluationScore?: number; // Score given by admin
-//   evaluationFeedback?: string;
-//   evaluationDate?: string;
-// }
+// Added definition for ChallengeParticipation used in admin/challenges page
+export interface ChallengeParticipation {
+    id: string;
+    challengeId: string;
+    employeeId: string;
+    employeeName: string; // For display
+    submission?: string; // Link or text description
+    submittedAt?: Date;
+    status: 'pending' | 'submitted' | 'approved' | 'rejected' | 'accepted'; // Added accepted status
+    score?: number; // Score given if approved
+    feedback?: string;
+    acceptedAt?: Date; // Added acceptedAt
+    submissionText?: string; // Explicit text submission field
+    submissionFileUrl?: string; // Explicit file submission field
+}

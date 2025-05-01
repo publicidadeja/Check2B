@@ -2,7 +2,7 @@
  'use client';
 
  import * as React from 'react';
- import { User, Edit, Save, Loader2, ShieldCheck, Bell, EyeOff, Eye, Image as ImageIcon, Camera, LogOut, Settings } from 'lucide-react'; // Added Camera, Logout, Settings
+ import { User, Edit, Save, Loader2, ShieldCheck, Bell, EyeOff, Eye, Image as ImageIcon, Camera, LogOut, Settings, CheckCircle } from 'lucide-react'; // Added CheckCircle
  import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
  import { Button } from "@/components/ui/button";
  import { Input } from "@/components/ui/input";
@@ -49,6 +49,7 @@
      challengeUpdates: z.boolean().default(true),
      rankingChanges: z.boolean().default(false), // Default off for ranking
      systemAnnouncements: z.boolean().default(true),
+     browserNotifications: z.boolean().default(false), // Add setting for browser notifications
  });
 
  type ProfileFormData = z.infer<typeof profileSchema>;
@@ -97,6 +98,8 @@
  const updateNotificationSettings = async (employeeId: string, data: NotificationFormData): Promise<void> => {
       await new Promise(resolve => setTimeout(resolve, 500));
       console.log("Configurações de notificação salvas (simulado):", employeeId, data);
+      // In a real app, store these preferences in Firebase or your backend
+      // Also, use data.browserNotifications to enable/disable browser push notifications (requires service worker etc.)
  }
 
 
@@ -124,6 +127,7 @@
      const [photoPreview, setPhotoPreview] = React.useState<string | undefined>(); // For file preview
      const [selectedFile, setSelectedFile] = React.useState<File | null>(null); // Store the selected file
      const fileInputRef = React.useRef<HTMLInputElement>(null); // Ref for file input
+     const [browserNotificationPermission, setBrowserNotificationPermission] = React.useState<NotificationPermission | null>(null);
 
      const { toast } = useToast();
 
@@ -131,13 +135,19 @@
      const profileForm = useForm<ProfileFormData>({ resolver: zodResolver(profileSchema) });
      const passwordForm = useForm<PasswordFormData>({ resolver: zodResolver(passwordSchema) });
      const notificationForm = useForm<NotificationFormData>({ resolver: zodResolver(notificationSchema), defaultValues: {
-             newEvaluation: true, challengeUpdates: true, rankingChanges: false, systemAnnouncements: true,
+             newEvaluation: true, challengeUpdates: true, rankingChanges: false, systemAnnouncements: true, browserNotifications: false, // Default browser off
      }});
 
-     // Fetch Profile Data
+     // Fetch Profile Data & Notification Permission
      React.useEffect(() => {
-         const loadProfile = async () => {
+         const loadProfileAndPermissions = async () => {
              setIsLoading(true);
+             // Check browser notification permission
+             if (typeof window !== 'undefined' && "Notification" in window) {
+                 setBrowserNotificationPermission(Notification.permission);
+                 notificationForm.setValue('browserNotifications', Notification.permission === 'granted');
+             }
+
              try {
                  // Simulate guest mode or fetch based on actual auth state
                  const isGuest = false; // Replace with actual check
@@ -145,18 +155,21 @@
                      const data = await fetchEmployeeProfile(CURRENT_EMPLOYEE_ID);
                      setEmployee(data);
                      profileForm.reset({
-                         // name: data.name, // Name not editable by user
                          phone: data.phone || '',
                          photoUrl: data.photoUrl || '',
                      });
                      setPhotoPreview(data.photoUrl);
-                     // Load notification prefs (mocked)
+                     // Load saved notification prefs (mocked here, fetch from backend in real app)
                      notificationForm.reset({
-                         newEvaluation: true, challengeUpdates: true, rankingChanges: false, systemAnnouncements: true,
+                         newEvaluation: true, // Replace with fetched value
+                         challengeUpdates: true, // Replace with fetched value
+                         rankingChanges: false, // Replace with fetched value
+                         systemAnnouncements: true, // Replace with fetched value
+                         browserNotifications: Notification.permission === 'granted', // Set based on actual permission
                       });
                  } else {
-                     // Handle guest view if needed (e.g., show generic profile)
-                      setEmployee({ // Example guest data
+                     // Handle guest view
+                      setEmployee({
                          id: 'guest', name: 'Convidado', email: '', department: '', role: 'Colaborador', admissionDate: format(new Date(), 'yyyy-MM-dd'), isActive: true
                      });
                      setPhotoPreview(undefined);
@@ -169,7 +182,7 @@
                  setIsLoading(false);
              }
          };
-         loadProfile();
+         loadProfileAndPermissions();
      }, [profileForm, notificationForm, toast]);
 
 
@@ -238,7 +251,8 @@
 
      const handlePhotoUrlChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const url = event.target.value;
-        form.setValue('photoUrl', url); // Make sure 'form' is accessible, perhaps profileForm?
+        // Ensure profileForm is accessible here, assuming it's defined in the component scope
+        profileForm.setValue('photoUrl', url);
         if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
             setPhotoPreview(url);
             setSelectedFile(null); // Clear file if URL is manually entered
@@ -272,10 +286,30 @@
      // Handle Notification Save
      const onNotificationSubmit = async (data: NotificationFormData) => {
          setIsSavingNotifications(true);
+         // Handle browser notification permission change specifically
+         if (typeof window !== 'undefined' && "Notification" in window) {
+             const currentPermission = Notification.permission;
+             if (data.browserNotifications && currentPermission === 'default') {
+                 const permission = await Notification.requestPermission();
+                 setBrowserNotificationPermission(permission);
+                 data.browserNotifications = permission === 'granted'; // Update form data based on actual permission
+                 if (permission === 'denied') {
+                     toast({ title: "Permissão Negada", description: "Notificações do navegador foram bloqueadas.", variant: "destructive" });
+                 } else if (permission === 'granted') {
+                      toast({ title: "Permissão Concedida", description: "Notificações do navegador ativadas." });
+                 }
+             } else if (!data.browserNotifications && currentPermission === 'granted') {
+                  // User is trying to disable, but this usually requires browser settings change.
+                  // Inform the user.
+                 toast({ title: "Ação Necessária", description: "Para desativar notificações do navegador, ajuste as configurações do seu site/navegador.", duration: 5000 });
+                 data.browserNotifications = true; // Keep switch enabled as permission is still granted
+             }
+         }
+
          try {
               await updateNotificationSettings(CURRENT_EMPLOYEE_ID, data);
               toast({ title: "Sucesso!", description: "Preferências de notificação salvas." });
-              notificationForm.reset(data); // Keep saved values
+              notificationForm.reset(data); // Keep saved values reflecting actual state
          } catch (error) {
               console.error("Erro ao salvar notificações:", error);
               toast({ title: "Erro", description: "Não foi possível salvar as preferências.", variant: "destructive" });
@@ -516,7 +550,7 @@
                                  <CardDescription className='text-xs'>Gerencie como você recebe alertas.</CardDescription>
                              </CardHeader>
                              <CardContent className="space-y-3 p-4 pt-0">
-                                 <FormField control={notificationForm.control} name="newEvaluation" render={({ field }) => (
+                                <FormField control={notificationForm.control} name="newEvaluation" render={({ field }) => (
                                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
                                          <FormLabel className="font-normal text-xs leading-tight pr-2">Receber notificação de novas avaliações</FormLabel>
                                          <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
@@ -540,10 +574,35 @@
                                          <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                                      </FormItem>
                                  )}/>
+                                 {/* Browser Notification Toggle */}
+                                 <FormField control={notificationForm.control} name="browserNotifications" render={({ field }) => (
+                                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                          <div className="space-y-0.5">
+                                              <FormLabel className="font-normal text-xs leading-tight pr-2">Ativar notificações do navegador</FormLabel>
+                                              {browserNotificationPermission === 'denied' && (
+                                                 <FormDescription className="text-xs text-destructive">
+                                                     Permissão bloqueada nas configurações do navegador.
+                                                 </FormDescription>
+                                             )}
+                                             {browserNotificationPermission === 'default' && (
+                                                 <FormDescription className="text-xs text-yellow-600">
+                                                     Permissão necessária. Clique em salvar para solicitar.
+                                                 </FormDescription>
+                                             )}
+                                         </div>
+                                         <FormControl>
+                                              <Switch
+                                                 checked={field.value}
+                                                 onCheckedChange={field.onChange}
+                                                 disabled={browserNotificationPermission === 'denied'}
+                                              />
+                                         </FormControl>
+                                     </FormItem>
+                                 )}/>
                              </CardContent>
                              <CardFooter className="p-4 pt-0">
                                   <Button type="submit" disabled={isSavingNotifications || !notificationForm.formState.isDirty} className="w-full">
-                                     {isSavingNotifications ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                                     {isSavingNotifications ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />} {/* Changed Icon */}
                                      {isSavingNotifications ? 'Salvando...' : 'Salvar Preferências'}
                                  </Button>
                              </CardFooter>

@@ -2,7 +2,7 @@
  'use client';
 
  import * as React from 'react';
- import { Target, CheckCircle, Clock, Award, History, Filter, Loader2, Info, ArrowRight, FileText, Upload, Link as LinkIcon, Calendar, Trophy, Eye, ArrowLeft, Frown, CalendarDays, ListFilter, Search } from 'lucide-react'; // Added icons
+ import { Target, CheckCircle, Clock, Award, History, Filter, Loader2, Info, ArrowRight, FileText, Upload, Link as LinkIcon, Calendar, Trophy, Eye, ArrowLeft, Frown, CalendarDays, ListFilter, Search, X, CheckCircle2 } from 'lucide-react'; // Added icons, replaced Award with AwardIcon
  import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
  import {
    Card,
@@ -34,36 +34,16 @@
  import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
  import { cn } from '@/lib/utils'; // Import cn utility
  import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
+ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // Added Select imports
 
  // Import types
- import type { Challenge } from '@/types/challenge';
+ import type { Challenge, ChallengeParticipation } from '@/types/challenge'; // Import ChallengeParticipation
  import { mockEmployees } from '@/lib/mockData/employees'; // Updated import path
- import { mockChallenges as allAdminChallenges, mockParticipants } from '@/app/(admin)/challenges/page';
+ import { mockChallenges as allAdminChallenges, mockParticipants, mockCurrentParticipations } from '@/lib/mockData/challenges'; // Updated import
 
  // Mock Employee ID
  const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
 
- interface EmployeeChallengeParticipation {
-     challengeId: string;
-     employeeId: string;
-     status: 'pending' | 'accepted' | 'submitted' | 'approved' | 'rejected';
-     acceptedAt?: Date;
-     submittedAt?: Date;
-     submissionText?: string;
-     submissionFileUrl?: string; // Assume URL is stored after upload
-     score?: number;
-     feedback?: string;
- }
-
- // Ensure mockCurrentParticipations is declared with 'let' if it needs reassignment
- let mockCurrentParticipations: EmployeeChallengeParticipation[] = [
-     { challengeId: 'c1', employeeId: '1', status: 'approved', acceptedAt: new Date(2024, 7, 5), submittedAt: new Date(2024, 7, 9), submissionText: 'Resumos enviados.', score: 50, feedback: 'Ótimo trabalho!' },
-     { challengeId: 'c2', employeeId: '1', status: 'pending' }, // Eligible but not accepted
-     { challengeId: 'c3', employeeId: '1', status: 'pending' }, // Eligible but not accepted
-     { challengeId: 'c4', employeeId: '1', status: 'submitted', acceptedAt: new Date(2024, 7, 29), submittedAt: new Date(2024, 7, 31), submissionText: 'Feedbacks enviados via RH.', feedback: 'Recebido para avaliação.' }, // Added feedback
-     { challengeId: 'c5', employeeId: '1', status: 'accepted', acceptedAt: new Date(Date.now() - 86400000 * 2) }, // Accepted 2 days ago
-      { challengeId: 'c6', employeeId: '1', status: 'pending' }, // Not eligible for Alice (or maybe?) Let's assume eligible for demo
- ];
 
  // --- Mock Fetching Functions ---
  const fetchEmployeeChallenges = async (employeeId: string): Promise<{ available: Challenge[], active: Challenge[], completed: Challenge[] }> => {
@@ -151,10 +131,10 @@
   }
 
  // Mock action functions
- const acceptChallenge = async (employeeId: string, challengeId: string): Promise<EmployeeChallengeParticipation> => {
+ const acceptChallenge = async (employeeId: string, challengeId: string): Promise<ChallengeParticipation> => {
      await new Promise(resolve => setTimeout(resolve, 400)); // Faster accept
      const existingIndex = mockCurrentParticipations.findIndex(p => p.employeeId === employeeId && p.challengeId === challengeId);
-     let participation: EmployeeChallengeParticipation;
+     let participation: ChallengeParticipation;
      const challenge = allAdminChallenges.find(c => c.id === challengeId);
       if (!challenge || challenge.status !== 'active' && challenge.status !== 'scheduled') {
          throw new Error("Não é possível aceitar este desafio no momento.");
@@ -178,7 +158,7 @@
      return participation;
  };
 
- const submitChallenge = async (employeeId: string, challengeId: string, submissionText?: string, file?: File): Promise<EmployeeChallengeParticipation> => {
+ const submitChallenge = async (employeeId: string, challengeId: string, submissionText?: string, file?: File): Promise<ChallengeParticipation> => {
      await new Promise(resolve => setTimeout(resolve, 800)); // Submission takes longer
      const participationIndex = mockCurrentParticipations.findIndex(p => p.employeeId === employeeId && p.challengeId === challengeId);
      const challenge = allAdminChallenges.find(c => c.id === challengeId);
@@ -226,7 +206,7 @@
  };
 
  // --- Helper Function ---
- const getSafeStatusBadgeVariant = (status: EmployeeChallengeParticipation['status']): "default" | "secondary" | "destructive" | "outline" => {
+ const getSafeStatusBadgeVariant = (status: ChallengeParticipation['status']): "default" | "secondary" | "destructive" | "outline" => {
      switch (status) {
          case 'accepted': return 'outline';
          case 'submitted': return 'default'; // Use primary color for submitted
@@ -238,7 +218,7 @@
  };
 
 
- const getStatusText = (status: EmployeeChallengeParticipation['status']): string => {
+ const getStatusText = (status: ChallengeParticipation['status']): string => {
      const map = {
          pending: 'Disponível', // Changed from Pendente
          accepted: 'Aceito',
@@ -252,7 +232,7 @@
  // --- Challenge Details Modal ---
  interface ChallengeDetailsModalProps {
      challenge: Challenge | null;
-     participation?: EmployeeChallengeParticipation | null;
+     participation?: ChallengeParticipation | null;
      onAccept?: (challengeId: string) => void;
      onSubmit?: (challengeId: string, submissionText?: string, file?: File) => void;
      isOpen: boolean;
@@ -312,8 +292,10 @@
      }
 
 
-     const isChallengeOver = isPast(parseISO(challenge.periodEndDate));
-     const isChallengeNotStarted = new Date() < parseISO(challenge.periodStartDate);
+     const endDate = parseISO(challenge.periodEndDate);
+     const startDate = parseISO(challenge.periodStartDate);
+     const isChallengeOver = isPast(endDate);
+     const isChallengeNotStarted = new Date() < startDate;
 
      // Can submit if: accepted, challenge is active OR evaluating, AND (period not over OR challenge is evaluating)
      const canSubmit = participation?.status === 'accepted' &&
@@ -367,7 +349,7 @@
 
      let daysRemaining = -1;
      try {
-       daysRemaining = differenceInDays(parseISO(challenge.periodEndDate), new Date());
+       daysRemaining = differenceInDays(endDate, new Date());
      } catch (e) {
          console.error("Error calculating days remaining:", e);
      }
@@ -434,7 +416,7 @@
                           <div className="bg-muted/50 p-2 rounded-md border border-muted">
                              <h4 className="font-semibold mb-0.5 text-xs text-muted-foreground flex items-center gap-1"><CalendarDays className='h-3 w-3'/>Período:</h4>
                               <p className="text-xs">
-                                 {format(parseISO(challenge.periodStartDate), 'dd/MM/yy')} - {format(parseISO(challenge.periodEndDate), 'dd/MM/yy')}
+                                 {format(startDate, 'dd/MM/yy')} - {format(endDate, 'dd/MM/yy')}
                                  {!isChallengeOver && challenge.status !== 'completed' && challenge.status !== 'evaluating' && daysRemaining >= 0 && (
                                       <span className={cn("text-[10px] ml-1 font-medium", daysRemaining <= 1 ? 'text-destructive' : 'text-blue-600' )}>
                                         ({daysRemaining + 1}d restantes)
@@ -562,7 +544,7 @@
                       </DialogClose> */}
                      {canAccept && onAccept && (
                          <Button onClick={() => { onAccept(challenge.id); onOpenChange(false); }} className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white">
-                             <CheckCircle className="mr-2 h-4 w-4"/> Aceitar Desafio
+                             <CheckCircle2 className="mr-2 h-4 w-4"/> Aceitar Desafio
                          </Button>
                      )}
                      {canSubmit && onSubmit && (
@@ -600,14 +582,14 @@
      const [selectedChallenge, setSelectedChallenge] = React.useState<Challenge | null>(null);
      const [isDetailsModalOpen, setIsDetailsModalOpen] = React.useState(false);
      const [searchTerm, setSearchTerm] = React.useState('');
-     const [filterStatus, setFilterStatus] = React.useState<'all' | EmployeeChallengeParticipation['status']>('all');
+     const [filterStatus, setFilterStatus] = React.useState<'all' | ChallengeParticipation['status']>('all');
      const [filterCategory, setFilterCategory] = React.useState<string>('all');
      const [filterDifficulty, setFilterDifficulty] = React.useState<'all' | Challenge['difficulty']>('all');
 
      const { toast } = useToast();
 
      // State for participation lookup
-     const [participationMap, setParticipationMap] = React.useState<Map<string, EmployeeChallengeParticipation>>(new Map());
+     const [participationMap, setParticipationMap] = React.useState<Map<string, ChallengeParticipation>>(new Map());
 
 
      const loadChallengesData = React.useCallback(async () => {
@@ -668,7 +650,7 @@
          setIsDetailsModalOpen(true);
      }
 
-     const getParticipationForChallenge = (challengeId: string): EmployeeChallengeParticipation | undefined => {
+     const getParticipationForChallenge = (challengeId: string): ChallengeParticipation | undefined => {
          return participationMap.get(challengeId);
      }
 
@@ -890,3 +872,4 @@
              </div>
      );
  }
+

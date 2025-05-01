@@ -1,3 +1,4 @@
+
  'use client';
 
  import * as React from 'react';
@@ -52,8 +53,8 @@
 
  // Import mock data (Ensure paths are correct)
  import { mockEmployees } from '@/lib/mockData/employees'; // Updated import path
- import { mockTasks as allAdminTasks } from '@/app/(admin)/tasks/page'; // Assuming exported
- import { mockChallenges as allAdminChallenges, mockParticipants } from '@/app/(admin)/challenges/page'; // Updated import
+ import { mockTasks as allAdminTasks } from '@/lib/mockData/tasks'; // Use new task data file
+ import { mockChallenges as allAdminChallenges, mockParticipants } from '@/lib/mockData/challenges'; // Updated import path
 
  // Mock Employee ID for demonstration
  const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
@@ -267,9 +268,8 @@
          </Card>
      );
 
-
      return (
-         <TooltipProvider>
+        <TooltipProvider>
              <div className="space-y-5 p-4"> {/* Adjusted spacing and padding */}
 
                  {/* Welcome/Status Card - Enhanced and Illustrated */}
@@ -422,7 +422,7 @@
                  </Card>
 
              </div>
-         </TooltipProvider>
+        </TooltipProvider>
      );
  }
 
