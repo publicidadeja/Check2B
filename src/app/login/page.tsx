@@ -6,7 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
-import { LogIn, Loader2, User, Shield, Eye } from 'lucide-react'; // Added Shield, Eye
+import { LogIn, Loader2, User, Shield, Eye, EyeOff } from 'lucide-react'; // Added Shield, Eye, EyeOff
+import Cookies from 'js-cookie'; // Import js-cookie
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,6 +43,7 @@ import { useToast } from '@/hooks/use-toast';
 import { loginUser, setAuthCookie } from '@/lib/auth'; // Assuming auth functions exist
 import type { UserCredential } from 'firebase/auth'; // Assuming Firebase
 import { Separator } from '@/components/ui/separator';
+import { Logo } from '@/components/logo'; // Import the Logo component
 
 const loginSchema = z.object({
   email: z.string().email({ message: 'Por favor, insira um email válido.' }),
@@ -55,6 +57,7 @@ export default function LoginPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = React.useState(false);
   const [isGuestChoiceOpen, setIsGuestChoiceOpen] = React.useState(false); // State for guest choice dialog
+  const [showPassword, setShowPassword] = React.useState(false); // State for password visibility
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -67,55 +70,33 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginFormValues) => {
     setIsLoading(true);
     try {
-      // NOTE: This uses the mock user leocorax@gmail.com / 123456 for testing
-      // It does NOT use Firebase Auth directly in this simplified version.
-      // Replace with actual Firebase logic when ready.
-       if (data.email === 'leocorax@gmail.com' && data.password === '123456') {
-         // Simulate Colaborador login
-         console.log("Simulating Colaborador login...");
-         // Set a mock token or skip if middleware allows guest access
-         // For testing, we might just redirect
-          toast({
-           title: 'Login Convidado (Colaborador)',
-           description: `Acessando painel do colaborador...`,
-         });
-         router.push('/colaborador/dashboard');
+      // Attempt actual Firebase login
+      const userCredential = await loginUser(data.email, data.password);
 
-       } else if (data.email === 'admin@check2b.com' && data.password === 'admin123') {
-            // Simulate Admin login
-            console.log("Simulating Admin login...");
-             toast({
-                title: 'Login Convidado (Admin)',
-                description: `Acessando painel administrativo...`,
-            });
-            router.push('/'); // Redirect admin to root dashboard
-       }
-       else {
-            // Use actual Firebase login
-             const userCredential = await loginUser(data.email, data.password);
+      if (userCredential && userCredential.user) {
+        const idToken = await userCredential.user.getIdToken(true);
+        const idTokenResult = await userCredential.user.getIdTokenResult();
+        const role = idTokenResult.claims.role || 'colaborador'; // Default to 'colaborador'
 
-            if (userCredential && userCredential.user) {
-                const idToken = await userCredential.user.getIdToken(true);
-                const idTokenResult = await userCredential.user.getIdTokenResult();
-                const role = idTokenResult.claims.role || 'colaborador';
+        // Set the token cookie (client-side for immediate use)
+        Cookies.set('auth-token', idToken, { path: '/', expires: 1 }); // Example: expires in 1 day
+        Cookies.set('user-role', role, { path: '/', expires: 1 }); // Store role for middleware
 
-                await setAuthCookie(idToken);
+        toast({
+          title: 'Login bem-sucedido!',
+          description: `Bem-vindo(a) de volta! Redirecionando...`,
+        });
 
-                toast({
-                title: 'Login bem-sucedido!',
-                description: `Bem-vindo(a) de volta! Redirecionando...`,
-                });
-
-                if (role === 'admin') {
-                router.push('/');
-                } else {
-                router.push('/colaborador/dashboard');
-                }
-            } else {
-                throw new Error("Credenciais inválidas ou erro desconhecido.");
-            }
-       }
-
+        // Redirect based on role
+        if (role === 'admin') {
+          router.push('/');
+        } else {
+          router.push('/colaborador/dashboard');
+        }
+      } else {
+        // This case might not be reachable with Firebase errors but kept for structure
+        throw new Error("Credenciais inválidas ou erro desconhecido.");
+      }
 
     } catch (error: any) {
       console.error('Erro no login:', error);
@@ -134,13 +115,13 @@ export default function LoginPage() {
           case 'auth/network-request-failed':
             errorMessage = 'Erro de rede. Verifique sua conexão com a internet.';
             break;
-           case 'auth/invalid-api-key':
-           case 'auth/api-key-not-valid.-please-pass-a-valid-api-key.': // Handle the specific error string
-               errorMessage = 'Erro de configuração da API. Verifique a chave Firebase no .env.';
-               console.error("FIREBASE AUTH ERROR: Invalid API Key. Check .env configuration (NEXT_PUBLIC_FIREBASE_API_KEY). Value:", process.env.NEXT_PUBLIC_FIREBASE_API_KEY);
-               break;
+          case 'auth/api-key-not-valid.-please-pass-a-valid-api-key.':
+             errorMessage = 'Erro de configuração da API (chave inválida). Contate o suporte.';
+             console.error("FIREBASE AUTH ERROR: Invalid API Key. Check .env configuration.");
+             break;
           default:
             console.warn(`Unhandled Firebase Auth error code: ${error.code}`);
+            errorMessage = `Erro inesperado (${error.code}). Tente novamente.`;
         }
       } else if (error.message === "Firebase Auth is not initialized. Check configuration.") {
         errorMessage = "Erro de configuração do servidor de autenticação. Contate o suporte.";
@@ -173,18 +154,20 @@ export default function LoginPage() {
           description: `Entrando no painel ${role === 'admin' ? 'administrativo' : 'do colaborador'}...`,
           duration: 2000,
       });
-     router.push(targetPath);
+      // Set a guest cookie or flag for middleware/layouts to recognize
+      Cookies.set('guest-mode', role, { path: '/', expires: 0.1 }); // Expires quickly
+      Cookies.remove('auth-token'); // Ensure no auth token
+      Cookies.remove('user-role'); // Ensure no role token
+      router.push(targetPath);
   };
 
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sky-50 via-white to-gray-100 dark:from-slate-900 dark:via-slate-950 dark:to-slate-800 p-4">
-      <Card className="w-full max-w-md shadow-lg border-none overflow-hidden"> {/* Added border-none and overflow */}
+      <Card className="w-full max-w-md shadow-lg border-none overflow-hidden rounded-xl"> {/* Added rounded-xl */}
          {/* Illustration Header */}
          <div className="bg-gradient-to-r from-teal-500 to-cyan-600 dark:from-teal-800 dark:to-cyan-900 p-6 text-center">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-16 h-16 text-white mx-auto mb-2 opacity-90">
-                  <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm13.36-1.814a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z" clipRule="evenodd" />
-              </svg>
+              <Logo className="w-16 h-16 text-white mx-auto mb-2 opacity-90"/> {/* Use Logo component */}
              <CardTitle className="text-xl font-bold text-white">Bem-vindo ao Check2B</CardTitle>
              <CardDescription className="text-teal-100 dark:text-teal-200">Faça login para acessar seu painel.</CardDescription>
         </div>
@@ -217,7 +200,23 @@ export default function LoginPage() {
                         </Button>
                     </div>
                     <FormControl>
-                      <Input type="password" placeholder="********" {...field} />
+                      <div className="relative">
+                        <Input
+                          type={showPassword ? 'text' : 'password'}
+                          placeholder="********"
+                          {...field}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground"
+                          onClick={() => setShowPassword(!showPassword)}
+                          aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>

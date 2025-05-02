@@ -12,6 +12,7 @@ import {
   Save,
   ListFilter,
   Info,
+  Frown, // Import Frown for empty state
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -56,6 +57,7 @@ import {
 import type { Employee } from '@/types/employee';
 import type { Task } from '@/types/task';
 import type { Evaluation } from '@/types/evaluation';
+import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import LoadingSpinner
 
 const mockEmployees: Employee[] = [
    { id: '1', name: 'Alice Silva', email: 'alice.silva@check2b.com', phone: '11987654321', department: 'RH', role: 'Recrutadora', admissionDate: '2023-01-15', isActive: true, photoUrl: 'https://picsum.photos/id/1027/40/40' },
@@ -140,7 +142,7 @@ interface EmployeeEvaluationState extends Employee {
 export default function EvaluationsPage() {
   const [selectedDate, setSelectedDate] = React.useState<Date>(new Date());
   const [employeesToEvaluate, setEmployeesToEvaluate] = React.useState<EmployeeEvaluationState[]>([]);
-  const [isLoading, setIsLoading] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true); // Changed initial state to true
   const [departments, setDepartments] = React.useState<string[]>([]);
   const [roles, setRoles] = React.useState<string[]>([]);
   const [selectedDepartments, setSelectedDepartments] = React.useState<Set<string>>(new Set());
@@ -157,9 +159,10 @@ export default function EvaluationsPage() {
   }, []);
 
   // Function to load employee data based on filters and date
-  const loadEvaluationData = React.useCallback(() => {
+  const loadEvaluationData = React.useCallback(async () => { // Made async
     setIsLoading(true);
     console.log("Carregando dados para:", selectedDate, "Deptos:", selectedDepartments, "Funções:", selectedRoles);
+    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate loading
 
     // Filter employees based on selected departments and roles
      let filteredEmployees = mockEmployees.filter(emp => emp.isActive); // Start with active employees
@@ -399,9 +402,15 @@ export default function EvaluationsPage() {
             <ScrollArea className="flex-grow"> {/* Use ScrollArea if content might exceed viewport height */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
                 {isLoading ? (
-                    <p className="col-span-full text-center text-muted-foreground py-10">Carregando colaboradores...</p>
+                    <div className="col-span-full flex justify-center items-center py-10">
+                         {/* Use LoadingSpinner */}
+                         <LoadingSpinner text="Carregando avaliações..." />
+                     </div>
                 ) : employeesToEvaluate.length === 0 ? (
-                    <p className="col-span-full text-center text-muted-foreground py-10">Nenhum colaborador encontrado para os filtros e data selecionados.</p>
+                     <div className="col-span-full text-center text-muted-foreground py-10">
+                         <Frown className="mx-auto h-10 w-10 mb-2" />
+                         <p>Nenhum colaborador encontrado para os filtros e data selecionados.</p>
+                     </div>
                 ) : (
                     employeesToEvaluate.map(employee => (
                     <Card key={employee.id} className="flex flex-col"> {/* Make card a flex column */}

@@ -22,7 +22,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR">
+    // Add suppressHydrationWarning if necessary for specific cases, but avoid if possible
+    <html lang="pt-BR" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased`}>{/* Apply font variable */}
         {/* MainLayout removed - children will now include layout based on route */}
         {children}

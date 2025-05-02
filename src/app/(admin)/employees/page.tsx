@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Eye, UserX, UserCheck, Loader2, Users } from 'lucide-react'; // Ensure Users is imported
+import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Eye, UserX, UserCheck, Loader2, Users, Frown } from 'lucide-react'; // Ensure Users is imported
 import {
   Table,
   TableBody,
@@ -42,6 +42,7 @@ import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import { format } from 'date-fns';
 import { mockEmployees } from '@/lib/mockData/employees'; // Import from the new data file
+import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import LoadingSpinner
 
 // Removed mock data definition from here
 
@@ -349,9 +350,19 @@ export default function EmployeesPage() {
              <CardContent>
                 {isLoading ? (
                      <div className="flex justify-center items-center py-10">
-                        <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+                         {/* Use LoadingSpinner */}
+                         <LoadingSpinner text="Carregando colaboradores..." />
                      </div>
-                ) : (
+                ) : employees.length === 0 ? (
+                     <div className="text-center py-10 text-muted-foreground">
+                         <Frown className="mx-auto h-10 w-10 mb-2" />
+                         <p>Nenhum colaborador encontrado.</p>
+                         <Button className="mt-4" onClick={openAddForm}>
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                             Criar Primeiro Colaborador
+                         </Button>
+                     </div>
+                 ) : (
                     <DataTable
                         columns={columns}
                         data={employees}
@@ -360,12 +371,14 @@ export default function EmployeesPage() {
                     />
                  )}
              </CardContent>
-            <CardFooter className="flex justify-end">
-                 <Button onClick={openAddForm}>
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Adicionar Colaborador
-                 </Button>
-            </CardFooter>
+             { !isLoading && employees.length > 0 && ( // Only show footer if not loading and employees exist
+                <CardFooter className="flex justify-end">
+                     <Button onClick={openAddForm}>
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Adicionar Colaborador
+                     </Button>
+                </CardFooter>
+             )}
         </Card>
 
 

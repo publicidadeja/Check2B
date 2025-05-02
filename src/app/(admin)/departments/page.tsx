@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Building, Loader2 } from 'lucide-react';
+import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Building, Loader2, Frown } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -36,6 +36,7 @@ import { useToast } from '@/hooks/use-toast';
 import { DepartmentForm } from '@/components/department/department-form';
 import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
+import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import LoadingSpinner
 
 export interface Department {
     id: string;
@@ -225,9 +226,19 @@ export default function DepartmentsPage() {
                 <CardContent>
                     {isLoading ? (
                          <div className="flex justify-center items-center py-10">
-                            <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+                             {/* Use LoadingSpinner */}
+                             <LoadingSpinner text="Carregando departamentos..."/>
                          </div>
-                    ) : (
+                    ) : departments.length === 0 ? (
+                        <div className="text-center py-10 text-muted-foreground">
+                            <Frown className="mx-auto h-10 w-10 mb-2" />
+                            <p>Nenhum departamento encontrado.</p>
+                            <Button className="mt-4" onClick={openAddForm}>
+                                <PlusCircle className="mr-2 h-4 w-4" />
+                                Criar Primeiro Departamento
+                            </Button>
+                        </div>
+                     ) : (
                         <DataTable
                             columns={columns}
                             data={departments}
@@ -236,12 +247,14 @@ export default function DepartmentsPage() {
                         />
                     )}
                 </CardContent>
-                 <CardFooter className="flex justify-end">
-                    <Button onClick={openAddForm}>
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        Adicionar Departamento
-                    </Button>
-                 </CardFooter>
+                 { !isLoading && departments.length > 0 && ( // Only show footer if not loading and departments exist
+                    <CardFooter className="flex justify-end">
+                        <Button onClick={openAddForm}>
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            Adicionar Departamento
+                        </Button>
+                    </CardFooter>
+                 )}
             </Card>
 
             <DepartmentForm

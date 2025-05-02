@@ -15,14 +15,14 @@
      --card-foreground: 0 0% 3.9%; /* Near Black */
      --popover: 0 0% 100%; /* White */
      --popover-foreground: 0 0% 3.9%; /* Near Black */
-     --primary: 0 0% 9%; /* Default Dark */
-     --primary-foreground: 0 0% 98%; /* Default Light */
-     --secondary: 0 0% 96.1%; /* Light Grey */
-     --secondary-foreground: 0 0% 9%; /* Dark */
+     --primary: 180 100% 25.1%; /* Teal for primary actions */
+     --primary-foreground: 0 0% 98%; /* Light text on primary */
+     --secondary: 210 40% 96.1%; /* Soft Blue */
+     --secondary-foreground: 210 40% 9%; /* Dark Blue text on secondary */
      --muted: 0 0% 96.1%; /* Light Grey */
      --muted-foreground: 0 0% 45.1%; /* Medium Grey */
-     --accent: 180 100% 25.1%; /* Teal */
-     --accent-foreground: 0 0% 98%; /* White / Light */
+     --accent: 180 100% 25.1%; /* Teal for interactive elements */
+     --accent-foreground: 0 0% 98%; /* White / Light text on accent */
      --destructive: 0 84.2% 60.2%; /* Default Red */
      --destructive-foreground: 0 0% 98%;
      --border: 0 0% 89.8%; /* Light Grey Border */
@@ -45,38 +45,38 @@
    }
    .dark {
      /* Define dark mode colors if needed later, for now keep defaults */
-     --background: 0 0% 3.9%;
-     --foreground: 0 0% 98%;
-     --card: 0 0% 3.9%;
-     --card-foreground: 0 0% 98%;
-     --popover: 0 0% 3.9%;
-     --popover-foreground: 0 0% 98%;
-     --primary: 0 0% 98%;
-     --primary-foreground: 0 0% 9%;
-     --secondary: 0 0% 14.9%;
-     --secondary-foreground: 0 0% 98%;
-     --muted: 0 0% 14.9%;
-     --muted-foreground: 0 0% 63.9%;
-     --accent: 180 100% 25.1%; /* Teal */
-     --accent-foreground: 0 0% 98%;
-     --destructive: 0 62.8% 30.6%;
+     --background: 210 20% 9%; /* Dark Blue-Grey */
+     --foreground: 210 40% 98%; /* Near White */
+     --card: 210 20% 11%; /* Darker Blue-Grey */
+     --card-foreground: 210 40% 98%;
+     --popover: 210 20% 9%;
+     --popover-foreground: 210 40% 98%;
+     --primary: 180 90% 50%; /* Brighter Teal */
+     --primary-foreground: 210 20% 5%; /* Very Dark Blue */
+     --secondary: 210 20% 18%; /* Darker grey-blue */
+     --secondary-foreground: 210 40% 90%; /* Lighter grey */
+     --muted: 210 20% 18%;
+     --muted-foreground: 210 40% 60%; /* Medium grey */
+     --accent: 180 90% 50%; /* Brighter Teal */
+     --accent-foreground: 210 20% 5%;
+     --destructive: 0 70% 50%; /* Adjusted Red */
      --destructive-foreground: 0 0% 98%;
-     --border: 0 0% 14.9%;
-     --input: 0 0% 14.9%;
-     --ring: 180 100% 25.1%; /* Teal Ring */
-     --chart-1: 220 70% 50%;
-     --chart-2: 160 60% 45%;
-     --chart-3: 30 80% 55%;
-     --chart-4: 280 65% 60%;
-     --chart-5: 340 75% 55%;
-     --sidebar-background: 0 0% 7%; /* Darker grey */
-     --sidebar-foreground: 0 0% 98%; /* Light Text */
-     --sidebar-primary: 180 100% 25.1%; /* Teal */
-     --sidebar-primary-foreground: 0 0% 98%; /* Light Text on Primary */
-     --sidebar-accent: 0 0% 14.9%; /* Darker grey for hover */
-     --sidebar-accent-foreground: 0 0% 98%; /* Light text on hover */
-     --sidebar-border: 0 0% 14.9%;
-     --sidebar-ring: 180 100% 25.1%; /* Teal Ring */
+     --border: 210 20% 20%; /* Dark border */
+     --input: 210 20% 20%;
+     --ring: 180 90% 55%; /* Brighter Teal Ring */
+     --chart-1: 220 70% 60%;
+     --chart-2: 160 60% 55%;
+     --chart-3: 30 80% 65%;
+     --chart-4: 280 65% 70%;
+     --chart-5: 340 75% 65%;
+     --sidebar-background: 210 20% 7%; /* Very dark */
+     --sidebar-foreground: 210 40% 98%;
+     --sidebar-primary: 180 90% 50%; /* Brighter Teal */
+     --sidebar-primary-foreground: 210 20% 5%;
+     --sidebar-accent: 210 20% 15%; /* Slightly lighter dark */
+     --sidebar-accent-foreground: 210 40% 98%;
+     --sidebar-border: 210 20% 20%;
+     --sidebar-ring: 180 90% 55%; /* Brighter Teal Ring */
    }
  }
 
@@ -101,5 +101,14 @@
             display: none;
         }
     }
+
+    /* Add pulse animation */
+    .animate-pulse {
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; } /* Adjusted opacity for subtler pulse */
+    }
+
  }
-   

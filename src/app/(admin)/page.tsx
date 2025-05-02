@@ -1,12 +1,14 @@
 
 'use client';
-
+import * as React from 'react'; // Import React
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Users, ClipboardList, CheckCircle, AlertCircle, BarChart3 } from "lucide-react";
 // Import necessary chart components directly from recharts or the custom wrapper
 import { BarChart, XAxis, YAxis, Bar, CartesianGrid } from "@/components/ui/chart"; // Import Recharts components from the wrapper
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"; // Import chart container and tooltip
 import type { ChartConfig } from "@/components/ui/chart"; // Import ChartConfig type
+import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import the LoadingSpinner
+
 // Removed MainLayout import as it's applied by the group layout
 
 // Mock data for the chart - replace with actual data fetching
@@ -28,12 +30,34 @@ const chartConfig = {
 
 
 export default function DashboardPage() {
-  // Replace with actual data fetching logic
-  const totalColaboradores = 15; // Example value
-  const colaboradoresAtivos = 12; // Example value
-  const tarefasAtivas = 35; // Example value
-  const avaliacoesHoje = 10; // Example value
-  const alertasDesempenho = 2; // Example value
+  // Simulate loading state for data
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [dashboardData, setDashboardData] = React.useState({
+      totalColaboradores: 0,
+      colaboradoresAtivos: 0,
+      tarefasAtivas: 0,
+      avaliacoesHoje: 0,
+      alertasDesempenho: 0,
+  });
+
+  // Simulate data fetching
+  React.useEffect(() => {
+      const fetchData = async () => {
+          setIsLoading(true);
+          // Simulate API call delay
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          setDashboardData({
+             totalColaboradores: 15, // Example value
+             colaboradoresAtivos: 12, // Example value
+             tarefasAtivas: 35, // Example value
+             avaliacoesHoje: 10, // Example value
+             alertasDesempenho: 2, // Example value
+          });
+          setIsLoading(false);
+      }
+      fetchData();
+  }, []);
+
 
   // Define tickFormatter function here since this is now a client component
   const tickFormatter = (value: string) => value.slice(0, 3);
@@ -47,8 +71,12 @@ export default function DashboardPage() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{totalColaboradores}</div>
-              <p className="text-xs text-muted-foreground">{colaboradoresAtivos} ativos</p>
+               {isLoading ? <LoadingSpinner size="sm" className="py-2"/> : (
+                  <>
+                    <div className="text-2xl font-bold">{dashboardData.totalColaboradores}</div>
+                    <p className="text-xs text-muted-foreground">{dashboardData.colaboradoresAtivos} ativos</p>
+                  </>
+                )}
             </CardContent>
           </Card>
           <Card>
@@ -57,8 +85,12 @@ export default function DashboardPage() {
               <ClipboardList className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{tarefasAtivas}</div>
-              <p className="text-xs text-muted-foreground">Configuradas no sistema</p>
+              {isLoading ? <LoadingSpinner size="sm" className="py-2"/> : (
+                    <>
+                    <div className="text-2xl font-bold">{dashboardData.tarefasAtivas}</div>
+                    <p className="text-xs text-muted-foreground">Configuradas no sistema</p>
+                    </>
+              )}
             </CardContent>
           </Card>
           <Card>
@@ -67,10 +99,14 @@ export default function DashboardPage() {
               <CheckCircle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{avaliacoesHoje} / {colaboradoresAtivos}</div>
-              <p className="text-xs text-muted-foreground">
-                {colaboradoresAtivos > 0 ? ((avaliacoesHoje / colaboradoresAtivos) * 100).toFixed(0) : 0}% de conclusão
-              </p>
+               {isLoading ? <LoadingSpinner size="sm" className="py-2"/> : (
+                   <>
+                    <div className="text-2xl font-bold">{dashboardData.avaliacoesHoje} / {dashboardData.colaboradoresAtivos}</div>
+                    <p className="text-xs text-muted-foreground">
+                        {dashboardData.colaboradoresAtivos > 0 ? ((dashboardData.avaliacoesHoje / dashboardData.colaboradoresAtivos) * 100).toFixed(0) : 0}% de conclusão
+                    </p>
+                   </>
+               )}
             </CardContent>
           </Card>
           <Card>
@@ -79,8 +115,12 @@ export default function DashboardPage() {
               <AlertCircle className="h-4 w-4 text-destructive" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-destructive">{alertasDesempenho}</div>
-              <p className="text-xs text-muted-foreground">Colaboradores com &gt;3 zeros este mês</p>
+              {isLoading ? <LoadingSpinner size="sm" className="py-2"/> : (
+                   <>
+                    <div className="text-2xl font-bold text-destructive">{dashboardData.alertasDesempenho}</div>
+                    <p className="text-xs text-muted-foreground">Colaboradores com &gt;3 zeros este mês</p>
+                   </>
+              )}
             </CardContent>
           </Card>
 
@@ -93,8 +133,11 @@ export default function DashboardPage() {
               </CardTitle>
               <CardDescription>Total de avaliações realizadas por mês.</CardDescription>
             </CardHeader>
-            <CardContent className="h-[250px] sm:h-[300px] w-full"> {/* Adjusted height */}
-                {/* Use ChartContainer and pass the specific chart type as children */}
+             <CardContent className="h-[250px] sm:h-[300px] w-full flex items-center justify-center"> {/* Adjusted height and centering for loading */}
+               {isLoading ? (
+                   <LoadingSpinner size="md" text="Carregando gráfico..." />
+               ) : (
+                /* Use ChartContainer and pass the specific chart type as children */
                 <ChartContainer config={chartConfig} className="h-full w-full">
                     <BarChart accessibilityLayer data={chartData}>
                          <CartesianGrid vertical={false} /> {/* Added grid for reference */}
@@ -110,6 +153,7 @@ export default function DashboardPage() {
                         <Bar dataKey="total" fill="var(--color-total)" radius={4} />
                     </BarChart>
                 </ChartContainer>
+               )}
             </CardContent>
           </Card>
         </div>

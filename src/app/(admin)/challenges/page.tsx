@@ -29,6 +29,7 @@ import {
   AlertTriangle, // For warning
   FileText, // For details
   Eye, // Added Eye icon
+  Frown, // Added Frown for empty state
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -85,6 +86,7 @@ import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/comp
 import { DataTable } from '@/components/ui/data-table'; // Import DataTable
 import type { ColumnDef } from '@tanstack/react-table'; // Import ColumnDef
 import { mockChallenges, mockParticipants, mockEmployeesSimple } from '@/lib/mockData/challenges'; // Import from new file
+import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import LoadingSpinner
 
 // --- Mock Data Definitions Removed ---
 
@@ -184,7 +186,8 @@ const updateChallengeStatus = async (challengeId: string, status: Challenge['sta
                      ? { ...p, status: 'rejected', feedback: 'Desafio concluído sem submissão.' }
                      : p
              );
-             // See note in deleteChallenge about modifying exported data
+             // Assign back to the original exported variable to simulate update
+             mockParticipants.splice(0, mockParticipants.length, ...mutableMockParticipants);
              console.log("Participants status updated locally for completion.");
          }
          console.log("Challenge status updated:", mockChallenges[index]);
@@ -204,7 +207,7 @@ const evaluateSubmission = async (participationId: string, status: 'approved' | 
     await new Promise(resolve => setTimeout(resolve, 600));
     const index = mockParticipants.findIndex(p => p.id === participationId);
     if (index !== -1) {
-        // Again, ensure mockParticipants is mutable if this should affect the global mock state
+        // Update the participation status directly in the mock array
         mockParticipants[index].status = status;
         mockParticipants[index].score = score;
         mockParticipants[index].feedback = feedback;
@@ -448,9 +451,19 @@ const ManageChallenges = () => {
             <CardContent>
                  {isLoading ? (
                      <div className="flex justify-center items-center py-10">
-                        <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+                        {/* Use LoadingSpinner */}
+                        <LoadingSpinner text="Carregando desafios..."/>
                      </div>
-                 ) : (
+                 ) : challenges.length === 0 ? (
+                     <div className="text-center py-10 text-muted-foreground">
+                         <Frown className="mx-auto h-10 w-10 mb-2" />
+                         <p>Nenhum desafio encontrado.</p>
+                         <Button className="mt-4" onClick={openAddForm}>
+                             <PlusCircle className="mr-2 h-4 w-4" />
+                             Criar Primeiro Desafio
+                         </Button>
+                     </div>
+                  ) : (
                     <DataTable
                         columns={columns}
                         data={challenges} // Use the state which is loaded
@@ -459,12 +472,14 @@ const ManageChallenges = () => {
                     />
                  )}
             </CardContent>
-             <CardFooter className="flex justify-end">
-                    <Button onClick={openAddForm}>
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        Criar Novo Desafio
-                    </Button>
-             </CardFooter>
+             { !isLoading && challenges.length > 0 && ( // Only show footer if not loading and challenges exist
+                 <CardFooter className="flex justify-end">
+                     <Button onClick={openAddForm}>
+                         <PlusCircle className="mr-2 h-4 w-4" />
+                         Criar Novo Desafio
+                     </Button>
+                 </CardFooter>
+             )}
 
 
             <ChallengeForm
@@ -540,7 +555,7 @@ const ChallengeDashboard = () => {
          <CardContent>
             {isLoading ? (
                 <div className="flex justify-center items-center py-10">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                   <LoadingSpinner text="Carregando dashboard..." />
                 </div>
              ) : (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -710,7 +725,7 @@ const ChallengeEvaluation = () => {
                         </SelectTrigger>
                         <SelectContent>
                              {isLoadingChallenges ? (
-                                 <SelectItem value="loading" disabled>Carregando...</SelectItem>
+                                 <SelectItem value="loading" disabled><div className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin"/> Carregando...</div></SelectItem>
                              ) : challengesToEvaluate.length === 0 ? (
                                 <SelectItem value="no-challenges" disabled>Nenhum desafio em avaliação</SelectItem>
                              ) : (
@@ -731,7 +746,7 @@ const ChallengeEvaluation = () => {
                          <Separator className="mb-4" />
 
                         {isLoadingParticipants ? (
-                            <div className="text-center py-6"><Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" /> Carregando participantes...</div>
+                            <div className="text-center py-6"><LoadingSpinner text="Carregando participantes..." /></div>
                         ) : participants.length === 0 ? (
                             <p className="text-muted-foreground text-center py-4">Nenhuma submissão pendente para este desafio.</p>
                         ) : (
@@ -864,12 +879,18 @@ const ChallengeDetailsDialog = ({ challengeId, open, onOpenChange }: ChallengeDe
     }, [open, challengeId]);
 
     const getParticipantStatusText = (status: ChallengeParticipation['status']): string => {
-        const map = { pending: 'Pendente', submitted: 'Enviado', approved: 'Aprovado', rejected: 'Rejeitado' };
+        const map = { pending: 'Pendente', submitted: 'Enviado', approved: 'Aprovado', rejected: 'Rejeitado', accepted: 'Aceito' }; // Added 'accepted'
         return map[status] || status;
     }
 
      const getSafeParticipantStatusVariant = (status: ChallengeParticipation['status']): "default" | "secondary" | "destructive" | "outline" => {
-        const map = { pending: 'outline', submitted: 'outline', approved: 'default', rejected: 'destructive' };
+        const map: Record<ChallengeParticipation['status'], "default" | "secondary" | "destructive" | "outline"> = {
+            pending: 'outline',
+            accepted: 'outline', // Style for accepted
+            submitted: 'default', // Primary color for submitted
+            approved: 'secondary', // Secondary for approved
+            rejected: 'destructive',
+        };
         return map[status] || 'outline';
     }
 
@@ -885,7 +906,8 @@ const ChallengeDetailsDialog = ({ challengeId, open, onOpenChange }: ChallengeDe
                  </DialogHeader>
                 {isLoading ? (
                      <div className="flex justify-center items-center py-10">
-                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                         {/* Use LoadingSpinner */}
+                         <LoadingSpinner text="Carregando detalhes..." />
                      </div>
                  ) : details ? (
                      <div className="py-4 grid grid-cols-1 md:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto"> {/* Limit height */}
@@ -1064,7 +1086,7 @@ const ChallengeHistory = () => {
             </CardHeader>
             <CardContent>
                 {isLoading ? (
-                    <div className="text-center py-10"><Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" /></div>
+                    <div className="text-center py-10"><LoadingSpinner text="Carregando histórico..." /></div>
                  ) : historyChallenges.length === 0 ? (
                      <p className="text-muted-foreground text-center py-5">Nenhum desafio no histórico.</p>
                 ) : (

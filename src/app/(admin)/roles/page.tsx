@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Briefcase, Loader2 } from 'lucide-react';
+import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Briefcase, Loader2, Frown } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -36,6 +36,7 @@ import { useToast } from '@/hooks/use-toast';
 import { RoleForm } from '@/components/role/role-form';
 import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
+import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import LoadingSpinner
 
 export interface Role {
     id: string;
@@ -223,8 +224,18 @@ export default function RolesPage() {
                 <CardContent>
                      {isLoading ? (
                         <div className="flex justify-center items-center py-10">
-                            <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+                             {/* Use LoadingSpinner */}
+                             <LoadingSpinner text="Carregando funções..." />
                         </div>
+                     ) : roles.length === 0 ? (
+                         <div className="text-center py-10 text-muted-foreground">
+                             <Frown className="mx-auto h-10 w-10 mb-2" />
+                             <p>Nenhuma função encontrada.</p>
+                             <Button className="mt-4" onClick={openAddForm}>
+                                 <PlusCircle className="mr-2 h-4 w-4" />
+                                 Criar Primeira Função
+                             </Button>
+                         </div>
                      ) : (
                         <DataTable
                             columns={columns}
@@ -234,12 +245,14 @@ export default function RolesPage() {
                         />
                      )}
                 </CardContent>
-                <CardFooter className="flex justify-end">
-                    <Button onClick={openAddForm}>
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        Adicionar Função
-                    </Button>
-                </CardFooter>
+                { !isLoading && roles.length > 0 && ( // Only show footer if not loading and roles exist
+                    <CardFooter className="flex justify-end">
+                        <Button onClick={openAddForm}>
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            Adicionar Função
+                        </Button>
+                    </CardFooter>
+                )}
             </Card>
 
             <RoleForm

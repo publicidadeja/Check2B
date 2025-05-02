@@ -1,10 +1,11 @@
+
 'use client';
 
 import type { ReactNode } from 'react';
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import Cookies from 'js-cookie'; // Import js-cookie
+import Cookies from 'js-cookie';
 import {
   LayoutDashboard,
   ClipboardCheck,
@@ -37,6 +38,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Notification as NotificationType } from '@/types/notification';
 import { listenToNotifications, markNotificationAsRead, markAllNotificationsAsRead, requestBrowserNotificationPermission, triggerTestNotification } from '@/lib/notifications';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'; // Import VisuallyHidden
+import { Logo } from '@/components/logo'; // Import the Logo component
 
 interface EmployeeLayoutProps {
   children: ReactNode;
@@ -77,7 +79,7 @@ const getNotificationIcon = (type: NotificationType['type']) => {
         case 'ranking': return <Trophy className="h-4 w-4 text-yellow-500" />;
         case 'announcement': return <Bell className="h-4 w-4 text-gray-500" />;
         case 'system': return <Settings className="h-4 w-4 text-red-500" />;
-        case 'info': return <Settings className="h-4 w-4 text-blue-500" />; // Corrected icon usage
+        case 'info': return <Settings className="h-4 w-4 text-blue-500" />;
         default: return <Bell className="h-4 w-4 text-muted-foreground" />;
     }
 };
@@ -97,16 +99,22 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
   // Check authentication status on mount
   React.useEffect(() => {
       const checkAuth = () => {
+          // Check for the auth cookie client-side
+          const guestModeActive = Cookies.get('guest-mode');
           const token = Cookies.get('auth-token');
-          const guestModeActive = !token && !pathname.startsWith('/login'); // Guest if no token AND not trying to login
-          setIsGuest(guestModeActive);
-           if (guestModeActive) {
-               console.warn("[AuthCheck Client] Guest mode active.");
-               // For guest mode in collaborator layout, we allow access
-               // but certain features might be disabled later based on isGuest state.
-           } else {
-                console.log(`[AuthCheck Client] User authenticated (Token found) or on login page.`);
-           }
+
+          if(guestModeActive === 'colaborador') {
+              setIsGuest(true);
+               console.log(`[AuthCheck Client] Guest mode (Colaborador) active.`);
+          } else if (token) {
+              setIsGuest(false);
+              console.log(`[AuthCheck Client] User authenticated (Token found).`);
+          } else {
+              // No token and no guest mode cookie for collaborator, assume not logged in properly
+              setIsGuest(true); // Treat as guest for rendering purposes, but should redirect
+              console.log("[AuthCheck Client] No token or guest cookie, redirecting to /login");
+              // router.replace('/login?reason=unauthenticated'); // Redirect if not guest and no token
+          }
       };
       checkAuth();
   }, [pathname]); // Re-check when path changes
@@ -212,6 +220,7 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
   const handleLogout = async () => {
     try {
         await logoutUser();
+        Cookies.remove('guest-mode'); // Remove guest mode cookie on logout
         setIsGuest(true); // Update guest state
         setNotifications([]); // Clear notifications
         toast({ title: "Logout", description: "Você saiu com sucesso." });
@@ -264,14 +273,11 @@ export default function EmployeeLayout({ children }: EmployeeLayoutProps) {
                     <VisuallyHidden><SheetTitle>Menu Principal</SheetTitle></VisuallyHidden>
                      <SheetHeader className='p-4 border-b'>
                          <SheetTitle className="flex items-center gap-2 text-lg font-semibold">
-                             {/* Placeholder Logo */}
-                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7 text-primary">
-                                <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm13.36-1.814a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z" clipRule="evenodd" />
-                             </svg>
+                            <Logo className="w-7 h-7 text-primary" /> {/* Use Logo */}
                             <span>Check2B</span>
                        </SheetTitle>
                        {/* Optional: Add description if needed */}
-                       {/* <SheetDescription>Menu de Navegação</SheetDescription> */}
+                       <SheetDescription className="text-xs text-muted-foreground">Menu de Navegação Colaborador</SheetDescription>
                      </SheetHeader>
                      <ScrollArea className="flex-grow">
                          <nav className="flex flex-col gap-1 p-4 text-base font-medium">
