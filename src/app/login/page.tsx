@@ -2,12 +2,13 @@
 'use client';
 
 import * as React from 'react';
+import { Suspense } from 'react'; // Import Suspense
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
-import { useRouter, useSearchParams } from 'next/navigation'; // Added useSearchParams
-import { LogIn, Loader2, User, Shield, Eye, EyeOff, AlertTriangle, Settings2 as Settings } from 'lucide-react'; // Use Settings2 for consistency
-import Cookies from 'js-cookie'; // Import js-cookie
+import { useRouter, useSearchParams } from 'next/navigation';
+import { LogIn, Loader2, User, Shield, Eye, EyeOff, AlertTriangle, Settings2 } from 'lucide-react';
+import Cookies from 'js-cookie';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,26 +38,29 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { loginUser, setAuthCookie, logoutUser } from '@/lib/auth'; // Import logoutUser
+import { loginUser, setAuthCookie, logoutUser } from '@/lib/auth';
 import { Separator } from '@/components/ui/separator';
 import { Logo } from '@/components/logo';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; // Import Alert components
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import loading spinner
 
 const loginSchema = z.object({
   email: z.string().email({ message: 'Por favor, insira um email válido.' }),
-  password: z.string().min(6, { message: 'Senha deve ter pelo menos 6 caracteres.' }), // Updated min length
+  password: z.string().min(6, { message: 'Senha deve ter pelo menos 6 caracteres.' }),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
+type UserRole = 'super_admin' | 'admin' | 'collaborator';
 
-export default function LoginPage() {
+// Separate component to contain logic using useSearchParams
+function LoginContent() {
   const router = useRouter();
-  const searchParams = useSearchParams(); // Get search params
+  const searchParams = useSearchParams(); // Use the hook here
   const { toast } = useToast();
   const [isLoading, setIsLoading] = React.useState(false);
   const [isGuestChoiceOpen, setIsGuestChoiceOpen] = React.useState(false);
   const [showPassword, setShowPassword] = React.useState(false);
-  const [loginError, setLoginError] = React.useState<string | null>(null); // State for general login error
+  const [loginError, setLoginError] = React.useState<string | null>(null);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -66,7 +70,7 @@ export default function LoginPage() {
     },
   });
 
-  // Display messages based on redirect reason
+   // Display messages based on redirect reason
   React.useEffect(() => {
       const reason = searchParams.get('reason');
       if (reason === 'unauthenticated') {
@@ -81,21 +85,29 @@ export default function LoginPage() {
           setLoginError("Erro ao carregar dados do perfil. Contate o suporte.");
       }
       // Clear reason after showing message
-      if (reason) {
-          router.replace('/login', undefined); // Use replace to remove query param from URL history
+      if (reason && typeof window !== 'undefined') {
+           // Check if running on client before using replace
+           const currentUrl = new URL(window.location.href);
+           currentUrl.searchParams.delete('reason');
+           currentUrl.searchParams.delete('from'); // Remove 'from' as well if present
+           window.history.replaceState(null, '', currentUrl.toString());
       }
-   }, [searchParams, router]);
+   }, [searchParams]);
 
 
   const onSubmit = async (data: LoginFormValues) => {
     setIsLoading(true);
-    setLoginError(null); // Clear previous errors
+    setLoginError(null);
     try {
+      // Assume loginUser returns necessary data including role and orgId
       const { userCredential, userData } = await loginUser(data.email, data.password);
 
-      if (userCredential?.user) {
-        // Role and OrgID are fetched during loginUser now
+       if (userCredential?.user) {
         const { role, organizationId } = userData;
+
+         // Get ID token *after* confirming user and fetching profile data
+         const idToken = await userCredential.user.getIdToken(true);
+         setAuthCookie(idToken, role, organizationId); // Pass role and orgId
 
         toast({
           title: 'Login bem-sucedido!',
@@ -110,15 +122,14 @@ export default function LoginPage() {
         } else if (role === 'collaborator') {
           router.push('/colaborador/dashboard');
         } else {
-            // Fallback if role is somehow invalid after login
-             console.warn(`[Login Page] Invalid role detected after login: ${role}`);
-             setLoginError("Perfil de usuário inválido após login. Contate o suporte.");
-             await logoutUser(); // Log out user with invalid role
-             setIsLoading(false);
-             return;
+          console.warn(`[Login Page] Invalid role detected after login: ${role}`);
+          setLoginError("Perfil de usuário inválido após login. Contate o suporte.");
+          await logoutUser();
+          setIsLoading(false);
+          return;
         }
       } else {
-        // This case should ideally not be reached if loginUser throws errors properly
+        // This case might be redundant if loginUser throws, but kept as fallback
         throw new Error("Credenciais inválidas ou erro desconhecido.");
       }
 
@@ -138,8 +149,8 @@ export default function LoginPage() {
           case 'auth/network-request-failed':
             errorMessage = 'Erro de rede. Verifique sua conexão com a internet.';
             break;
-           case 'auth/invalid-api-key': // Handle specific API key error
-           case 'auth/api-key-not-valid.-please-pass-a-valid-api-key.': // Handle variations
+           case 'auth/invalid-api-key':
+           case 'auth/api-key-not-valid.-please-pass-a-valid-api-key.':
             errorMessage = 'Erro de configuração (Chave API Inválida). Verifique as variáveis de ambiente.';
             console.error("FIREBASE AUTH ERROR: Invalid API Key. Check .env configuration (NEXT_PUBLIC_FIREBASE_API_KEY).");
             break;
@@ -148,11 +159,10 @@ export default function LoginPage() {
             errorMessage = `Erro inesperado (${error.code}). Tente novamente.`;
         }
       } else if (error.message) {
-          // Handle custom errors thrown from loginUser
           errorMessage = error.message;
       }
 
-       setLoginError(errorMessage); // Show error message above the form
+       setLoginError(errorMessage);
 
     } finally {
       setIsLoading(false);
@@ -167,7 +177,7 @@ export default function LoginPage() {
     setIsGuestChoiceOpen(true);
   };
 
-  const handleGuestChoice = (role: 'admin' | 'collaborator' | 'super_admin') => {
+  const handleGuestChoice = (role: UserRole) => {
      setIsGuestChoiceOpen(false);
      let targetPath = '/';
      let roleName = 'Admin';
@@ -175,7 +185,7 @@ export default function LoginPage() {
         targetPath = '/colaborador/dashboard';
         roleName = 'Colaborador';
      } else if (role === 'super_admin') {
-        targetPath = '/superadmin'; // Correct target path for super admin
+        targetPath = '/superadmin';
         roleName = 'Super Admin';
      }
 
@@ -184,19 +194,17 @@ export default function LoginPage() {
           description: `Entrando no painel...`,
           duration: 2000,
       });
-      // Set a guest cookie or flag for middleware/layouts to recognize
-      Cookies.set('guest-mode', role, { path: '/', expires: 0.1 }); // Expires quickly (e.g., 0.1 days)
-      Cookies.remove('auth-token'); // Ensure no auth token
-      Cookies.remove('user-role'); // Ensure no role token
-      Cookies.remove('organization-id'); // Ensure no org id
-      console.log(`[Login] Setting guest mode cookie to: ${role}`); // Log cookie setting
+      Cookies.set('guest-mode', role, { path: '/', expires: 0.1 });
+      Cookies.remove('auth-token');
+      Cookies.remove('user-role');
+      Cookies.remove('organization-id');
+      console.log(`[Login] Setting guest mode cookie to: ${role}`);
       router.push(targetPath);
   };
 
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sky-50 via-white to-gray-100 dark:from-slate-900 dark:via-slate-950 dark:to-slate-800 p-4">
-      <Card className="w-full max-w-md shadow-lg border-none overflow-hidden rounded-xl">
+     <Card className="w-full max-w-md shadow-lg border-none overflow-hidden rounded-xl">
          <div className="bg-gradient-to-r from-teal-500 to-cyan-600 dark:from-teal-700 dark:to-cyan-800 p-6 text-center">
               <Logo className="w-16 h-16 text-white mx-auto mb-2 opacity-90"/>
              <CardTitle className="text-xl font-bold text-white">Bem-vindo ao Check2B</CardTitle>
@@ -204,7 +212,6 @@ export default function LoginPage() {
         </div>
 
         <CardContent className="p-6 bg-background">
-          {/* Display Login Error Message */}
            {loginError && (
                <Alert variant="destructive" className="mb-4">
                   <AlertTriangle className="h-4 w-4" />
@@ -290,9 +297,8 @@ export default function LoginPage() {
                 Entrar como Convidado
              </Button>
         </CardFooter>
-      </Card>
 
-       <AlertDialog open={isGuestChoiceOpen} onOpenChange={setIsGuestChoiceOpen}>
+         <AlertDialog open={isGuestChoiceOpen} onOpenChange={setIsGuestChoiceOpen}>
             <AlertDialogContent>
                 <AlertDialogHeader>
                 <AlertDialogTitle>Escolher Visualização Convidado</AlertDialogTitle>
@@ -309,11 +315,23 @@ export default function LoginPage() {
                         <Shield className="mr-2 h-4 w-4" /> Admin
                     </Button>
                      <Button onClick={() => handleGuestChoice('super_admin')}>
-                        <Settings className="mr-2 h-4 w-4" /> Super Admin
+                        <Settings2 className="mr-2 h-4 w-4" /> Super Admin
                     </Button>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+     </Card>
+  );
+}
+
+// Main export includes the Suspense boundary
+export default function LoginPage() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sky-50 via-white to-gray-100 dark:from-slate-900 dark:via-slate-950 dark:to-slate-800 p-4">
+      <Suspense fallback={<LoadingSpinner size="lg" text="Carregando login..."/>}>
+        <LoginContent />
+      </Suspense>
     </div>
   );
 }
+
