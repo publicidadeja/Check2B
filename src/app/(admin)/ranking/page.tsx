@@ -54,7 +54,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { getAllAwards, saveAward, deleteAward } from '@/lib/ranking-service'; // Import Firestore service functions
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'; // Ensure Tooltip components are imported
+import { getDb } from '@/lib/firebase'; // Import getDb
 import { TrendingDown, TrendingUp, Minus } from 'lucide-react'; // Import trend icons
 
 // --- Type Definitions ---
@@ -123,14 +125,7 @@ type AwardFormData = z.infer<typeof awardSchema>;
 
 
 // --- Mock Data ---
-export let mockAwards: Award[] = [
-    { id: 'awd1', title: 'Colaborador do Mês', description: 'Reconhecimento pelo desempenho excepcional.', monetaryValue: 500, period: 'recorrente', winnerCount: 1, eligibleDepartments: ['all'], status: 'active', isRecurring: true },
-    { id: 'awd2', title: 'Destaque Operacional - Julho', description: 'Melhor performance nas tarefas operacionais.', nonMonetaryValue: 'Folga adicional', period: '2024-07', winnerCount: 1, eligibleDepartments: ['Engenharia', 'RH'], status: 'inactive', isRecurring: false, specificMonth: new Date(2024, 6, 1), eligibilityCriteria: true },
-    { id: 'awd3', title: 'Top 3 Vendas', description: 'Maiores resultados em vendas.', monetaryValue: 300, period: 'recorrente', winnerCount: 3, eligibleDepartments: ['Vendas'], status: 'active', isRecurring: true, valuesPerPosition: { 1: { monetary: 300 }, 2: { monetary: 200 }, 3: { monetary: 100 } } },
-    { id: 'awd4', title: 'Campeão da Inovação (Rascunho)', description: 'Melhor sugestão de melhoria.', period: 'recorrente', winnerCount: 1, eligibleDepartments: ['all'], status: 'draft', isRecurring: true },
-];
-
-export const mockRanking: RankingEntry[] = [
+const mockRanking: RankingEntry[] = [
     { rank: 1, employeeId: '1', employeeName: 'Alice Silva', department: 'RH', role: 'Recrutadora', score: 980, zeros: 0, trend: 'up', employeePhotoUrl: 'https://picsum.photos/id/1027/40/40' },
     { rank: 2, employeeId: '4', employeeName: 'Davi Costa', department: 'Vendas', role: 'Executivo de Contas', score: 950, zeros: 1, trend: 'stable', employeePhotoUrl: 'https://picsum.photos/id/338/40/40' },
     { rank: 3, employeeId: '5', employeeName: 'Eva Pereira', department: 'Engenharia', role: 'Desenvolvedora Frontend', score: 945, zeros: 1, trend: 'down', employeePhotoUrl: 'https://picsum.photos/id/1005/40/40' },
@@ -146,47 +141,6 @@ const mockHistory: AwardHistoryEntry[] = [
 const mockDepartments = ['RH', 'Engenharia', 'Marketing', 'Vendas', 'Operações']; // Used for Award form
 
 // --- Mock API Functions ---
-const fetchAwards = async (): Promise<Award[]> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return [...mockAwards];
-}
-
-const saveAward = async (awardData: Omit<Award, 'id'> | Award): Promise<Award> => {
-    await new Promise(resolve => setTimeout(resolve, 700));
-    if ('id' in awardData && awardData.id) { // Update
-        const index = mockAwards.findIndex(a => a.id === awardData.id);
-        if (index !== -1) {
-            mockAwards[index] = { ...mockAwards[index], ...awardData };
-            console.log("Premiação atualizada:", mockAwards[index]);
-            return mockAwards[index];
-        } else {
-            throw new Error("Premiação não encontrada para atualização.");
-        }
-    } else { // Create
-        const newAward: Award = {
-            id: `awd${Date.now()}`,
-            status: 'draft', // New awards start as draft
-            ...(awardData as Omit<Award, 'id'>),
-        };
-        mockAwards.push(newAward);
-        console.log("Nova premiação adicionada:", newAward);
-        return newAward;
-    }
-}
-
-const deleteAward = async (awardId: string): Promise<void> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const index = mockAwards.findIndex(a => a.id === awardId);
-    if (mockAwards[index]?.status === 'active') {
-        throw new Error("Não é possível remover uma premiação ativa. Desative-a primeiro.");
-    }
-    if (index !== -1) {
-        mockAwards.splice(index, 1);
-        console.log("Premiação removida:", awardId);
-    } else {
-        throw new Error("Premiação não encontrada para remoção.");
-    }
-}
 
 const fetchRankingData = async (period: Date): Promise<RankingEntry[]> => {
     await new Promise(resolve => setTimeout(resolve, 800));
@@ -207,8 +161,9 @@ const fetchAwardHistory = async (): Promise<AwardHistoryEntry[]> => {
 
 const confirmWinners = async (period: string, awardId: string, winners: RankingEntry[]): Promise<AwardHistoryEntry> => {
      await new Promise(resolve => setTimeout(resolve, 1000));
-     const award = mockAwards.find(a => a.id === awardId);
-     if (!award) throw new Error("Premiação não encontrada.");
+     // TODO: Replace with actual call to fetch a single award by ID from Firestore
+    const db = getDb();
+     const award = await getAwardById(db, awardId);
 
      // Create history entry based on the winners provided and award definition
      const historyEntry: AwardHistoryEntry = {
@@ -337,7 +292,8 @@ const AwardConfiguration = () => {
     const loadAwards = React.useCallback(async () => {
         setIsLoading(true);
         try {
-            const data = await fetchAwards();
+            const db = getDb();
+            const data = await getAllAwards(db);
             setAwards(data);
         } catch (error) {
             console.error("Falha ao carregar premiações:", error);
@@ -396,8 +352,7 @@ const AwardConfiguration = () => {
     const handleSaveAward = async (data: AwardFormData) => {
         setIsSaving(true);
 
-        const period = data.isRecurring ? 'recorrente' : data.specificMonth ? format(data.specificMonth, 'yyyy-MM') : 'erro';
-         if (period === 'erro' && !data.isRecurring) {
+         if (!data.isRecurring && !data.specificMonth) {
             toast({ title: "Erro de Validação", description: "Mês específico é obrigatório para premiação não recorrente.", variant: "destructive" });
             setIsSaving(false);
             return;
@@ -410,7 +365,7 @@ const AwardConfiguration = () => {
             monetaryValue: data.monetaryValue,
             nonMonetaryValue: data.nonMonetaryValue,
             imageUrl: data.imageUrl,
-            period: period,
+            period: data.isRecurring ? 'recorrente' : format(data.specificMonth!, 'yyyy-MM'),
             eligibilityCriteria: data.eligibilityCriteria,
             winnerCount: data.winnerCount,
             eligibleDepartments: data.eligibleDepartments,
@@ -421,7 +376,8 @@ const AwardConfiguration = () => {
         };
 
         try {
-            await saveAward(awardPayload);
+            const db = getDb();
+            await saveAward(db, awardPayload);
             toast({ title: "Sucesso!", description: `Premiação "${data.title}" ${selectedAward ? 'atualizada' : 'criada'}.` });
             setIsFormOpen(false);
             await loadAwards();
@@ -442,7 +398,8 @@ const AwardConfiguration = () => {
     const confirmDeleteAward = async () => {
         if (awardToDelete) {
             try {
-                await deleteAward(awardToDelete.id);
+                const db = getDb();
+                await deleteAward(db, awardToDelete.id);
                 toast({ title: "Sucesso", description: `Premiação "${awardToDelete.title}" removida.` });
                 await loadAwards();
             } catch (error: any) {
@@ -982,7 +939,8 @@ const RankingDashboard = () => {
     };
 
     const remainingDays = calculateRemainingDays();
-    const activeAward = mockAwards.find(a => a.status === 'active' && (a.isRecurring || (a.specificMonth && a.specificMonth.getMonth() === currentMonth.getMonth() && a.specificMonth.getFullYear() === currentMonth.getFullYear())));
+    // TODO: Optimize this to only fetch necessary awards or cache
+    const [activeAward, setActiveAward] = React.useState<Award | null>(null);
     const isCurrentMonth = new Date().getMonth() === currentMonth.getMonth() && new Date().getFullYear() === currentMonth.getFullYear();
     const canConfirmWinners = !isCurrentMonth && activeAward && rankingData.length > 0;
 
@@ -995,6 +953,18 @@ const RankingDashboard = () => {
              const next = new Date(prev.getFullYear(), prev.getMonth() + 1, 1);
              return next <= new Date() ? next : prev; // Prevent going to future months
          });
+    };
+
+    React.useEffect(() => {
+        const loadActiveAward = async () => {
+            try {
+                const db = getDb();
+                const award = await getActiveAward(db, currentMonth);
+                setActiveAward(award);
+            } catch (error) {
+            }
+        };
+        loadActiveAward();
     };
 
     const handleConfirmWinners = async () => {

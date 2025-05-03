@@ -11,7 +11,8 @@ import {
     type UserCredential,
     type User,
     createUserWithEmailAndPassword, // Import for user creation
-    updateProfile // Import for updating user profile (e.g., displayName)
+    updateProfile, // Import for updating user profile (e.g., displayName)
+    sendPasswordResetEmail // Import for password reset
 } from "firebase/auth";
 import Cookies from 'js-cookie'; // Using js-cookie for client-side cookie management
 import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore"; // Firestore for user profile data
@@ -64,30 +65,19 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     await setPersistence(auth, browserSessionPersistence);
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
 
-    let role: string = 'collaborator'; // Default role
-    let organizationId: string | null = null; // Default orgId
+    // Fetch user role and organizationId from Firestore
+    const userDocRef = doc(db, "users", userCredential.user.uid);
+    const userDocSnap = await getDoc(userDocRef);
 
-    // Special handling for Super Admin
-    if (userCredential.user.email === 'super@check2b.com') {
-        role = 'super_admin';
-        organizationId = null; // Super admins don't belong to a specific org
-        console.log("[Auth] Super Admin identified.");
-    } else {
-        // Fetch user role and organizationId from Firestore for regular users
-        const userDocRef = doc(db, "users", userCredential.user.uid);
-        const userDocSnap = await getDoc(userDocRef);
-
-        if (!userDocSnap.exists()) {
-            // Handle case where user exists in Auth but not Firestore (should not happen ideally)
-            await signOut(auth); // Sign out the user
-            throw new Error("Perfil de usuário não encontrado no banco de dados.");
-        }
-
-        const userData = userDocSnap.data();
-        role = userData.role || 'collaborator'; // Assign fetched role or default
-        organizationId = userData.organizationId || null; // Assign fetched orgId or null
-        console.log(`[Auth] User profile fetched: Role=${role}, OrgID=${organizationId}`);
+    if (!userDocSnap.exists()) {
+        // Handle case where user exists in Auth but not Firestore (should not happen ideally)
+        await signOut(auth); // Sign out the user
+        throw new Error("Perfil de usuário não encontrado no banco de dados.");
     }
+    const userData = userDocSnap.data();
+    const role: string = userData.role || 'collaborator'; // Assign fetched role or default
+    const organizationId: string | null = userData.organizationId || null; // Assign fetched orgId or null
+    console.log(`[Auth] User profile fetched: Role=${role}, OrgID=${organizationId}`);
 
     // Set cookies
     const idToken = await userCredential.user.getIdToken(true); // Get token for cookie
@@ -194,6 +184,7 @@ export const getUserProfileData = async (userId: string): Promise<UserProfile | 
             photoUrl: data.photoUrl || undefined,
             department: data.department || undefined,
             phone: data.phone || undefined,
+            isActive: data.isActive !== undefined ? data.isActive : true, // Add isActive with default
         };
     } else {
         console.warn(`User profile not found in Firestore for UID: ${userId}`);
@@ -233,15 +224,7 @@ export const createUserWithProfile = async (
      // 2. Update Auth profile (optional, but good practice)
      await updateProfile(user, { displayName: name });
 
-     // 3. Set Custom Claims (IMPORTANT FOR SECURITY - Usually done server-side/Firebase Functions)
-     // **WARNING:** Setting claims client-side is insecure. This is a placeholder.
-     // In a real app, trigger a Firebase Function after user creation to set claims.
-     console.warn("Setting custom claims client-side is INSECURE. Move this logic to a backend function.");
-     // Example (Insecure): await user.getIdToken(true); // Refresh token to potentially pick up claims if set server-side quickly
-     // You would typically call a function like:
-     // await callFirebaseFunction('setCustomClaims', { uid: user.uid, role, organizationId });
-
-     // 4. Create user profile in Firestore
+     // 3. Create user profile in Firestore
      const userDocRef = doc(db, "users", user.uid);
      await setDoc(userDocRef, {
          uid: user.uid, // Store UID for easier querying
@@ -251,11 +234,37 @@ export const createUserWithProfile = async (
          organizationId: organizationId, // Store null for super_admin
          createdAt: new Date(), // Use server timestamp in production: serverTimestamp()
          status: 'active',
+         isActive: true, // Default to active
          // Add other relevant profile fields (department, phone, etc.) as needed
      });
 
      console.log(`User profile created in Firestore for ${name} (${email}) with role ${role} in org ${organizationId}`);
      return user;
+};
+
+/**
+ * Sends a password reset email to the specified email address.
+ * @param email The email address to send the reset link to.
+ * @returns Promise resolving on successful email sending.
+ */
+export const sendPasswordReset = async (email: string): Promise<void> => {
+    if (!auth) {
+        throw new Error("Firebase Auth is not initialized.");
+    }
+    try {
+        await sendPasswordResetEmail(auth, email);
+        console.log(`[Auth] Password reset email sent to ${email}`);
+    } catch (error: any) {
+        console.error(`[Auth] Error sending password reset email to ${email}:`, error);
+        // Rethrow specific errors or a generic one
+        if (error.code === 'auth/user-not-found') {
+             throw new Error("Nenhum usuário encontrado com este email.");
+        } else if (error.code === 'auth/invalid-email') {
+             throw new Error("O endereço de email fornecido é inválido.");
+        } else {
+            throw new Error("Falha ao enviar email de redefinição de senha.");
+        }
+    }
 };
 
 
@@ -274,3 +283,4 @@ export const onAuthChange = (callback: (user: User | null) => void) => {
 
 // Export auth and db instances if needed elsewhere
 export { auth, db };
+

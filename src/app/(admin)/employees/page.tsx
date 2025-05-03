@@ -41,63 +41,37 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import { format } from 'date-fns';
-import { mockEmployees } from '@/lib/mockData/employees'; // Import from the new data file
 import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import LoadingSpinner
+import { getAllUsers, saveEmployee as saveEmployeeToFirestore, deleteEmployee as deleteEmployeeFromFirestore, toggleEmployeeStatus as toggleEmployeeStatusInFirestore } from '@/lib/user-service'; // Import Firestore service functions
+import type { UserProfile } from '@/types/user';
 
 // Removed mock data definition from here
 
-const fetchEmployees = async (): Promise<Employee[]> => {
-  await new Promise(resolve => setTimeout(resolve, 500));
-  return [...mockEmployees]; // Use the imported mock data
+const fetchEmployees = async (): Promise<UserProfile[]> => {
+  const allUsers = await getAllUsers();
+  // Filter for users with the 'collaborator' role
+ return allUsers.filter(user => user.role === 'collaborator');
 };
 
-const saveEmployee = async (employeeData: Omit<Employee, 'id'> | Employee): Promise<Employee> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    if ('id' in employeeData && employeeData.id) {
-        const index = mockEmployees.findIndex(emp => emp.id === employeeData.id);
-        if (index !== -1) {
-            mockEmployees[index] = { ...mockEmployees[index], ...employeeData };
-            console.log("Colaborador atualizado (mock):", mockEmployees[index]);
-            return mockEmployees[index];
-        } else {
-            throw new Error("Colaborador não encontrado para atualização");
-        }
+const saveEmployee = async (employeeData: Omit<UserProfile, 'uid'> | UserProfile): Promise<UserProfile> => {
+    // Use the user-service to save/update the employee (which is a user with role 'collaborator')
+ if ('uid' in employeeData && employeeData.uid) {
+ return await saveEmployeeToFirestore(employeeData);
     } else {
-        const newEmployee: Employee = {
-            id: String(Date.now()),
+ const newEmployee: Omit<UserProfile, 'uid'> = {
             ...employeeData,
             isActive: employeeData.isActive !== undefined ? employeeData.isActive : true,
         };
-        mockEmployees.push(newEmployee);
-        console.log("Novo colaborador adicionado (mock):", newEmployee);
-        alert(`Mock user ${newEmployee.name} added. REMEMBER TO CREATE THE USER IN FIREBASE AUTHENTICATION MANUALLY!`);
-        return newEmployee;
+ return await saveEmployeeToFirestore(newEmployee);
     }
 };
 
 const deleteEmployee = async (employeeId: string): Promise<void> => {
-     await new Promise(resolve => setTimeout(resolve, 500));
-    const index = mockEmployees.findIndex(emp => emp.id === employeeId);
-    if (index !== -1) {
-        mockEmployees.splice(index, 1);
-        console.log("Colaborador removido com ID:", employeeId);
-         alert(`Mock user removed. REMEMBER TO DELETE THE USER FROM FIREBASE AUTHENTICATION MANUALLY!`);
-    } else {
-         throw new Error("Colaborador não encontrado para remoção");
-    }
+ return await deleteEmployeeFromFirestore(employeeId);
 };
 
-const toggleEmployeeStatus = async (employeeId: string): Promise<Employee | undefined> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const index = mockEmployees.findIndex(emp => emp.id === employeeId);
-    if (index !== -1) {
-        mockEmployees[index].isActive = !mockEmployees[index].isActive;
-        console.log("Status alterado para o colaborador:", mockEmployees[index]);
-         alert(`Mock user status changed. REMEMBER TO ${mockEmployees[index].isActive ? 'ENABLE' : 'DISABLE'} THE USER IN FIREBASE AUTHENTICATION MANUALLY!`);
-        return mockEmployees[index];
-    } else {
-         throw new Error("Colaborador não encontrado para alterar status");
-    }
+const toggleEmployeeStatus = async (employeeId: string, isActive: boolean): Promise<UserProfile> => {
+ return await toggleEmployeeStatusInFirestore(employeeId, isActive);
 };
 
 
@@ -166,9 +140,9 @@ function EmployeeProfileView({ employee, open, onOpenChange }: EmployeeProfileVi
 
 
 export default function EmployeesPage() {
-  const [employees, setEmployees] = React.useState<Employee[]>([]);
+  const [employees, setEmployees] = React.useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [selectedEmployee, setSelectedEmployee] = React.useState<Employee | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = React.useState<UserProfile | null>(null);
   const [isFormOpen, setIsFormOpen] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [employeeToDelete, setEmployeeToDelete] = React.useState<Employee | null>(null);

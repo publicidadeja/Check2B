@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { LogIn, Loader2, User, Shield, Eye, EyeOff, AlertTriangle, Settings2 } from 'lucide-react';
+import { LogIn, Loader2, User, Shield, Eye, EyeOff, AlertTriangle, Settings2, Mail, KeyRound } from 'lucide-react'; // Added Mail, KeyRound
 import Cookies from 'js-cookie';
 
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/card';
 import {
   AlertDialog,
+  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -29,6 +30,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger, // Added DialogTrigger
+} from "@/components/ui/dialog";
 import {
   Form,
   FormControl,
@@ -38,18 +49,24 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { loginUser, setAuthCookie, logoutUser } from '@/lib/auth';
+import { loginUser, setAuthCookie, logoutUser, sendPasswordReset } from '@/lib/auth'; // Added sendPasswordReset
 import { Separator } from '@/components/ui/separator';
 import { Logo } from '@/components/logo';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import loading spinner
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
 const loginSchema = z.object({
   email: z.string().email({ message: 'Por favor, insira um email válido.' }),
   password: z.string().min(6, { message: 'Senha deve ter pelo menos 6 caracteres.' }),
 });
 
+// Schema for the forgot password form
+const forgotPasswordSchema = z.object({
+    resetEmail: z.string().email({ message: 'Por favor, insira um email válido para redefinição.' }),
+});
+
 type LoginFormValues = z.infer<typeof loginSchema>;
+type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
 type UserRole = 'super_admin' | 'admin' | 'collaborator';
 
 // Separate component to contain logic using useSearchParams
@@ -59,6 +76,8 @@ function LoginContent() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = React.useState(false);
   const [isGuestChoiceOpen, setIsGuestChoiceOpen] = React.useState(false);
+  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = React.useState(false); // State for forgot password dialog
+  const [isSendingReset, setIsSendingReset] = React.useState(false); // Loading state for reset email
   const [showPassword, setShowPassword] = React.useState(false);
   const [loginError, setLoginError] = React.useState<string | null>(null);
 
@@ -68,6 +87,13 @@ function LoginContent() {
       email: '',
       password: '',
     },
+  });
+
+  const forgotPasswordForm = useForm<ForgotPasswordFormValues>({
+      resolver: zodResolver(forgotPasswordSchema),
+      defaultValues: {
+          resetEmail: '',
+      },
   });
 
    // Display messages based on redirect reason
@@ -169,9 +195,27 @@ function LoginContent() {
     }
   };
 
-  const handleForgotPassword = () => {
-    toast({ title: "Funcionalidade Pendente", description: "Recuperação de senha ainda não implementada." });
-  }
+  const handleForgotPasswordSubmit = async (data: ForgotPasswordFormValues) => {
+      setIsSendingReset(true);
+      try {
+          await sendPasswordReset(data.resetEmail);
+          toast({
+              title: "Email Enviado",
+              description: "Verifique sua caixa de entrada para o link de redefinição de senha.",
+          });
+          setIsForgotPasswordOpen(false); // Close dialog on success
+          forgotPasswordForm.reset(); // Clear the form
+      } catch (error: any) {
+          console.error("Erro ao enviar email de reset:", error);
+          toast({
+              title: "Erro ao Enviar Email",
+              description: error.message || "Não foi possível enviar o email. Verifique o endereço e tente novamente.",
+              variant: "destructive",
+          });
+      } finally {
+          setIsSendingReset(false);
+      }
+  };
 
   const handleGuestLoginClick = () => {
     setIsGuestChoiceOpen(true);
@@ -242,7 +286,8 @@ function LoginContent() {
                   <FormItem>
                     <div className="flex items-center justify-between">
                         <FormLabel>Senha</FormLabel>
-                        <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs text-primary" onClick={handleForgotPassword}>
+                         {/* Button to open Forgot Password dialog */}
+                        <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs text-primary" onClick={() => setIsForgotPasswordOpen(true)}>
                           Esqueceu a senha?
                         </Button>
                     </div>
@@ -298,6 +343,7 @@ function LoginContent() {
              </Button>
         </CardFooter>
 
+         {/* Guest Choice Dialog */}
          <AlertDialog open={isGuestChoiceOpen} onOpenChange={setIsGuestChoiceOpen}>
             <AlertDialogContent>
                 <AlertDialogHeader>
@@ -320,6 +366,45 @@ function LoginContent() {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+
+         {/* Forgot Password Dialog */}
+         <Dialog open={isForgotPasswordOpen} onOpenChange={setIsForgotPasswordOpen}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                <DialogTitle className="flex items-center gap-2"> <KeyRound className="h-5 w-5"/> Redefinir Senha</DialogTitle>
+                <DialogDescription>
+                    Insira seu email corporativo para receber um link de redefinição de senha.
+                </DialogDescription>
+                </DialogHeader>
+                <Form {...forgotPasswordForm}>
+                    <form onSubmit={forgotPasswordForm.handleSubmit(handleForgotPasswordSubmit)} className="space-y-4 pt-2">
+                        <FormField
+                            control={forgotPasswordForm.control}
+                            name="resetEmail"
+                            render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Email</FormLabel>
+                                <FormControl>
+                                <Input type="email" placeholder="seu.email@check2b.com" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                            )}
+                        />
+                        <DialogFooter>
+                            <DialogClose asChild>
+                                <Button type="button" variant="outline" disabled={isSendingReset}>Cancelar</Button>
+                            </DialogClose>
+                            <Button type="submit" disabled={isSendingReset}>
+                                {isSendingReset && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                {isSendingReset ? 'Enviando...' : 'Enviar Link'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </Form>
+            </DialogContent>
+        </Dialog>
+
      </Card>
   );
 }
@@ -334,4 +419,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
