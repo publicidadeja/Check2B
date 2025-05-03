@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
 import { useRouter, useSearchParams } from 'next/navigation'; // Added useSearchParams
-import { LogIn, Loader2, User, Shield, Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import { LogIn, Loader2, User, Shield, Eye, EyeOff, AlertTriangle, Settings } from 'lucide-react'; // Added Settings
 import Cookies from 'js-cookie';
 
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/card';
 import {
   AlertDialog,
-  AlertDialogCancel, // Keep Cancel import
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -44,7 +44,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; // 
 
 const loginSchema = z.object({
   email: z.string().email({ message: 'Por favor, insira um email válido.' }),
-  password: z.string().min(1, { message: 'Senha é obrigatória.' }), // Min 1 for presence check
+  password: z.string().min(6, { message: 'Senha deve ter pelo menos 6 caracteres.' }), // Updated min length
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -75,9 +75,10 @@ export default function LoginPage() {
            setLoginError("Seu usuário não está vinculado a uma organização. Contate o administrador.");
       } else if (reason === 'unknown_role') {
            setLoginError("Seu perfil de usuário é desconhecido. Contate o administrador.");
-      } else if (reason === 'guest_mode') {
-            // Optional: Show a message if redirected from guest mode, or just let them log in normally.
-            // setLoginError("Você saiu do modo convidado. Faça login para continuar.");
+      } else if (reason === 'profile_missing') {
+          setLoginError("Usuário autenticado, mas perfil não encontrado no banco de dados. Contate o suporte.");
+      } else if (reason === 'profile_error') {
+          setLoginError("Erro ao carregar dados do perfil. Contate o suporte.");
       }
       // Clear reason after showing message
       if (reason) {
@@ -106,10 +107,18 @@ export default function LoginPage() {
           router.push('/superadmin');
         } else if (role === 'admin') {
           router.push('/'); // Admin root
-        } else {
+        } else if (role === 'collaborator') {
           router.push('/colaborador/dashboard');
+        } else {
+            // Fallback if role is somehow invalid after login
+             console.warn(`[Login Page] Invalid role detected after login: ${role}`);
+             setLoginError("Perfil de usuário inválido após login. Contate o suporte.");
+             await logoutUser(); // Log out user with invalid role
+             setIsLoading(false);
+             return;
         }
       } else {
+        // This case should ideally not be reached if loginUser throws errors properly
         throw new Error("Credenciais inválidas ou erro desconhecido.");
       }
 
@@ -136,20 +145,13 @@ export default function LoginPage() {
             break;
           default:
             console.warn(`Unhandled Firebase Auth error code: ${error.code}`);
-            errorMessage = `Erro inesperado. Tente novamente.`;
+            errorMessage = `Erro inesperado (${error.code}). Tente novamente.`;
         }
-      } else if (error.message === "Firebase Auth or Firestore is not initialized. Check configuration.") {
-          errorMessage = "Erro de configuração do servidor de autenticação. Contate o suporte.";
-      } else if (error.message === "Perfil de usuário não encontrado no banco de dados.") {
-           errorMessage = "Usuário autenticado, mas perfil não encontrado. Contate o suporte.";
+      } else if (error.message) {
+          // Handle custom errors thrown from loginUser
+          errorMessage = error.message;
       }
 
-      // Use toast for immediate feedback, setLoginError for persistent message
-      // toast({
-      //   title: 'Erro no Login',
-      //   description: errorMessage,
-      //   variant: 'destructive',
-      // });
        setLoginError(errorMessage); // Show error message above the form
 
     } finally {
@@ -182,10 +184,11 @@ export default function LoginPage() {
           description: `Entrando no painel...`,
           duration: 2000,
       });
-      Cookies.set('guest-mode', role, { path: '/', expires: 0.1 });
-      Cookies.remove('auth-token');
-      Cookies.remove('user-role');
-      Cookies.remove('organization-id');
+      // Set a guest cookie or flag for middleware/layouts to recognize
+      Cookies.set('guest-mode', role, { path: '/', expires: 0.1 }); // Expires quickly (e.g., 0.1 days)
+      Cookies.remove('auth-token'); // Ensure no auth token
+      Cookies.remove('user-role'); // Ensure no role token
+      Cookies.remove('organization-id'); // Ensure no org id
       router.push(targetPath);
   };
 
