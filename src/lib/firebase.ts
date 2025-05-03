@@ -1,5 +1,6 @@
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
+import { getFirestore, Firestore } from "firebase/firestore"; // Import Firestore type and function
 
 // Ensure these environment variables are set in your .env.local file
 const firebaseConfig = {
@@ -12,6 +13,7 @@ const firebaseConfig = {
 };
 
 let app: FirebaseApp | null = null;
+let db: Firestore | null = null; // Variable to hold Firestore instance
 
 const requiredConfigKeys: (keyof typeof firebaseConfig)[] = [
     'apiKey',
@@ -27,7 +29,8 @@ const missingKeys = requiredConfigKeys.filter(key => !firebaseConfig[key]);
 if (missingKeys.length === 0 || typeof window === 'undefined') {
     try {
         app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-        console.log("Firebase App initialized successfully.");
+        db = getFirestore(app); // Initialize Firestore
+        console.log("Firebase App and Firestore initialized successfully.");
     } catch (error) {
         console.error("Firebase initialization failed:", error);
         if (typeof window !== 'undefined') {
@@ -48,3 +51,11 @@ if (missingKeys.length === 0 || typeof window === 'undefined') {
 export const getFirebaseApp = (): FirebaseApp | null => {
     return app;
 };
+
+/**
+ * Gets the initialized Firestore instance.
+ * Returns null if initialization failed or hasn't happened yet.
+ */
+export const getDb = (): Firestore | null => {
+    return db;
+}

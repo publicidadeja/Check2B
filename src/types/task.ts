@@ -10,4 +10,5 @@ export interface Task {
   assignedTo?: 'role' | 'department' | 'individual';
   // ID ou Nome da entidade atribuída (opcional, obrigatório se assignedTo for definido)
   assignedEntityId?: string;
+  organizationId: string; // ID da organização à qual a tarefa pertence
 }

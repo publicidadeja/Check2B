@@ -9,4 +9,5 @@ export interface Evaluation {
   evaluatorId: string; // ID do administrador que avaliou
   isDraft: boolean; // Indica se é um rascunho (não implementado ainda)
   lastEdited?: string; // Timestamp da última edição (ISO string, opcional)
+  organizationId: string; // ID da organização
 }

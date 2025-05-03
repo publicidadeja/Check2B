@@ -2,8 +2,8 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google'; // Using Inter as Geist fonts might not be standard
 import './globals.css';
-// Removed MainLayout import - it will be applied conditionally
 import { Toaster } from '@/components/ui/toaster'; // Import Toaster for notifications
+import { AuthProvider } from '@/hooks/use-auth'; // Import AuthProvider
 
 // Using Inter font as a common, well-supported alternative
 const inter = Inter({
@@ -25,9 +25,10 @@ export default function RootLayout({
     // Add suppressHydrationWarning if necessary for specific cases, but avoid if possible
     <html lang="pt-BR" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased`}>{/* Apply font variable */}
-        {/* MainLayout removed - children will now include layout based on route */}
-        {children}
-        <Toaster /> {/* Add Toaster component here */}
+        <AuthProvider> {/* Wrap the entire application with AuthProvider */}
+            {children}
+            <Toaster /> {/* Add Toaster component here */}
+        </AuthProvider>
       </body>
     </html>
   );

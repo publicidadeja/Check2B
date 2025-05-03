@@ -17,15 +17,16 @@ export interface Challenge {
   supportMaterialUrl?: string; // Link to guides, etc.
   imageUrl?: string; // URL for an illustrative image/icon
   status: 'draft' | 'active' | 'scheduled' | 'evaluating' | 'completed' | 'archived'; // Lifecycle status
+  organizationId: string; // ID da organização
 }
 
 
 // Added definition for ChallengeParticipation used in admin/challenges page
 export interface ChallengeParticipation {
-    id: string;
+    id?: string; // Optional for creation
     challengeId: string;
     employeeId: string;
-    employeeName: string; // For display
+    employeeName?: string; // Optional, can be fetched if needed
     submission?: string; // Link or text description
     submittedAt?: Date;
     status: 'pending' | 'submitted' | 'approved' | 'rejected' | 'accepted'; // Added accepted status
@@ -34,4 +35,6 @@ export interface ChallengeParticipation {
     acceptedAt?: Date; // Added acceptedAt
     submissionText?: string; // Explicit text submission field
     submissionFileUrl?: string; // Explicit file submission field
+    organizationId: string; // ID da organização
 }
+

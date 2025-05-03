@@ -8,4 +8,5 @@ export interface Employee {
   email: string; // Email corporativo
   phone?: string; // Telefone (opcional)
   isActive: boolean; // Status (ativo/inativo)
+  organizationId: string; // ID da organização à qual o colaborador pertence
 }

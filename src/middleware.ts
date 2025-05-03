@@ -1,156 +1,154 @@
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { jwtVerify } from 'jose'; // Using jose for JWT verification
+// Removed jose import as we'll rely on cookies for role/orgId for now
+// For production, JWT verification with custom claims is preferred.
 
-// --- Environment Variable for JWT Secret ---
-// Ensure this is set in your .env.local file
+// --- Environment Variable Check (Keep JWT Secret check if you plan to use JWTs later) ---
 const JWT_SECRET_STRING = process.env.JWT_SECRET;
-let JWT_SECRET: Uint8Array | null = null;
-
-if (JWT_SECRET_STRING) {
-    try {
-        JWT_SECRET = new TextEncoder().encode(JWT_SECRET_STRING);
-        console.log("[Middleware] JWT Secret loaded successfully.");
-    } catch (e) {
-        console.error("[Middleware] Error encoding JWT_SECRET:", e);
-    }
-} else {
-    console.error("[Middleware] JWT_SECRET environment variable is not set!");
+if (!JWT_SECRET_STRING) {
+    console.error("[Middleware] Warning: JWT_SECRET environment variable is not set. JWT verification disabled.");
 }
 
+// Define User Roles
+type UserRole = 'super_admin' | 'admin' | 'collaborator';
 
-interface UserJwtPayload {
-    uid: string;
-    email: string;
-    role: 'admin' | 'colaborador'; // Define expected roles
-    // Add other claims as needed (e.g., name, department)
-    iat: number; // Issued at
-    exp: number; // Expiration time
-}
+// Function to get user data from cookies (replace with token verification for production)
+function getUserDataFromCookies(request: NextRequest): { role: UserRole | null, organizationId: string | null, token: string | null } {
+    const token = request.cookies.get('auth-token')?.value;
+    const role = request.cookies.get('user-role')?.value as UserRole | undefined;
+    const organizationId = request.cookies.get('organization-id')?.value;
+    const guestMode = request.cookies.get('guest-mode')?.value as UserRole | undefined;
 
-// Function to verify the JWT token from the cookie
-async function verifyToken(token: string): Promise<UserJwtPayload | null> {
-    if (!JWT_SECRET) {
-        console.error("[Middleware] JWT_SECRET is not available for verification.");
-        return null; // Cannot verify without the secret
+    if (guestMode) {
+        console.log(`[Middleware] Guest mode detected: ${guestMode}`);
+        // Allow guest access based on mode, but treat role/org as null for routing logic below
+        // The actual content rendering should handle the guest state.
+        return { role: guestMode, organizationId: 'org_default', token: null }; // Return guest role but null token
     }
+
     if (!token) {
-        return null;
+        return { role: null, organizationId: null, token: null };
     }
-    try {
-        const { payload } = await jwtVerify(token, JWT_SECRET);
-        // Basic validation (ensure essential claims exist)
-        if (typeof payload.uid !== 'string' || typeof payload.role !== 'string') {
-             console.error("[Middleware] Invalid token payload structure.");
-             return null;
-        }
-        return payload as UserJwtPayload;
-    } catch (err) {
-        // Log specific errors
-        if (err instanceof Error && err.name === 'JWSSignatureVerificationFailed') {
-             console.error("[Middleware] JWT Signature Verification Failed:", err.message);
-        } else if (err instanceof Error && err.name === 'JWTExpired') {
-            console.error("[Middleware] JWT Expired:", err.message);
-        } else {
-             console.error("[Middleware] JWT Verification Error:", err);
-        }
-        return null;
-    }
-}
 
+    // Basic validation (in a real app, verify the token here)
+    if (!role || (role !== 'super_admin' && !organizationId)) {
+        console.warn("[Middleware] Missing or invalid role/organizationId cookie despite token existence.");
+        // Optionally clear invalid cookies here
+        // const response = NextResponse.next();
+        // response.cookies.delete('user-role');
+        // response.cookies.delete('organization-id');
+        // return { role: null, organizationId: null, token }; // Treat as unauthenticated for routing
+    }
+
+    return {
+        role: role || null,
+        organizationId: organizationId || null,
+        token: token,
+    };
+}
 
 export async function middleware(request: NextRequest) {
     const pathname = request.nextUrl.pathname;
-    const authTokenCookie = request.cookies.get('auth-token'); // Check for the auth token cookie
-    const token = authTokenCookie?.value;
+    const userData = getUserDataFromCookies(request);
+    const { role, organizationId, token } = userData;
+    const isGuest = !token && role; // Check if it's a guest role from cookie
 
-    console.log(`[Middleware] Path: ${pathname}, Token found: ${!!token}`);
+    console.log(`[Middleware] Path: ${pathname}, Role: ${role}, OrgID: ${organizationId}, Token: ${!!token}, Guest: ${isGuest}`);
 
-    // Allow access to the login page regardless of auth state
+    // 1. Allow access to login page
     if (pathname === '/login') {
+        // If logged in (or guest), redirect away from login
+        if (token || isGuest) {
+            let redirectPath = '/'; // Default redirect
+            if (role === 'super_admin') redirectPath = '/superadmin';
+            else if (role === 'admin') redirectPath = '/'; // Admin dashboard is root
+            else if (role === 'collaborator') redirectPath = '/colaborador/dashboard';
+            console.log(`[Middleware] User already authenticated/guest. Redirecting from /login to ${redirectPath}`);
+            return NextResponse.redirect(new URL(redirectPath, request.url));
+        }
         console.log("[Middleware] Accessing login page, allowing.");
         return NextResponse.next();
     }
 
-    // --- GUEST MODE / DEVELOPMENT BYPASS ---
-    // This allows accessing routes without a token for demonstration.
-    // REMOVE OR REFINE THIS FOR PRODUCTION!
-    if (!token) {
-        // Allow access to collaborator routes OR any admin route (not starting with /colaborador)
-        if (pathname.startsWith('/colaborador') || !pathname.startsWith('/colaborador')) {
-             const mode = pathname.startsWith('/colaborador') ? 'Colaborador' : 'Admin';
-            console.warn(`[Middleware] GUEST/DEV MODE: Allowing unauthenticated access to ${pathname} (as ${mode})`);
-            return NextResponse.next();
+    // 2. Handle unauthenticated users (neither logged in nor guest)
+    if (!token && !isGuest) {
+        console.log(`[Middleware] No token or guest mode. Redirecting to /login from ${pathname}`);
+        return NextResponse.redirect(new URL('/login?reason=unauthenticated', request.url));
+    }
+
+    // --- User is Authenticated or in Guest Mode ---
+
+    // 3. Super Admin Routing
+    if (role === 'super_admin') {
+        if (!pathname.startsWith('/superadmin')) {
+            console.log(`[Middleware] Super Admin user redirected from ${pathname} to /superadmin`);
+            return NextResponse.redirect(new URL('/superadmin', request.url));
         }
-        // else {
-        //     // This case is now unlikely with the condition above, but kept for clarity
-        //     // Redirect other unauthenticated paths (if any existed) to login
-        //     console.log(`[Middleware] No token and not allowed guest path. Redirecting to /login from ${pathname}`);
-        //     return NextResponse.redirect(new URL('/login', request.url));
-        // }
-    }
-    // --- END GUEST MODE / DEVELOPMENT BYPASS ---
-
-
-    // If we have a token, proceed with verification
-    let verifiedPayload: UserJwtPayload | null = null;
-    if (JWT_SECRET) {
-       verifiedPayload = await verifyToken(token);
-    } else {
-       console.error("[Middleware] Cannot verify token: JWT_SECRET is missing or invalid.");
-       // Redirect to login if secret is missing and trying to access protected routes
-       return NextResponse.redirect(new URL('/login', request.url));
-    }
-
-    if (!verifiedPayload) {
-        // Token exists but is invalid/expired, redirect to login
-        console.log(`[Middleware] Invalid token. Redirecting to /login from ${pathname}`);
-        const response = NextResponse.redirect(new URL('/login', request.url));
-        // Clear the invalid cookie
-        response.cookies.delete('auth-token');
-        return response;
-    }
-
-    // User is authenticated, proceed with role-based routing
-    const userRole = verifiedPayload.role;
-    console.log(`[Middleware] User authenticated. Role: ${userRole}`);
-
-    // If user is an admin...
-    if (userRole === 'admin') {
-        // If trying to access employee pages, redirect to admin dashboard (root)
-        if (pathname.startsWith('/colaborador')) {
-            console.log(`[Middleware] Admin user redirected from ${pathname} to /`);
-            return NextResponse.redirect(new URL('/', request.url));
-        }
-        // Allow access to admin pages (including root '/')
-        console.log(`[Middleware] Admin user accessing allowed path: ${pathname}`);
+        console.log(`[Middleware] Super Admin accessing allowed path: ${pathname}`);
         return NextResponse.next();
     }
 
-    // If user is an employee...
-    if (userRole === 'colaborador') {
-        // If trying to access admin pages (root or anything not starting with /colaborador), redirect to employee dashboard
+    // 4. Admin Routing
+    if (role === 'admin') {
+        // Admins belong to a specific organization
+        if (!organizationId && !isGuest) { // Guests might temporarily not have org ID if logic changes
+            console.error(`[Middleware] Admin user (UID from token if verified) has no organizationId cookie/claim! Redirecting to login.`);
+             const response = NextResponse.redirect(new URL('/login?reason=no_org', request.url));
+             response.cookies.delete('auth-token');
+             response.cookies.delete('user-role');
+             return response;
+        }
+        // Redirect admins away from collaborator and superadmin pages
+        if (pathname.startsWith('/colaborador') || pathname.startsWith('/superadmin')) {
+            console.log(`[Middleware] Admin user redirected from ${pathname} to /`);
+            return NextResponse.redirect(new URL('/', request.url)); // Admin dashboard is root '/'
+        }
+        // Allow access to admin pages (root '/' and others not starting with /colaborador or /superadmin)
+        console.log(`[Middleware] Admin accessing allowed path: ${pathname}`);
+        return NextResponse.next();
+    }
+
+    // 5. Collaborator Routing
+    if (role === 'collaborator') {
+         if (!organizationId && !isGuest) {
+            console.error(`[Middleware] Collaborator user (UID from token if verified) has no organizationId cookie/claim! Redirecting to login.`);
+             const response = NextResponse.redirect(new URL('/login?reason=no_org', request.url));
+             response.cookies.delete('auth-token');
+             response.cookies.delete('user-role');
+             return response;
+         }
+        // Redirect collaborators away from admin and superadmin pages
         if (!pathname.startsWith('/colaborador')) {
-            console.log(`[Middleware] Employee user redirected from ${pathname} to /colaborador/dashboard`);
+            console.log(`[Middleware] Collaborator user redirected from ${pathname} to /colaborador/dashboard`);
             return NextResponse.redirect(new URL('/colaborador/dashboard', request.url));
         }
-        // Allow access to employee pages
-        console.log(`[Middleware] Colaborador user accessing allowed path: ${pathname}`);
+        // Allow access to collaborator pages
+        console.log(`[Middleware] Collaborator accessing allowed path: ${pathname}`);
         return NextResponse.next();
     }
 
-    // Fallback (should not happen if roles are correctly set, but good practice)
-    console.warn(`[Middleware] Unknown role '${userRole}' for authenticated user. Redirecting to login.`);
-    const response = NextResponse.redirect(new URL('/login', request.url));
-    response.cookies.delete('auth-token'); // Clear cookie for unknown role
+    // 6. Fallback for unknown roles or unexpected states
+    console.warn(`[Middleware] Unknown role or state. Role: ${role}. Redirecting to login.`);
+    const response = NextResponse.redirect(new URL('/login?reason=unknown_role', request.url));
+    response.cookies.delete('auth-token');
+    response.cookies.delete('user-role');
+    response.cookies.delete('organization-id');
+    response.cookies.delete('guest-mode');
     return response;
 }
 
-// Apply middleware to all routes except API, static files, etc.
+// Apply middleware to relevant routes
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico).*)', // Exclude standard Next.js assets and API routes
-    // Login page is handled explicitly within the middleware logic
+    /*
+     * Match all request paths except for the ones starting with:
+     * - api (API routes)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - logo.png (logo file)
+     */
+    '/((?!api|_next/static|_next/image|favicon.ico|logo.png).*)',
   ],
 };
