@@ -6,8 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
 import { useRouter, useSearchParams } from 'next/navigation'; // Added useSearchParams
-import { LogIn, Loader2, User, Shield, Eye, EyeOff, AlertTriangle, Settings } from 'lucide-react'; // Added Settings
-import Cookies from 'js-cookie';
+import { LogIn, Loader2, User, Shield, Eye, EyeOff, AlertTriangle, Settings2 as Settings } from 'lucide-react'; // Use Settings2 for consistency
+import Cookies from 'js-cookie'; // Import js-cookie
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,7 +37,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { loginUser, setAuthCookie } from '@/lib/auth';
+import { loginUser, setAuthCookie, logoutUser } from '@/lib/auth'; // Import logoutUser
 import { Separator } from '@/components/ui/separator';
 import { Logo } from '@/components/logo';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; // Import Alert components
@@ -140,8 +140,8 @@ export default function LoginPage() {
             break;
            case 'auth/invalid-api-key': // Handle specific API key error
            case 'auth/api-key-not-valid.-please-pass-a-valid-api-key.': // Handle variations
-            errorMessage = 'Erro de configuração (Chave API Inválida). Contate o suporte.';
-            console.error("FIREBASE AUTH ERROR: Invalid API Key. Check .env configuration.");
+            errorMessage = 'Erro de configuração (Chave API Inválida). Verifique as variáveis de ambiente.';
+            console.error("FIREBASE AUTH ERROR: Invalid API Key. Check .env configuration (NEXT_PUBLIC_FIREBASE_API_KEY).");
             break;
           default:
             console.warn(`Unhandled Firebase Auth error code: ${error.code}`);
@@ -175,7 +175,7 @@ export default function LoginPage() {
         targetPath = '/colaborador/dashboard';
         roleName = 'Colaborador';
      } else if (role === 'super_admin') {
-        targetPath = '/superadmin';
+        targetPath = '/superadmin'; // Correct target path for super admin
         roleName = 'Super Admin';
      }
 
@@ -189,6 +189,7 @@ export default function LoginPage() {
       Cookies.remove('auth-token'); // Ensure no auth token
       Cookies.remove('user-role'); // Ensure no role token
       Cookies.remove('organization-id'); // Ensure no org id
+      console.log(`[Login] Setting guest mode cookie to: ${role}`); // Log cookie setting
       router.push(targetPath);
   };
 
