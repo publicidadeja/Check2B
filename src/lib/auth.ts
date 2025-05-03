@@ -16,6 +16,7 @@ import {
 import Cookies from 'js-cookie'; // Using js-cookie for client-side cookie management
 import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore"; // Firestore for user profile data
 import { getFirebaseApp } from "./firebase"; // Import the getFirebaseApp function
+import type { UserProfile } from '@/types/user'; // Import UserProfile type
 
 // --- Firebase Configuration ---
 // Ensure these environment variables are set in your .env.local file
@@ -35,7 +36,9 @@ if (app) {
         console.error("Error initializing Firebase Auth/Firestore:", error);
         // Optionally alert the user or handle the error in a user-facing way
          if (typeof window !== 'undefined') {
-             alert("Falha ao inicializar a conexão com o servidor de autenticação/banco de dados. Verifique a configuração.");
+             // Commenting out alert for better DX during dev
+             // alert("Falha ao inicializar a conexão com o servidor de autenticação/banco de dados. Verifique a configuração.");
+             console.error("Falha ao inicializar a conexão com o servidor de autenticação/banco de dados. Verifique a configuração do Firebase no .env");
          }
     }
 } else {
@@ -49,6 +52,7 @@ if (app) {
 
 /**
  * Logs in a user with email and password. Retrieves role and orgId from Firestore.
+ * Special handling for the hardcoded super admin email.
  * @param email User's email
  * @param password User's password
  * @returns Promise resolving to UserCredential & user data on success
@@ -60,29 +64,41 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     await setPersistence(auth, browserSessionPersistence);
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
 
-    // Fetch user role and organizationId from Firestore after login
-    const userDocRef = doc(db, "users", userCredential.user.uid);
-    const userDocSnap = await getDoc(userDocRef);
+    let role: string = 'collaborator'; // Default role
+    let organizationId: string | null = null; // Default orgId
 
-    if (!userDocSnap.exists()) {
-        // Handle case where user exists in Auth but not Firestore (should not happen ideally)
-        await signOut(auth); // Sign out the user
-        throw new Error("Perfil de usuário não encontrado no banco de dados.");
+    // Special handling for Super Admin
+    if (userCredential.user.email === 'super@check2b.com') {
+        role = 'super_admin';
+        organizationId = null; // Super admins don't belong to a specific org
+        console.log("[Auth] Super Admin identified.");
+    } else {
+        // Fetch user role and organizationId from Firestore for regular users
+        const userDocRef = doc(db, "users", userCredential.user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+
+        if (!userDocSnap.exists()) {
+            // Handle case where user exists in Auth but not Firestore (should not happen ideally)
+            await signOut(auth); // Sign out the user
+            throw new Error("Perfil de usuário não encontrado no banco de dados.");
+        }
+
+        const userData = userDocSnap.data();
+        role = userData.role || 'collaborator'; // Assign fetched role or default
+        organizationId = userData.organizationId || null; // Assign fetched orgId or null
+        console.log(`[Auth] User profile fetched: Role=${role}, OrgID=${organizationId}`);
     }
 
-    const userData = userDocSnap.data();
-    const role = userData.role || 'collaborator'; // Default role
-    const organizationId = userData.organizationId || null; // Organization might be null for super_admin
-
-    // Set cookies (consider adding role/orgId here if needed immediately client-side, but custom claims are preferred)
+    // Set cookies
     const idToken = await userCredential.user.getIdToken(true); // Get token for cookie
-    setAuthCookie(idToken, role, organizationId); // Pass role and orgId
+    setAuthCookie(idToken, role, organizationId); // Pass potentially overridden role and orgId
 
     return {
         userCredential,
         userData: { role, organizationId }
     };
 };
+
 
 /**
  * Logs out the current user.
@@ -108,7 +124,7 @@ export const logoutUser = async (): Promise<void> => {
  * @param role User's role
  * @param organizationId User's organization ID (can be null)
  */
-export const setAuthCookie = (idToken: string, role: string, organizationId: string | null): void => {
+export const setAuthCookie = (idToken: string, role: string | null, organizationId: string | null): void => {
     const cookieOptions: Cookies.CookieAttributes = {
         // secure: process.env.NODE_ENV === 'production', // Use secure in production
         secure: false, // Temporarily disable secure for local dev if not using HTTPS
@@ -118,15 +134,21 @@ export const setAuthCookie = (idToken: string, role: string, organizationId: str
     };
 
     Cookies.set('auth-token', idToken, cookieOptions);
-    Cookies.set('user-role', role, cookieOptions);
+    // Only set role cookie if role is not null
+    if (role) {
+        Cookies.set('user-role', role, cookieOptions);
+    } else {
+        Cookies.remove('user-role');
+    }
     if (organizationId) {
         Cookies.set('organization-id', organizationId, cookieOptions);
     } else {
-        Cookies.remove('organization-id'); // Remove if null (e.g., super_admin)
+        Cookies.remove('organization-id'); // Remove if null (e.g., super_admin or missing)
     }
     // Remove guest mode cookie upon successful login
     Cookies.remove('guest-mode');
 };
+
 
 /**
  * Gets the current authentication state.
@@ -147,11 +169,11 @@ export const getCurrentUser = (): Promise<User | null> => {
 
 
 /**
- * Gets the user's role and organization ID from Firestore.
+ * Gets the user's profile data from Firestore.
  * @param userId Firebase User ID
- * @returns Promise resolving to { role, organizationId } or null if not found.
+ * @returns Promise resolving to UserProfile or null if not found.
  */
-export const getUserProfileData = async (userId: string): Promise<{ role: string, organizationId: string | null } | null> => {
+export const getUserProfileData = async (userId: string): Promise<UserProfile | null> => {
      if (!db) {
         console.error("Firestore not initialized. Cannot get user profile.");
         return null;
@@ -162,8 +184,16 @@ export const getUserProfileData = async (userId: string): Promise<{ role: string
     if (userDocSnap.exists()) {
         const data = userDocSnap.data();
         return {
-            role: data.role || 'collaborator',
+            uid: userId,
+            name: data.name || 'Nome não definido',
+            email: data.email,
+            role: data.role || 'collaborator', // Default to collaborator
             organizationId: data.organizationId || null,
+            createdAt: data.createdAt, // Keep as Firestore Timestamp or Date
+            status: data.status || 'pending',
+            photoUrl: data.photoUrl || undefined,
+            department: data.department || undefined,
+            phone: data.phone || undefined,
         };
     } else {
         console.warn(`User profile not found in Firestore for UID: ${userId}`);
@@ -186,14 +216,14 @@ export const createUserWithProfile = async (
     email: string,
     password: string,
     name: string,
-    role: 'admin' | 'collaborator',
-    organizationId: string
+    role: 'admin' | 'collaborator' | 'super_admin', // Allow 'super_admin' type
+    organizationId: string | null // Allow null for super_admin
 ): Promise<User> => {
      if (!auth || !db) {
         throw new Error("Firebase Auth or Firestore is not initialized.");
     }
-     if (!organizationId) {
-        throw new Error("Organization ID is required to create a user.");
+     if (role !== 'super_admin' && !organizationId) { // Org ID required unless super_admin
+        throw new Error("Organization ID is required to create a non-super_admin user.");
      }
 
      // 1. Create user in Firebase Auth
@@ -218,13 +248,13 @@ export const createUserWithProfile = async (
          name: name,
          email: email,
          role: role,
-         organizationId: organizationId,
+         organizationId: organizationId, // Store null for super_admin
          createdAt: new Date(), // Use server timestamp in production: serverTimestamp()
          status: 'active',
          // Add other relevant profile fields (department, phone, etc.) as needed
      });
 
-     console.log(`User profile created in Firestore for ${name} (${email}) in org ${organizationId}`);
+     console.log(`User profile created in Firestore for ${name} (${email}) with role ${role} in org ${organizationId}`);
      return user;
 };
 
