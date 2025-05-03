@@ -170,7 +170,7 @@
                  } else {
                      // Handle guest view
                       setEmployee({
-                         id: 'guest', name: 'Convidado', email: '', department: '', role: 'Colaborador', admissionDate: format(new Date(), 'yyyy-MM-dd'), isActive: true
+                         id: 'guest', name: 'Convidado', email: '', department: '', role: 'Colaborador', admissionDate: format(new Date(), 'yyyy-MM-dd'), isActive: true, organizationId: 'org_default'
                      });
                      setPhotoPreview(undefined);
                      notificationForm.reset(); // Reset to defaults

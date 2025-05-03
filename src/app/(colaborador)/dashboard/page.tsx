@@ -54,9 +54,9 @@
  import type { Notification } from '@/types/notification'; // Import Notification type
 
  // Import mock data (Ensure paths are correct)
- import { mockEmployees } from '@/lib/mockData/employees'; // Updated import path
+ import { mockEmployeesSimple } from '@/lib/mockData/ranking'; // Updated import path
  import { mockTasks as allAdminTasks } from '@/lib/mockData/tasks'; // Use new task data file
- import { mockChallenges as allAdminChallenges, mockParticipants } from '@/lib/mockData/challenges'; // Updated import path
+ import { mockChallenges as allAdminChallenges, mockParticipants, mockCurrentParticipations } from '@/lib/mockData/challenges'; // Updated import path
 
  // Mock Employee ID for demonstration
  const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
@@ -90,6 +90,7 @@
         justification: score === 0 ? 'Não verificado.' : undefined,
         evaluatorId: 'admin1',
         isDraft: false,
+        organizationId: 'org_default', // Assuming default org
     }];
  }).filter(Boolean); // Filter out any potential nulls if logic changes
 
@@ -98,7 +99,7 @@
 
      const today = new Date();
      const todayStr = format(today, 'yyyy-MM-dd');
-     const emp = mockEmployees.find(e => e.id === employeeId);
+     const emp = mockEmployeesSimple.find(e => e.id === employeeId);
 
      if (!emp) {
          throw new Error("Colaborador não encontrado.");
@@ -106,8 +107,8 @@
 
      // --- Helper: Get Tasks for Employee ---
      const getTasksForEmployee = (employeeId: string, date: Date): Task[] => {
-        const employee = mockEmployees.find(e => e.id === employeeId);
-        if (!employee || !employee.isActive) return [];
+        const employee = mockEmployeesSimple.find(e => e.id === employeeId);
+        if (!employee) return [];
 
         return allAdminTasks.filter(task => {
             let applies = false;
