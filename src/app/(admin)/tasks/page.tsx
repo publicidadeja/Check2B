@@ -39,7 +39,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import { mockTasks } from '@/lib/mockData/tasks'; // Import from the new data file
-import { mockEmployees } from '@/lib/mockData/employees'; // Import employees for name lookup
+import { mockEmployeesSimple } from '@/lib/mockData/ranking'; // Import employees for name lookup
 import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import LoadingSpinner
 
 // Removed mock data definition from here
@@ -65,6 +65,7 @@ const saveTask = async (taskData: Omit<Task, 'id'> | Task): Promise<Task> => {
             id: `t${Date.now()}`,
             ...(taskData as Omit<Task, 'id'>),
              periodicity: taskData.periodicity || 'daily',
+            organizationId: 'org_default', // Assuming a default org for now
         };
         mockTasks.push(newTask);
         console.log("Nova tarefa adicionada:", newTask);
@@ -102,7 +103,7 @@ export default function TasksPage() {
           case 'individual': typeText = 'Indiv.'; break;
           default: typeText = task.assignedTo;
       }
-      const entityName = task.assignedTo === 'individual' ? mockEmployees.find(e => e.id === task.assignedEntityId)?.name : task.assignedEntityId;
+      const entityName = task.assignedTo === 'individual' ? mockEmployeesSimple.find(e => e.id === task.assignedEntityId)?.name : task.assignedEntityId;
       return `${typeText}${entityName ? `: ${entityName}` : ''}`;
   }
 
@@ -326,3 +327,5 @@ export default function TasksPage() {
     </div>
   );
 }
+
+    

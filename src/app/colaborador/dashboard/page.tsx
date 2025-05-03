@@ -29,7 +29,8 @@
    CalendarDays, // New icon for status card
    Sparkles, // New icon for challenge card
    Eye, // Added Eye icon
-   ArrowRight
+   ArrowRight,
+   Frown, // Icon for empty state
  } from 'lucide-react';
  import { Progress } from '@/components/ui/progress';
  import { Badge } from '@/components/ui/badge';
@@ -44,6 +45,7 @@
  import { cn } from '@/lib/utils'; // Import cn
  import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'; // Import Avatar components
  import { Label } from '@/components/ui/label'; // Import Label
+ import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import LoadingSpinner
 
  // Import types
  import type { Evaluation } from '@/types/evaluation';
@@ -52,9 +54,9 @@
  import type { Notification } from '@/types/notification'; // Import Notification type
 
  // Import mock data (Ensure paths are correct)
- import { mockEmployees } from '@/lib/mockData/employees'; // Updated import path
+ import { mockEmployeesSimple } from '@/lib/mockData/ranking'; // Updated import path
  import { mockTasks as allAdminTasks } from '@/lib/mockData/tasks'; // Use new task data file
- import { mockChallenges as allAdminChallenges, mockParticipants } from '@/lib/mockData/challenges'; // Updated import path
+ import { mockChallenges as allAdminChallenges, mockParticipants, mockCurrentParticipations } from '@/lib/mockData/challenges'; // Updated import path
 
  // Mock Employee ID for demonstration
  const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
@@ -67,6 +69,7 @@
      activeChallenges: Challenge[];
      recentNotifications: Notification[];
      monthlyPerformanceTrend?: 'up' | 'down' | 'stable';
+     employeeName: string; // Add employee name
  }
 
  // Mock evaluations for the current employee (Generate dynamically for demo)
@@ -87,6 +90,7 @@
         justification: score === 0 ? 'Não verificado.' : undefined,
         evaluatorId: 'admin1',
         isDraft: false,
+        organizationId: 'org_default', // Assuming default org
     }];
  }).filter(Boolean); // Filter out any potential nulls if logic changes
 
@@ -95,7 +99,7 @@
 
      const today = new Date();
      const todayStr = format(today, 'yyyy-MM-dd');
-     const emp = mockEmployees.find(e => e.id === employeeId);
+     const emp = mockEmployeesSimple.find(e => e.id === employeeId);
 
      if (!emp) {
          throw new Error("Colaborador não encontrado.");
@@ -103,8 +107,8 @@
 
      // --- Helper: Get Tasks for Employee ---
      const getTasksForEmployee = (employeeId: string, date: Date): Task[] => {
-        const employee = mockEmployees.find(e => e.id === employeeId);
-        if (!employee || !employee.isActive) return [];
+        const employee = mockEmployeesSimple.find(e => e.id === employeeId);
+        if (!employee) return [];
 
         return allAdminTasks.filter(task => {
             let applies = false;
@@ -195,6 +199,7 @@
          activeChallenges,
          recentNotifications,
          monthlyPerformanceTrend: 'stable', // You can calculate trend based on past data if needed
+         employeeName: emp.name, // Add employee name
      };
  };
 
@@ -227,27 +232,17 @@
      }, [toast]);
 
 
-     if (isLoading) {
+     if (isLoading || !data) { // Show loading spinner while loading OR if data is null initially
          return (
              <div className="flex justify-center items-center h-full py-20">
-                 <Loader2 className="h-12 w-12 animate-spin text-primary" />
-             </div>
-         );
-     }
-
-     if (!data) {
-         return (
-             <div className="text-center text-muted-foreground py-20 px-4">
-                 <AlertTriangle className="mx-auto h-12 w-12 text-destructive mb-4" />
-                 <h2 className="text-xl font-semibold mb-2">Erro ao Carregar</h2>
-                 <p>Não foi possível carregar os dados do dashboard. Tente novamente mais tarde.</p>
-                 <Button variant="outline" size="sm" className="mt-4" onClick={() => window.location.reload()}>Recarregar</Button>
+                 {/* Use LoadingSpinner component */}
+                 <LoadingSpinner size="lg" text="Carregando dashboard..." />
              </div>
          );
      }
 
      const zeroProgress = Math.min((data.zerosThisMonth / ZERO_LIMIT) * 100, 100);
-     const progressColor = zeroProgress >= 100 ? 'bg-destructive' : zeroProgress >= ( (ZERO_LIMIT - 1) / ZERO_LIMIT * 100) ? 'bg-yellow-500' : 'bg-green-500';
+      const progressColor = zeroProgress >= 100 ? 'bg-destructive' : zeroProgress >= ( (ZERO_LIMIT - 1) / ZERO_LIMIT * 100) ? 'bg-yellow-500' : 'bg-green-500';
 
 
      const getTrendIcon = (trend?: 'up' | 'down' | 'stable') => {
@@ -263,20 +258,20 @@
     const IllustrationCard = ({ children, className }: { children: React.ReactNode, className?: string }) => (
          <Card className={cn("shadow-lg overflow-hidden border-none relative bg-gradient-to-br from-teal-600 to-cyan-700 dark:from-teal-700 dark:to-cyan-800 text-primary-foreground rounded-xl", className)}>
             {/* Subtle background pattern */}
-             <div className="absolute inset-0 opacity-5 mix-blend-overlay" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")" }}></div>
+             <div className="absolute inset-0 opacity-[0.03] mix-blend-overlay" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")" }}></div>
             <div className="relative z-10">{children}</div>
          </Card>
      );
 
      return (
-        <TooltipProvider>
-             <div className="space-y-5 p-4"> {/* Adjusted spacing and padding */}
+         <TooltipProvider>
+              <div className="space-y-5 p-4"> {/* Adjusted spacing and padding */}
 
                  {/* Welcome/Status Card - Enhanced and Illustrated */}
                  <IllustrationCard>
                      <CardHeader className="p-4 pb-2">
                          <div className="flex justify-between items-center">
-                              <CardTitle className="text-lg font-semibold tracking-tight">Olá, {mockEmployees.find(e => e.id === CURRENT_EMPLOYEE_ID)?.name.split(' ')[0]}!</CardTitle>
+                              <CardTitle className="text-lg font-semibold tracking-tight">Olá, {data.employeeName.split(' ')[0]}!</CardTitle>
                              {getTrendIcon(data.monthlyPerformanceTrend)}
                          </div>
                          <CardDescription className="text-primary-foreground/80 text-xs">
@@ -285,20 +280,20 @@
                      </CardHeader>
                      <CardContent className="p-4 grid grid-cols-2 gap-3">
                          {/* Today's Evaluation Status */}
-                         <div className="flex flex-col items-center justify-center text-center p-3 rounded-lg bg-white/10 backdrop-blur-sm border border-white/20">
+                          <div className="flex flex-col items-center justify-center text-center p-3 rounded-lg bg-white/10 backdrop-blur-sm border border-white/20">
                               <Label className="text-[10px] uppercase tracking-wider text-primary-foreground/70 mb-1 font-medium">Hoje</Label>
                               {data.todayStatus === 'evaluated' && <CheckCircle className="h-7 w-7 text-emerald-300 mb-0.5" />}
-                             {data.todayStatus === 'pending' && <Loader2 className="h-7 w-7 text-yellow-300 animate-spin mb-0.5" />}
-                             {data.todayStatus === 'no_tasks' && <CalendarCheck className="h-7 w-7 text-primary-foreground/60 mb-0.5" />}
-                            <Badge variant={data.todayStatus === 'evaluated' ? 'default' : data.todayStatus === 'pending' ? 'secondary' : 'outline'} className={cn("text-[9px] px-1.5 py-0.5 leading-tight", data.todayStatus === 'evaluated' && 'bg-emerald-500 text-white border-emerald-400', data.todayStatus === 'pending' && 'bg-yellow-400 text-yellow-900 border-yellow-300', data.todayStatus === 'no_tasks' && 'bg-white/10 text-primary-foreground/80 border-white/20')}>
+                              {data.todayStatus === 'pending' && <Loader2 className="h-7 w-7 text-yellow-300 animate-spin mb-0.5" />}
+                              {data.todayStatus === 'no_tasks' && <CalendarCheck className="h-7 w-7 text-primary-foreground/60 mb-0.5" />}
+                              <Badge variant={data.todayStatus === 'evaluated' ? 'default' : data.todayStatus === 'pending' ? 'secondary' : 'outline'} className={cn("text-[9px] px-1.5 py-0.5 leading-tight", data.todayStatus === 'evaluated' && 'bg-emerald-500 text-white border-emerald-400', data.todayStatus === 'pending' && 'bg-yellow-400 text-yellow-900 border-yellow-300', data.todayStatus === 'no_tasks' && 'bg-white/10 text-primary-foreground/80 border-white/20')}>
                                 {data.todayStatus === 'evaluated' ? 'Avaliado' : data.todayStatus === 'pending' ? 'Pendente' : 'Sem Tarefas'}
                              </Badge>
-                         </div>
+                          </div>
 
                          {/* Monthly Zeros */}
-                         <div className="flex flex-col items-center justify-center text-center p-3 rounded-lg bg-white/10 backdrop-blur-sm border border-white/20">
+                          <div className="flex flex-col items-center justify-center text-center p-3 rounded-lg bg-white/10 backdrop-blur-sm border border-white/20">
                             <Label className="text-[10px] uppercase tracking-wider text-primary-foreground/70 mb-1 font-medium">Zeros no Mês</Label>
-                             <div className={cn("text-3xl font-bold mb-0.5 leading-none", data.zerosThisMonth >= ZERO_LIMIT ? 'text-red-300' : 'text-primary-foreground')}>
+                              <div className={cn("text-3xl font-bold mb-0.5 leading-none", data.zerosThisMonth >= ZERO_LIMIT ? 'text-red-300' : 'text-primary-foreground')}>
                                  {data.zerosThisMonth}
                                  <span className="text-xs text-primary-foreground/70">/{ZERO_LIMIT}</span>
                              </div>
@@ -315,7 +310,7 @@
                                     <p className="text-xs">{data.zerosThisMonth >= ZERO_LIMIT ? 'Limite de zeros atingido/excedido.' : `${ZERO_LIMIT - data.zerosThisMonth} zero(s) restante(s) para bônus.`}</p>
                                  </TooltipContent>
                              </Tooltip>
-                         </div>
+                          </div>
 
                           {/* Projected Bonus */}
                          <div className="col-span-2 flex items-center justify-between p-3 rounded-lg border border-white/20 bg-white/10 backdrop-blur-sm">
@@ -422,7 +417,8 @@
                  </Card>
 
              </div>
-        </TooltipProvider>
+         </TooltipProvider>
      );
  }
 
+    

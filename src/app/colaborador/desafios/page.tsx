@@ -35,10 +35,11 @@
  import { cn } from '@/lib/utils'; // Import cn utility
  import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
  import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // Added Select imports
+ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
  // Import types
  import type { Challenge, ChallengeParticipation } from '@/types/challenge'; // Import ChallengeParticipation
- import { mockEmployees } from '@/lib/mockData/employees'; // Updated import path
+ import { mockEmployeesSimple } from '@/lib/mockData/ranking'; // Updated import path
  import { mockChallenges as allAdminChallenges, mockParticipants, mockCurrentParticipations } from '@/lib/mockData/challenges'; // Updated import
 
  // Mock Employee ID
@@ -48,7 +49,7 @@
  // --- Mock Fetching Functions ---
  const fetchEmployeeChallenges = async (employeeId: string): Promise<{ available: Challenge[], active: Challenge[], completed: Challenge[] }> => {
      await new Promise(resolve => setTimeout(resolve, 600)); // Slightly longer delay for demo
-     const employee = mockEmployees.find(e => e.id === employeeId);
+     const employee = mockEmployeesSimple.find(e => e.id === employeeId);
      if (!employee) throw new Error("Colaborador não encontrado.");
 
      const employeeParticipations = mockCurrentParticipations.filter(p => p.employeeId === employeeId);
@@ -77,9 +78,9 @@
          if (challenge.status === 'draft' || challenge.status === 'archived') return; // Skip drafts/archived
 
          if (challenge.eligibility.type === 'all') isEligible = true;
-         else if (challenge.eligibility.type === 'department' && challenge.eligibility.entityIds?.includes(employee.department)) isEligible = true;
-         else if (challenge.eligibility.type === 'role' && challenge.eligibility.entityIds?.includes(employee.role)) isEligible = true;
-         else if (challenge.eligibility.type === 'individual' && challenge.eligibility.entityIds?.includes(employee.id)) isEligible = true;
+         else if (challenge.eligibility.type === 'department' && ch.eligibility.entityIds?.includes(employee.department)) isEligible = true;
+         else if (challenge.eligibility.type === 'role' && ch.eligibility.entityIds?.includes(employee.role)) isEligible = true;
+         else if (challenge.eligibility.type === 'individual' && ch.eligibility.entityIds?.includes(employee.id)) isEligible = true;
 
          if (!isEligible) return; // Skip if not eligible
 
@@ -151,7 +152,7 @@
          mockCurrentParticipations[existingIndex].acceptedAt = new Date();
          participation = mockCurrentParticipations[existingIndex];
      } else {
-         participation = { employeeId, challengeId, status: 'accepted', acceptedAt: new Date() };
+         participation = { id:`p${Date.now()}`, employeeId, challengeId, status: 'accepted', acceptedAt: new Date(), organizationId: 'org_default' }; // Added ID and orgId
          mockCurrentParticipations.push(participation);
      }
      console.log("Challenge accepted:", participation);
@@ -873,3 +874,4 @@
      );
  }
 
+    

@@ -43,7 +43,7 @@ import {
     DialogHeader,
     DialogTitle,
     DialogClose
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -54,10 +54,12 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { getAllAwards, saveAward, deleteAward } from '@/lib/ranking-service'; // Import Firestore service functions
+import { getAllAwards, saveAward, deleteAward, getActiveAward, getAwardById } from '@/lib/ranking-service'; // Import Firestore service functions
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'; // Ensure Tooltip components are imported
 import { getDb } from '@/lib/firebase'; // Import getDb
 import { TrendingDown, TrendingUp, Minus } from 'lucide-react'; // Import trend icons
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { mockEmployeesSimple, fetchRankingData as fetchMockRankingData, mockHistory, confirmWinners as confirmMockWinners, mockDepartments } from '@/lib/mockData/ranking'; // Import mock data and functions
 
 // --- Type Definitions ---
 export interface Award {
@@ -124,67 +126,9 @@ const awardSchema = z.object({
 type AwardFormData = z.infer<typeof awardSchema>;
 
 
-// --- Mock Data ---
-const mockRanking: RankingEntry[] = [
-    { rank: 1, employeeId: '1', employeeName: 'Alice Silva', department: 'RH', role: 'Recrutadora', score: 980, zeros: 0, trend: 'up', employeePhotoUrl: 'https://picsum.photos/id/1027/40/40' },
-    { rank: 2, employeeId: '4', employeeName: 'Davi Costa', department: 'Vendas', role: 'Executivo de Contas', score: 950, zeros: 1, trend: 'stable', employeePhotoUrl: 'https://picsum.photos/id/338/40/40' },
-    { rank: 3, employeeId: '5', employeeName: 'Eva Pereira', department: 'Engenharia', role: 'Desenvolvedora Frontend', score: 945, zeros: 1, trend: 'down', employeePhotoUrl: 'https://picsum.photos/id/1005/40/40' },
-    { rank: 4, employeeId: '2', employeeName: 'Beto Santos', department: 'Engenharia', role: 'Desenvolvedor Backend', score: 920, zeros: 2, trend: 'up', employeePhotoUrl: 'https://picsum.photos/id/1005/40/40' },
-    { rank: 5, employeeId: '6', employeeName: 'Leo Corax', department: 'Engenharia', role: 'Desenvolvedor Frontend', score: 890, zeros: 3, trend: 'stable', employeePhotoUrl: 'https://picsum.photos/seed/leo/40/40' },
-];
+// --- Mock Data Moved to lib/mockData/ranking.ts ---
 
-const mockHistory: AwardHistoryEntry[] = [
-    { id: 'hist1', period: '2024-07', awardTitle: 'Destaque Operacional - Julho', winners: [{ rank: 1, employeeName: 'Beto Santos', prize: 'Folga adicional' }], notes: 'Entrega realizada na reunião semanal.' },
-    { id: 'hist2', period: '2024-06', awardTitle: 'Colaborador do Mês', winners: [{ rank: 1, employeeName: 'Alice Silva', prize: 'R$ 500,00' }], deliveryPhotoUrl: 'https://picsum.photos/seed/award6/200/100' },
-];
-
-const mockDepartments = ['RH', 'Engenharia', 'Marketing', 'Vendas', 'Operações']; // Used for Award form
-
-// --- Mock API Functions ---
-
-const fetchRankingData = async (period: Date): Promise<RankingEntry[]> => {
-    await new Promise(resolve => setTimeout(resolve, 800));
-    // Simulate data changes based on month for demo
-    const monthFactor = period.getMonth() + 1;
-    return mockRanking.map(entry => ({
-        ...entry,
-        score: Math.max(800, entry.score + (monthFactor * 5 - 20)), // Adjust score slightly per month
-        zeros: Math.max(0, entry.zeros + (Math.random() > 0.7 ? 1 : 0) - (Math.random() > 0.8 ? 1 : 0)), // Simulate zero changes
-    })).sort((a, b) => b.score - a.score || a.zeros - b.zeros) // Re-sort based on simulated scores
-      .map((entry, index) => ({ ...entry, rank: index + 1 })); // Re-assign ranks
-}
-
-const fetchAwardHistory = async (): Promise<AwardHistoryEntry[]> => {
-     await new Promise(resolve => setTimeout(resolve, 600));
-     return [...mockHistory].sort((a, b) => parseISO(b.period + '-01').getTime() - parseISO(a.period + '-01').getTime()); // Sort history descending
-}
-
-const confirmWinners = async (period: string, awardId: string, winners: RankingEntry[]): Promise<AwardHistoryEntry> => {
-     await new Promise(resolve => setTimeout(resolve, 1000));
-     // TODO: Replace with actual call to fetch a single award by ID from Firestore
-    const db = getDb();
-     const award = await getAwardById(db, awardId);
-
-     // Create history entry based on the winners provided and award definition
-     const historyEntry: AwardHistoryEntry = {
-         id: `hist${Date.now()}`,
-         period: period,
-         awardTitle: award.title,
-         winners: winners.slice(0, award.winnerCount).map(winner => ({
-             rank: winner.rank,
-             employeeName: winner.employeeName,
-             // Determine prize based on position or default award value
-             prize: award.valuesPerPosition?.[winner.rank]?.monetary
-                 ? `R$ ${award.valuesPerPosition[winner.rank]?.monetary?.toFixed(2)}`
-                 : award.valuesPerPosition?.[winner.rank]?.nonMonetary
-                 ? award.valuesPerPosition[winner.rank]?.nonMonetary ?? ''
-                 : award.monetaryValue ? `R$ ${award.monetaryValue.toFixed(2)}` : award.nonMonetaryValue || 'Prêmio Indefinido'
-         })),
-     };
-     mockHistory.unshift(historyEntry); // Add to the beginning of the history array
-     console.log("Vencedores confirmados e histórico atualizado:", historyEntry);
-     return historyEntry;
-}
+// --- Mock API Functions (moved to lib/mockData/ranking.ts) ---
 
 // --- Utility Functions ---
 const exportData = (data: any[], filename: string) => {
@@ -288,11 +232,16 @@ const AwardConfiguration = () => {
     const [awardToDelete, setAwardToDelete] = React.useState<Award | null>(null);
     const [isDeleting, setIsDeleting] = React.useState(false);
     const { toast } = useToast();
+    const db = getDb(); // Get Firestore instance
 
     const loadAwards = React.useCallback(async () => {
+        if (!db) {
+            toast({ title: "Erro", description: "Erro na conexão com banco de dados.", variant: "destructive" });
+            setIsLoading(false);
+            return;
+        }
         setIsLoading(true);
         try {
-            const db = getDb();
             const data = await getAllAwards(db);
             setAwards(data);
         } catch (error) {
@@ -301,7 +250,7 @@ const AwardConfiguration = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [toast]);
+    }, [toast, db]);
 
     React.useEffect(() => {
         loadAwards();
@@ -339,7 +288,8 @@ const AwardConfiguration = () => {
             nonMonetaryValue: award.nonMonetaryValue || '',
             imageUrl: award.imageUrl || '',
             isRecurring: award.isRecurring,
-            specificMonth: award.specificMonth ? new Date(award.specificMonth) : undefined,
+            // Handle potential string date from Firestore (though saved as Date)
+             specificMonth: award.specificMonth ? (award.specificMonth instanceof Date ? award.specificMonth : parseISO(award.specificMonth as unknown as string)) : undefined,
             eligibilityCriteria: award.eligibilityCriteria || false,
             winnerCount: award.winnerCount,
             eligibleDepartments: award.eligibleDepartments || ['all'],
@@ -350,6 +300,10 @@ const AwardConfiguration = () => {
     }, [reset]);
 
     const handleSaveAward = async (data: AwardFormData) => {
+        if (!db) {
+             toast({ title: "Erro", description: "Erro na conexão com banco de dados.", variant: "destructive" });
+             return;
+        }
         setIsSaving(true);
 
          if (!data.isRecurring && !data.specificMonth) {
@@ -371,12 +325,11 @@ const AwardConfiguration = () => {
             eligibleDepartments: data.eligibleDepartments,
             status: data.status,
             isRecurring: data.isRecurring,
-            specificMonth: data.isRecurring ? undefined : data.specificMonth,
+             specificMonth: data.isRecurring ? undefined : data.specificMonth, // Store as Date object or Timestamp
             valuesPerPosition: data.winnerCount > 1 ? data.valuesPerPosition : undefined // Save per-position only if multiple winners
         };
 
         try {
-            const db = getDb();
             await saveAward(db, awardPayload);
             toast({ title: "Sucesso!", description: `Premiação "${data.title}" ${selectedAward ? 'atualizada' : 'criada'}.` });
             setIsFormOpen(false);
@@ -396,9 +349,8 @@ const AwardConfiguration = () => {
     }, []);
 
     const confirmDeleteAward = async () => {
-        if (awardToDelete) {
+        if (awardToDelete && db) {
             try {
-                const db = getDb();
                 await deleteAward(db, awardToDelete.id);
                 toast({ title: "Sucesso", description: `Premiação "${awardToDelete.title}" removida.` });
                 await loadAwards();
@@ -409,6 +361,10 @@ const AwardConfiguration = () => {
                 setIsDeleting(false);
                 setAwardToDelete(null);
             }
+        } else if (!db) {
+              toast({ title: "Erro", description: "Erro na conexão com banco de dados.", variant: "destructive" });
+               setIsDeleting(false);
+               setAwardToDelete(null);
         }
     };
 
@@ -423,7 +379,7 @@ const AwardConfiguration = () => {
             header: "Período",
             cell: ({ row }) => (
                 <span>
-                    {row.original.isRecurring ? 'Recorrente' : row.original.specificMonth ? format(row.original.specificMonth, 'MMMM yyyy', {locale: ptBR}) : 'Inválido'}
+                     {row.original.isRecurring ? 'Recorrente' : row.original.specificMonth ? format(row.original.specificMonth instanceof Date ? row.original.specificMonth : parseISO(row.original.specificMonth as unknown as string), 'MMMM yyyy', {locale: ptBR}) : 'Inválido'}
                 </span>
             ),
         },
@@ -509,7 +465,7 @@ const AwardConfiguration = () => {
                     <CardContent>
                         {isLoading ? (
                              <div className="flex justify-center items-center py-10">
-                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                                 <LoadingSpinner text="Carregando premiações..." />
                              </div>
                         ) : (
                             <DataTable columns={awardColumns} data={awards} filterColumn='title' filterPlaceholder='Buscar por título...'/>
@@ -566,9 +522,12 @@ const AwardConfiguration = () => {
                                     </FormItem>
                                 )}/>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                                    <FormField control={control} name="isRecurring" render={({ field }) => (
+                                     <FormField control={control} name="isRecurring" render={({ field }) => (
                                         <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm h-[40px]">
-                                            <Label htmlFor="isRecurringSwitch">É Recorrente Mensal?</Label>
+                                            {/* Adjusted Label */}
+                                            <div className="space-y-0.5">
+                                                <Label htmlFor="isRecurringSwitch">É Recorrente Mensal?</Label>
+                                            </div>
                                             <FormControl><Switch id="isRecurringSwitch" checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                                         </FormItem>
                                     )}/>
@@ -639,7 +598,12 @@ const AwardConfiguration = () => {
                                  <FormField control={control} name="eligibilityCriteria" render={({ field }) => (
                                     <FormItem className="flex flex-row items-center space-x-2 pt-2">
                                         <FormControl><Checkbox id="eligibility" checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                        <Label htmlFor="eligibility" className="text-sm font-normal"> Exigir avaliação de excelência (sem zeros no mês)?</Label>
+                                        {/* Adjusted Label */}
+                                         <div className="grid gap-1.5 leading-none">
+                                            <Label htmlFor="eligibility" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                                 Exigir avaliação de excelência (sem zeros no mês)?
+                                             </Label>
+                                        </div>
                                     </FormItem>
                                 )}/>
                                 <FormField control={control} name="eligibleDepartments" render={({ field }) => (
@@ -656,34 +620,36 @@ const AwardConfiguration = () => {
                                                 </FormControl>
                                             </PopoverTrigger>
                                             <PopoverContent className="w-[--radix-popover-trigger-width] max-h-60 overflow-y-auto p-0">
-                                                <div className="p-2 space-y-1">
-                                                    <div className="flex items-center space-x-2 px-2 py-1 hover:bg-muted rounded-sm">
-                                                        <Checkbox
-                                                            id="dept-all"
-                                                            checked={field.value?.includes('all')}
-                                                            onCheckedChange={(checked) => field.onChange(checked ? ['all'] : [])}
-                                                        />
-                                                        <Label htmlFor="dept-all" className="font-normal text-sm">Todos</Label>
-                                                    </div>
-                                                     <Separator />
-                                                    {mockDepartments.map(dept => (
-                                                        <div key={dept} className="flex items-center space-x-2 px-2 py-1 hover:bg-muted rounded-sm">
+                                                <ScrollArea>
+                                                    <div className="p-2 space-y-1">
+                                                        <div className="flex items-center space-x-2 px-2 py-1 hover:bg-muted rounded-sm">
                                                             <Checkbox
-                                                                id={`dept-${dept}`}
-                                                                checked={field.value?.includes(dept)}
-                                                                onCheckedChange={(checked) => {
-                                                                    const currentSelection = field.value?.filter(d => d !== 'all') || [];
-                                                                    const newSelection = checked
-                                                                        ? [...currentSelection, dept]
-                                                                        : currentSelection.filter(d => d !== dept);
-                                                                    field.onChange(newSelection);
-                                                                }}
-                                                                disabled={field.value?.includes('all')}
+                                                                id="dept-all"
+                                                                checked={field.value?.includes('all')}
+                                                                onCheckedChange={(checked) => field.onChange(checked ? ['all'] : [])}
                                                             />
-                                                            <Label htmlFor={`dept-${dept}`} className="font-normal text-sm">{dept}</Label>
+                                                            <Label htmlFor="dept-all" className="font-normal text-sm">Todos</Label>
                                                         </div>
-                                                    ))}
-                                                </div>
+                                                        <Separator />
+                                                        {mockDepartments.map(dept => (
+                                                            <div key={dept} className="flex items-center space-x-2 px-2 py-1 hover:bg-muted rounded-sm">
+                                                                <Checkbox
+                                                                    id={`dept-${dept}`}
+                                                                    checked={field.value?.includes(dept)}
+                                                                    onCheckedChange={(checked) => {
+                                                                        const currentSelection = field.value?.filter(d => d !== 'all') || [];
+                                                                        const newSelection = checked
+                                                                            ? [...currentSelection, dept]
+                                                                            : currentSelection.filter(d => d !== dept);
+                                                                        field.onChange(newSelection.length > 0 ? newSelection : ['all']); // Default to 'all' if empty
+                                                                    }}
+                                                                    disabled={field.value?.includes('all')}
+                                                                />
+                                                                <Label htmlFor={`dept-${dept}`} className="font-normal text-sm">{dept}</Label>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </ScrollArea>
                                             </PopoverContent>
                                         </Popover>
                                         <FormMessage />
@@ -748,7 +714,9 @@ const AwardHistory = () => {
         const loadHistory = async () => {
             setIsLoading(true);
             try {
-                const data = await fetchAwardHistory();
+                // Replace with actual fetch from Firestore or backend
+                 await new Promise(resolve => setTimeout(resolve, 600));
+                 const data = [...mockHistory].sort((a, b) => parseISO(b.period + '-01').getTime() - parseISO(a.period + '-01').getTime());
                 setHistory(data);
             } catch (error) {
                  console.error("Falha ao carregar histórico:", error);
@@ -775,41 +743,43 @@ const AwardHistory = () => {
                 </CardHeader>
                 <CardContent>
                     {isLoading ? (
-                        <div className="flex justify-center items-center py-10">
-                             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                        </div>
+                         <div className="flex justify-center items-center py-10">
+                             <LoadingSpinner text="Carregando histórico..." />
+                         </div>
                     ) : history.length === 0 ? (
                         <p className="text-muted-foreground text-center py-5">Nenhum histórico de premiação encontrado.</p>
                     ) : (
-                        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-                            {history.map((entry) => (
-                                <Card key={entry.id} className="shadow-sm">
-                                    <CardHeader className="pb-3 pt-4 px-4">
-                                         <CardTitle className="text-base">{entry.awardTitle} - {entry.period}</CardTitle>
-                                         <CardDescription>Vencedor(es) e detalhes da entrega.</CardDescription>
-                                    </CardHeader>
-                                    <CardContent className="text-sm space-y-2 px-4 pb-4">
-                                        <div>
-                                            <strong>Vencedores:</strong>
-                                            <ul className="list-disc list-inside pl-4 mt-1">
-                                                {entry.winners.map((w, idx) => (
-                                                    <li key={`${entry.id}-winner-${idx}`}>
-                                                        {w.rank}º Lugar: <strong>{w.employeeName}</strong> (Prêmio: {w.prize})
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                        {entry.deliveryPhotoUrl && (
-                                            <div className="mt-2">
-                                                <strong>Foto da Entrega:</strong><br/>
-                                                <img src={entry.deliveryPhotoUrl} alt={`Entrega ${entry.awardTitle} ${entry.period}`} className="mt-1 rounded-md max-h-32 border" />
+                         <ScrollArea className="h-[60vh]">
+                            <div className="space-y-4 pr-4">
+                                {history.map((entry) => (
+                                    <Card key={entry.id} className="shadow-sm">
+                                        <CardHeader className="pb-3 pt-4 px-4">
+                                            <CardTitle className="text-base">{entry.awardTitle} - {entry.period}</CardTitle>
+                                            <CardDescription>Vencedor(es) e detalhes da entrega.</CardDescription>
+                                        </CardHeader>
+                                        <CardContent className="text-sm space-y-2 px-4 pb-4">
+                                            <div>
+                                                <strong>Vencedores:</strong>
+                                                <ul className="list-disc list-inside pl-4 mt-1">
+                                                    {entry.winners.map((w, idx) => (
+                                                        <li key={`${entry.id}-winner-${idx}`}>
+                                                            {w.rank}º Lugar: <strong>{w.employeeName}</strong> (Prêmio: {w.prize})
+                                                        </li>
+                                                    ))}
+                                                </ul>
                                             </div>
-                                        )}
-                                         {entry.notes && <p className="text-xs text-muted-foreground pt-1"><strong>Observações:</strong> {entry.notes}</p>}
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </div>
+                                            {entry.deliveryPhotoUrl && (
+                                                <div className="mt-2">
+                                                    <strong>Foto da Entrega:</strong><br/>
+                                                    <img src={entry.deliveryPhotoUrl} alt={`Entrega ${entry.awardTitle} ${entry.period}`} className="mt-1 rounded-md max-h-32 border" />
+                                                </div>
+                                            )}
+                                            {entry.notes && <p className="text-xs text-muted-foreground pt-1"><strong>Observações:</strong> {entry.notes}</p>}
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                             </div>
+                        </ScrollArea>
                     )}
                 </CardContent>
                  <CardFooter>
@@ -910,12 +880,14 @@ const RankingDashboard = () => {
     const [isLoading, setIsLoading] = React.useState(true);
     const [isConfirmingWinners, setIsConfirmingWinners] = React.useState(false);
     const { toast } = useToast();
+    const db = getDb(); // Get Firestore instance
 
     React.useEffect(() => {
         const loadRanking = async () => {
              setIsLoading(true);
              try {
-                 const data = await fetchRankingData(currentMonth);
+                 // Replace with actual fetch from Firestore/Backend that calculates ranking
+                 const data = await fetchMockRankingData(currentMonth); // Using mock for now
                  setRankingData(data);
              } catch (error) {
                  console.error("Falha ao carregar ranking:", error);
@@ -939,7 +911,6 @@ const RankingDashboard = () => {
     };
 
     const remainingDays = calculateRemainingDays();
-    // TODO: Optimize this to only fetch necessary awards or cache
     const [activeAward, setActiveAward] = React.useState<Award | null>(null);
     const isCurrentMonth = new Date().getMonth() === currentMonth.getMonth() && new Date().getFullYear() === currentMonth.getFullYear();
     const canConfirmWinners = !isCurrentMonth && activeAward && rankingData.length > 0;
@@ -957,24 +928,28 @@ const RankingDashboard = () => {
 
     React.useEffect(() => {
         const loadActiveAward = async () => {
+             if (!db) return; // Guard clause if db is not initialized
             try {
-                const db = getDb();
                 const award = await getActiveAward(db, currentMonth);
                 setActiveAward(award);
             } catch (error) {
+                 console.error("Error fetching active award:", error);
+                 setActiveAward(null); // Set to null on error
             }
         };
         loadActiveAward();
-    };
+    }, [currentMonth, db]); // Depend on currentMonth and db
+
 
     const handleConfirmWinners = async () => {
-        if (!canConfirmWinners || !activeAward) return;
+        if (!canConfirmWinners || !activeAward || !db) return;
         setIsConfirmingWinners(true);
         try {
             const periodStr = format(currentMonth, 'yyyy-MM');
-            await confirmWinners(periodStr, activeAward.id, rankingData);
+            // Replace with actual function to confirm winners and save history
+            await confirmMockWinners(periodStr, activeAward.id, rankingData); // Using mock for now
              toast({ title: "Sucesso!", description: `Vencedores para ${format(currentMonth, 'MMMM yyyy', { locale: ptBR })} confirmados.` });
-             // Optionally: Refresh history or mark award as concluded for the month
+             // TODO: Optionally trigger notifications, update award status for the month if needed
         } catch (error) {
             console.error("Erro ao confirmar vencedores:", error);
             toast({ title: "Erro", description: "Falha ao confirmar vencedores.", variant: "destructive" });
@@ -1007,10 +982,9 @@ const RankingDashboard = () => {
                 </CardHeader>
                 <CardContent>
                      {isLoading ? (
-                        <div className="flex justify-center items-center py-10">
-                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                            <span className="ml-2 text-muted-foreground">Carregando ranking...</span>
-                        </div>
+                         <div className="flex justify-center items-center py-10">
+                            <LoadingSpinner text="Carregando ranking..." />
+                         </div>
                     ) : (
                     <>
                         {/* Top 3 Highlights */}
@@ -1106,3 +1080,5 @@ export default function RankingPage() {
     </div>
   );
 }
+
+    
