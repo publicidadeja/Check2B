@@ -13,14 +13,15 @@ interface ProgressProps extends React.ComponentPropsWithoutRef<typeof ProgressPr
 const Progress = React.forwardRef<
   React.ElementRef<typeof ProgressPrimitive.Root>,
   ProgressProps // Use the extended interface
->(({ className, value, indicatorClassName, ...props }, ref) => ( // Destructure indicatorClassName
+// Destructure indicatorClassName so it's not included in ...props
+>(({ className, value, indicatorClassName, ...props }, ref) => (
   <ProgressPrimitive.Root
     ref={ref}
     className={cn(
       "relative h-4 w-full overflow-hidden rounded-full bg-secondary",
       className
     )}
-    {...props} // Pass remaining props (excluding indicatorClassName) to Root
+    {...props} // Now props doesn't contain indicatorClassName
   >
     <ProgressPrimitive.Indicator
       className={cn("h-full w-full flex-1 bg-primary transition-all", indicatorClassName)} // Apply indicatorClassName here
