@@ -18,21 +18,19 @@
  import { format, parseISO } from 'date-fns';
  import { ptBR } from 'date-fns/locale';
  import { useRouter } from 'next/navigation'; // Import useRouter for logout redirect
- import { logoutUser } from '@/lib/auth'; // Import logout function
+ import { logoutUser, changePassword as changeUserPassword, updateProfile as updateUserProfile } from '@/lib/auth'; // Import auth functions
+ import { updateNotificationSettings as updateNotifSettings, requestBrowserNotificationPermission } from '@/lib/notifications'; // Import notification functions
 
  // Import types
- import type { Employee } from '@/types/employee';
- import { mockEmployees } from '@/lib/mockData/employees'; // Updated import path
-
- // Mock Employee ID
- const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
+ import type { UserProfile } from '@/types/user'; // Use UserProfile for broader compatibility
+ import { getUserProfileData } from '@/lib/user-service'; // Function to fetch profile data
+ import { useAuth } from '@/hooks/use-auth'; // Use auth hook to get current user ID
+ import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import LoadingSpinner
 
  // --- Zod Schemas ---
  const profileSchema = z.object({
-     // name: z.string().min(2, 'Nome muito curto').optional(), // Admins usually edit name
      phone: z.string().optional().or(z.literal('')),
      photoUrl: z.string().url('URL inválida').optional().or(z.literal('')),
-     // photoFile: z.instanceof(File).optional(), // For file upload (handled separately)
  });
 
  const passwordSchema = z.object({
@@ -56,53 +54,6 @@
  type PasswordFormData = z.infer<typeof passwordSchema>;
  type NotificationFormData = z.infer<typeof notificationSchema>;
 
- // --- Mock API Functions ---
- const fetchEmployeeProfile = async (employeeId: string): Promise<Employee> => {
-     await new Promise(resolve => setTimeout(resolve, 400)); // Shorter delay
-     const employee = mockEmployees.find(e => e.id === employeeId);
-     if (!employee) throw new Error("Colaborador não encontrado.");
-     return { ...employee }; // Return a copy
- }
-
- const updateEmployeeProfile = async (employeeId: string, data: Partial<ProfileFormData & { photoFile?: File }>): Promise<Employee> => {
-     await new Promise(resolve => setTimeout(resolve, 600));
-     const index = mockEmployees.findIndex(e => e.id === employeeId);
-     if (index === -1) throw new Error("Colaborador não encontrado.");
-
-     if (data.phone !== undefined) mockEmployees[index].phone = data.phone;
-
-     if (data.photoFile) {
-         mockEmployees[index].photoUrl = `https://picsum.photos/seed/${employeeId}${Date.now()}/100/100`; // New mock URL
-         console.log("Simulating photo upload for file:", data.photoFile.name);
-     } else if (data.photoUrl !== undefined) {
-         // Only update URL if file wasn't provided and URL field has changed
-         mockEmployees[index].photoUrl = data.photoUrl;
-     }
-
-
-     console.log("Perfil atualizado (simulado):", mockEmployees[index]);
-     return { ...mockEmployees[index] };
- }
-
-
- const changePassword = async (employeeId: string, data: PasswordFormData): Promise<void> => {
-     await new Promise(resolve => setTimeout(resolve, 800));
-     console.log("Senha alterada (simulado) para colaborador:", employeeId);
-      // Simulate incorrect password
-     if (data.currentPassword === 'senhaerrada') {
-         throw new Error("Senha atual incorreta.");
-     }
-     // Simulate success otherwise
- }
-
- const updateNotificationSettings = async (employeeId: string, data: NotificationFormData): Promise<void> => {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      console.log("Configurações de notificação salvas (simulado):", employeeId, data);
-      // In a real app, store these preferences in Firebase or your backend
-      // Also, use data.browserNotifications to enable/disable browser push notifications (requires service worker etc.)
- }
-
-
  // --- Helper Function ---
  const getInitials = (name: string) => {
      return name
@@ -115,7 +66,9 @@
 
  export default function EmployeeProfilePage() {
      const router = useRouter();
-     const [employee, setEmployee] = React.useState<Employee | null>(null);
+     const { user: authUser, isGuest } = useAuth(); // Get auth state
+     const currentUserId = authUser?.uid; // Get current user ID from auth context
+     const [employee, setEmployee] = React.useState<UserProfile | null>(null);
      const [isLoading, setIsLoading] = React.useState(true);
      const [isEditingProfile, setIsEditingProfile] = React.useState(false);
      const [isSavingProfile, setIsSavingProfile] = React.useState(false);
@@ -148,32 +101,47 @@
                  notificationForm.setValue('browserNotifications', Notification.permission === 'granted');
              }
 
+             if (isGuest) {
+                 // Handle guest view (basic placeholder)
+                 setEmployee({
+                     uid: 'guest', name: 'Convidado', email: '', role: 'collaborator', organizationId: 'org_default', createdAt: new Date(), status: 'active', isActive: true
+                 });
+                 setPhotoPreview(undefined);
+                 notificationForm.reset(); // Reset to defaults
+                 setIsLoading(false);
+                 return;
+             }
+
+             if (!currentUserId) {
+                 console.error("Erro: ID do usuário não encontrado para carregar perfil.");
+                 toast({ title: "Erro", description: "Não foi possível identificar o usuário.", variant: "destructive" });
+                 setIsLoading(false);
+                 // Optionally redirect to login
+                 // router.push('/login?reason=no_user_id');
+                 return;
+             }
+
              try {
-                 // Simulate guest mode or fetch based on actual auth state
-                 const isGuest = false; // Replace with actual check
-                 if (!isGuest) {
-                     const data = await fetchEmployeeProfile(CURRENT_EMPLOYEE_ID);
+                 const data = await getUserProfileData(currentUserId); // Fetch real data
+                 if (data) {
                      setEmployee(data);
                      profileForm.reset({
                          phone: data.phone || '',
                          photoUrl: data.photoUrl || '',
                      });
                      setPhotoPreview(data.photoUrl);
-                     // Load saved notification prefs (mocked here, fetch from backend in real app)
+                     // Load saved notification prefs (replace with actual fetch if implemented)
                      notificationForm.reset({
-                         newEvaluation: true, // Replace with fetched value
-                         challengeUpdates: true, // Replace with fetched value
-                         rankingChanges: false, // Replace with fetched value
-                         systemAnnouncements: true, // Replace with fetched value
-                         browserNotifications: Notification.permission === 'granted', // Set based on actual permission
+                         newEvaluation: true, // Example default, replace with fetched
+                         challengeUpdates: true, // Example default, replace with fetched
+                         rankingChanges: false, // Example default, replace with fetched
+                         systemAnnouncements: true, // Example default, replace with fetched
+                         browserNotifications: Notification.permission === 'granted',
                       });
                  } else {
-                     // Handle guest view
-                      setEmployee({
-                         id: 'guest', name: 'Convidado', email: '', department: '', role: 'Colaborador', admissionDate: format(new Date(), 'yyyy-MM-dd'), isActive: true, organizationId: 'org_default'
-                     });
-                     setPhotoPreview(undefined);
-                     notificationForm.reset(); // Reset to defaults
+                      console.error("Perfil não encontrado para o usuário logado:", currentUserId);
+                      toast({ title: "Erro", description: "Não foi possível encontrar seu perfil.", variant: "destructive" });
+                      // Maybe redirect or show an error state
                  }
              } catch (error) {
                  console.error("Erro ao carregar perfil:", error);
@@ -183,26 +151,30 @@
              }
          };
          loadProfileAndPermissions();
-     }, [profileForm, notificationForm, toast]);
+     }, [profileForm, notificationForm, toast, isGuest, currentUserId, router]); // Add dependencies
 
 
      // Handle Profile Save
      const onProfileSubmit = async (data: ProfileFormData) => {
+          if (!currentUserId || isGuest) return; // Prevent saving if guest or no ID
+
          setIsSavingProfile(true);
          try {
-              const updatedProfile = await updateEmployeeProfile(CURRENT_EMPLOYEE_ID, {
+              // Use the imported updateUserProfile function from auth.ts
+              const updatedProfile = await updateUserProfile(currentUserId, {
                   phone: data.phone,
-                  photoUrl: data.photoUrl,
+                  photoUrl: selectedFile ? undefined : data.photoUrl, // Don't send URL if file is present
                   photoFile: selectedFile // Pass the file state here
               });
-              setEmployee(updatedProfile);
+
+              setEmployee(updatedProfile); // Update local state with the result from the server
               profileForm.reset({
                   phone: updatedProfile.phone || '',
                   photoUrl: updatedProfile.photoUrl || '',
               });
               setPhotoPreview(updatedProfile.photoUrl);
-              setSelectedFile(null); // Clear file state after successful save
-              if (fileInputRef.current) fileInputRef.current.value = ''; // Clear file input visually
+              setSelectedFile(null);
+              if (fileInputRef.current) fileInputRef.current.value = '';
               toast({ title: "Sucesso!", description: "Seu perfil foi atualizado." });
               setIsEditingProfile(false);
          } catch (error) {
@@ -217,14 +189,12 @@
      const handlePhotoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (file) {
-            // Validate file type/size if needed
             if (file.size > 5 * 1024 * 1024) { // 5MB limit example
                 toast({ title: "Arquivo Grande", description: "A foto não pode exceder 5MB.", variant: "destructive" });
                 return;
             }
-            setSelectedFile(file); // Store the file object
-            profileForm.setValue('photoUrl', ''); // Clear URL field if file is selected
-            // Create a temporary URL for preview
+            setSelectedFile(file);
+            profileForm.setValue('photoUrl', ''); // Clear URL field
             const reader = new FileReader();
             reader.onloadend = () => {
                 setPhotoPreview(reader.result as string);
@@ -232,7 +202,6 @@
             reader.readAsDataURL(file);
         } else {
             setSelectedFile(null);
-            // Revert preview to original URL if file is deselected
             setPhotoPreview(employee?.photoUrl);
         }
      };
@@ -251,33 +220,32 @@
 
      const handlePhotoUrlChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const url = event.target.value;
-        // Ensure profileForm is accessible here, assuming it's defined in the component scope
         profileForm.setValue('photoUrl', url);
         if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
             setPhotoPreview(url);
-            setSelectedFile(null); // Clear file if URL is manually entered
-             if (fileInputRef.current) fileInputRef.current.value = ''; // Clear file input
+            setSelectedFile(null);
+             if (fileInputRef.current) fileInputRef.current.value = '';
         } else {
-            setPhotoPreview(employee?.photoUrl); // Revert if invalid URL
+            setPhotoPreview(employee?.photoUrl);
         }
     };
 
 
      // Handle Password Change
      const onPasswordSubmit = async (data: PasswordFormData) => {
+          if (!currentUserId || isGuest) return; // Prevent if guest or no ID
           setIsChangingPassword(true);
           try {
-             await changePassword(CURRENT_EMPLOYEE_ID, data);
+             // Use imported function
+             await changeUserPassword(data.currentPassword, data.newPassword);
              toast({ title: "Sucesso!", description: "Sua senha foi alterada com sucesso." });
              passwordForm.reset({ currentPassword: '', newPassword: '', confirmPassword: '' });
-              // Reset visibility toggles
              setShowCurrentPassword(false);
              setShowNewPassword(false);
              setShowConfirmPassword(false);
           } catch (error: any) {
              console.error("Erro ao alterar senha:", error);
               toast({ title: "Erro", description: error.message || "Não foi possível alterar sua senha.", variant: "destructive" });
-              // Optionally clear only the incorrect field: passwordForm.resetField('currentPassword');
           } finally {
               setIsChangingPassword(false);
           }
@@ -285,31 +253,32 @@
 
      // Handle Notification Save
      const onNotificationSubmit = async (data: NotificationFormData) => {
+         if (!currentUserId || isGuest) return; // Prevent if guest or no ID
          setIsSavingNotifications(true);
+
          // Handle browser notification permission change specifically
          if (typeof window !== 'undefined' && "Notification" in window) {
              const currentPermission = Notification.permission;
              if (data.browserNotifications && currentPermission === 'default') {
-                 const permission = await Notification.requestPermission();
+                 const permission = await requestBrowserNotificationPermission(); // Use imported function
                  setBrowserNotificationPermission(permission);
-                 data.browserNotifications = permission === 'granted'; // Update form data based on actual permission
+                 data.browserNotifications = permission === 'granted';
                  if (permission === 'denied') {
                      toast({ title: "Permissão Negada", description: "Notificações do navegador foram bloqueadas.", variant: "destructive" });
                  } else if (permission === 'granted') {
                       toast({ title: "Permissão Concedida", description: "Notificações do navegador ativadas." });
                  }
              } else if (!data.browserNotifications && currentPermission === 'granted') {
-                  // User is trying to disable, but this usually requires browser settings change.
-                  // Inform the user.
                  toast({ title: "Ação Necessária", description: "Para desativar notificações do navegador, ajuste as configurações do seu site/navegador.", duration: 5000 });
-                 data.browserNotifications = true; // Keep switch enabled as permission is still granted
+                 data.browserNotifications = true;
              }
          }
 
          try {
-              await updateNotificationSettings(CURRENT_EMPLOYEE_ID, data);
+              // Use imported function
+              await updateNotifSettings(currentUserId, data);
               toast({ title: "Sucesso!", description: "Preferências de notificação salvas." });
-              notificationForm.reset(data); // Keep saved values reflecting actual state
+              notificationForm.reset(data);
          } catch (error) {
               console.error("Erro ao salvar notificações:", error);
               toast({ title: "Erro", description: "Não foi possível salvar as preferências.", variant: "destructive" });
@@ -332,15 +301,20 @@
 
 
      if (isLoading) {
-         return <div className="flex justify-center items-center h-full py-20"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
+         return <div className="flex justify-center items-center h-full py-20"><LoadingSpinner text="Carregando perfil..." /></div>;
      }
 
+     if (!employee && !isGuest) { // Added !isGuest check
+         return <div className="text-center text-muted-foreground py-20">Erro ao carregar perfil. Tente recarregar a página.</div>;
+     }
+
+     // Ensure employee is not null before accessing its properties
      if (!employee) {
-         return <div className="text-center text-muted-foreground py-20">Erro ao carregar perfil.</div>;
+        // This case should ideally not happen if loading/guest state is handled correctly,
+        // but it's a safeguard.
+        return <div className="text-center text-muted-foreground py-20">Perfil não disponível.</div>;
      }
 
-      // Check if guest mode (replace with actual check if implemented differently)
-      const isGuest = employee.id === 'guest';
 
      return (
          <div className="space-y-6 p-4"> {/* Added padding for mobile */}
@@ -374,10 +348,10 @@
                               <div className="flex flex-col items-center gap-4">
                                  <div className="relative group flex-shrink-0">
                                      <Avatar className="h-28 w-28 border-2 border-primary/20">
-                                         <AvatarImage src={photoPreview || employee.photoUrl} alt={employee.name} />
+                                         <AvatarImage src={photoPreview || employee?.photoUrl} alt={employee.name} />
                                          <AvatarFallback className="text-4xl">{getInitials(employee.name)}</AvatarFallback>
                                      </Avatar>
-                                     {isEditingProfile && (
+                                     {isEditingProfile && !isGuest && ( // Disable edit for guest
                                          <Button
                                             type="button"
                                             variant="outline"
@@ -396,7 +370,7 @@
                                         accept="image/png, image/jpeg, image/webp"
                                         className="hidden"
                                         onChange={handlePhotoFileChange}
-                                        disabled={!isEditingProfile}
+                                        disabled={!isEditingProfile || isGuest} // Disable for guest
                                      />
                                  </div>
                                   {/* Fields Section */}
@@ -408,7 +382,7 @@
                                      </div>
                                      <div className="space-y-1">
                                          <Label className="text-xs text-muted-foreground">Email</Label>
-                                         <p className="font-medium break-all text-sm text-foreground/90">{employee.email}</p>
+                                         <p className="font-medium break-all text-sm text-foreground/90">{employee.email || 'Não informado'}</p>
                                      </div>
                                       {/* Editable Phone */}
                                       <FormField
@@ -425,7 +399,7 @@
                                           )}
                                       />
                                        {/* Optional Photo URL Input (Only visible when editing) */}
-                                      {isEditingProfile && (
+                                      {isEditingProfile && !isGuest && ( // Hide for guest
                                           <FormField
                                               control={profileForm.control}
                                               name="photoUrl"
@@ -456,7 +430,7 @@
                                    <div className="flex justify-between items-center">
                                       <span className="text-xs text-muted-foreground">Data de Admissão</span>
                                       <span className="font-medium text-right">
-                                          {employee.admissionDate && !isGuest ? format(parseISO(employee.admissionDate + 'T00:00:00'), 'dd/MM/yyyy', { locale: ptBR }) : '-'}
+                                          {employee.createdAt && !isGuest && employee.createdAt.toDate ? format(employee.createdAt.toDate(), 'dd/MM/yyyy', { locale: ptBR }) : '-'}
                                       </span>
                                   </div>
                               </div>
