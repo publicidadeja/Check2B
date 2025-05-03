@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { ClipboardPlus, Loader2 } from 'lucide-react'; // Changed Icon
+import { ClipboardPlus, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,10 +32,11 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogClose // Added DialogClose
+    DialogClose
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import type { Task } from '@/types/task';
+import { DatePicker } from '@/components/ui/date-picker'; // Verified correct import path
 
 // Updated schema with Portuguese messages and refinement
 const taskSchema = z.object({
