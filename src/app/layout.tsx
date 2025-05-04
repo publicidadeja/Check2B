@@ -24,7 +24,7 @@ export default function RootLayout({
   return (
     // Add suppressHydrationWarning if necessary for specific cases, but avoid if possible
     <html lang="pt-BR" suppressHydrationWarning>
-      <body className={`${inter.variable} font-sans antialiased`}>{/* Apply font variable */}
+      <body className={`${inter.variable} font-sans antialiased`} suppressHydrationWarning={true}> {/* Apply font variable and suppress hydration warning */}
         <AuthProvider> {/* Wrap the entire application with AuthProvider */}
             {children}
             <Toaster /> {/* Add Toaster component here */}
@@ -33,3 +33,4 @@ export default function RootLayout({
     </html>
   );
 }
+
