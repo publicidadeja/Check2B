@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -549,6 +550,7 @@ const SidebarMenuButton = React.forwardRef<
       size = "default",
       tooltip,
       className,
+      children,
       ...props
     },
     ref
@@ -556,35 +558,44 @@ const SidebarMenuButton = React.forwardRef<
     const Comp = asChild ? Slot : "button"
     const { isMobile, state } = useSidebar()
 
-    const button = (
+    const buttonElement = (
       <Comp
         ref={ref}
         data-sidebar="menu-button"
         data-size={size}
         data-active={isActive}
-        className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
+        className={cn(sidebarMenuButtonVariants({ variant, size, className }))}
         {...props}
-      />
+      >
+        {children}
+      </Comp>
     )
 
     if (!tooltip) {
-      return button
+      return buttonElement
     }
 
+    let tooltipContentProps: React.ComponentProps<typeof TooltipContent> = {}
     if (typeof tooltip === "string") {
-      tooltip = {
-        children: tooltip,
-      }
+      tooltipContentProps.children = tooltip;
+    } else {
+      tooltipContentProps = tooltip;
     }
+
+    // If the button itself is already a Slot (asChild=true),
+    // TooltipTrigger should pass the button element directly.
+    const triggerAsChild = !asChild;
 
     return (
       <Tooltip>
-        <TooltipTrigger asChild>{button}</TooltipTrigger>
+         <TooltipTrigger asChild={triggerAsChild}>
+           {asChild ? children : buttonElement} {/* Pass button element directly if not asChild */}
+         </TooltipTrigger>
         <TooltipContent
           side="right"
           align="center"
           hidden={state !== "collapsed" || isMobile}
-          {...tooltip}
+          {...tooltipContentProps}
         />
       </Tooltip>
     )

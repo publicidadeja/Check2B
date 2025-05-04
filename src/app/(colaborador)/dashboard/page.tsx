@@ -1,4 +1,5 @@
 
+<<<<<<< HEAD
  'use client';
 
  import * as React from 'react';
@@ -33,7 +34,6 @@
    Frown, // Icon for empty state
  } from 'lucide-react';
  import { Progress } from '@/components/ui/progress';
- import { Badge } from '@/components/ui/badge';
  import { Button } from '@/components/ui/button';
  import { ScrollArea } from '@/components/ui/scroll-area';
  import { Separator } from '@/components/ui/separator';
@@ -285,7 +285,7 @@
                               {data.todayStatus === 'evaluated' && <CheckCircle className="h-7 w-7 text-emerald-300 mb-0.5" />}
                               {data.todayStatus === 'pending' && <Loader2 className="h-7 w-7 text-yellow-300 animate-spin mb-0.5" />}
                               {data.todayStatus === 'no_tasks' && <CalendarCheck className="h-7 w-7 text-primary-foreground/60 mb-0.5" />}
-                              <Badge variant={data.todayStatus === 'evaluated' ? 'default' : data.todayStatus === 'pending' ? 'secondary' : 'outline'} className={cn("text-[9px] px-1.5 py-0.5 leading-tight", data.todayStatus === 'evaluated' && 'bg-emerald-500 text-white border-emerald-400', data.todayStatus === 'pending' && 'bg-yellow-400 text-yellow-900 border-yellow-300', data.todayStatus === 'no_tasks' && 'bg-white/10 text-primary-foreground/80 border-white/20')}>
+                              <span className={cn("text-[9px] px-1.5 py-0.5 leading-tight rounded-full", data.todayStatus === 'evaluated' && 'bg-emerald-500 text-white border border-emerald-400', data.todayStatus === 'pending' && 'bg-yellow-400 text-yellow-900 border border-yellow-300', data.todayStatus === 'no_tasks' && 'bg-white/10 text-primary-foreground/80 border border-white/20')}>
                                 {data.todayStatus === 'evaluated' ? 'Avaliado' : data.todayStatus === 'pending' ? 'Pendente' : 'Sem Tarefas'}
                              </Badge>
                           </div>
@@ -392,7 +392,7 @@
                                      <li key={challenge.id} className="border border-purple-200 dark:border-purple-800 rounded-lg p-3 hover:shadow-md transition-shadow bg-white dark:bg-card">
                                          <div className="flex justify-between items-start mb-1 gap-2">
                                               <h4 className="font-semibold text-sm text-purple-800 dark:text-purple-200 flex-1">{challenge.title}</h4>
-                                              <Badge variant="secondary" className="text-xs flex-shrink-0 whitespace-nowrap bg-yellow-400 text-yellow-900 border-yellow-500"><Award className='h-3 w-3 mr-1'/>{challenge.points} pts</Badge>
+                                              <span className="text-xs flex-shrink-0 whitespace-nowrap bg-yellow-400 text-yellow-900 border border-yellow-500 rounded-full px-2 py-0.5"><Award className='h-3 w-3 mr-1 inline-block'/>{challenge.points} pts</span>
                                          </div>
                                          <p className="text-xs text-muted-foreground dark:text-slate-400 mb-2 line-clamp-2">{challenge.description}</p>
                                          <div className="flex justify-between items-center text-[10px] text-muted-foreground dark:text-slate-400">
@@ -420,3 +420,4 @@
          </TooltipProvider>
      );
  }
+>>>>>>> db468e262ea80d11ae78a92ebc0d8d79df5809e8

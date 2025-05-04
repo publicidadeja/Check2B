@@ -86,3 +86,9 @@ This is a Next.js application for managing daily employee evaluations using a ch
   </change>
   <change>
     <file>docs/important_notes.md
+=======
+To get started, take a look at src/app/page.tsx.
+# Check2B
+# Check2B
+# Check2B
+>>>>>>> db468e262ea80d11ae78a92ebc0d8d79df5809e8

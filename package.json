@@ -1,5 +1,5 @@
 {
-  "name": "nextn",
+  "name": "check2b",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -40,6 +40,7 @@
     "@tanstack/react-table": "^8.19.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.0.0",
     "date-fns": "^3.6.0",
     "firebase": "^11.3.0",
     "genkit": "^1.0.4",

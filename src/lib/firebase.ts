@@ -1,61 +1,76 @@
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
-import { getFirestore, Firestore } from "firebase/firestore"; // Import Firestore type and function
+import { getFirestore, Firestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getAuth, connectAuthEmulator } from "firebase/auth"; // Import Auth and emulator connector
 
-// Ensure these environment variables are set in your .env.local file
+/**
+ * Firebase configuration.
+ */
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "demo-api-key", // Provide default dummy values
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "demo-project.firebaseapp.com",
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "demo-project",
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "demo-project.appspot.com",
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "1234567890",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:1234567890:web:demoappid",
 };
 
-let app: FirebaseApp | null = null;
-let db: Firestore | null = null; // Variable to hold Firestore instance
-
-const requiredConfigKeys: (keyof typeof firebaseConfig)[] = [
-    'apiKey',
-    'authDomain',
-    'projectId',
-    'storageBucket',
-    'messagingSenderId',
-    'appId',
-];
-
-const missingKeys = requiredConfigKeys.filter(key => !firebaseConfig[key]);
-
-if (missingKeys.length === 0 || typeof window === 'undefined') {
-    try {
-        app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-        db = getFirestore(app); // Initialize Firestore
-        console.log("Firebase App and Firestore initialized successfully.");
-    } catch (error) {
-        console.error("Firebase initialization failed:", error);
-        if (typeof window !== 'undefined') {
-            alert("Falha ao inicializar a conexão com o servidor. Verifique a configuração.");
-        }
-    }
+/**
+ * Initializes the Firebase App instance.
+ */
+let app: FirebaseApp;
+if (!getApps().length) {
+  app = initializeApp(firebaseConfig);
 } else {
-    if (typeof window !== 'undefined') {
-        console.warn("Firebase initialization skipped due to missing configuration keys:", missingKeys.join(', '));
-        alert("Erro de configuração do Firebase. Verifique as variáveis de ambiente e recarregue a página.");
-    }
+  app = getApp();
 }
 
 /**
- * Gets the initialized Firebase App instance.
- * Returns null if initialization failed or hasn't happened yet.
+ * Gets the Firestore instance.
  */
-export const getFirebaseApp = (): FirebaseApp | null => {
-    return app;
-};
+const db: Firestore = getFirestore(app);
 
 /**
- * Gets the initialized Firestore instance.
- * Returns null if initialization failed or hasn't happened yet.
+ * Gets the Auth instance.
  */
-export const getDb = (): Firestore | null => {
-    return db;
+const auth = getAuth(app); // Initialize Auth
+
+// Connect to Emulators if environment variables are set (indicating local development)
+if (process.env.FIRESTORE_EMULATOR_HOST) {
+  console.log(`Connecting to Firestore emulator at ${process.env.FIRESTORE_EMULATOR_HOST}`);
+  const [host, portString] = process.env.FIRESTORE_EMULATOR_HOST.split(':');
+  const port = parseInt(portString, 10);
+   if (!isNaN(port)) {
+       try {
+         connectFirestoreEmulator(db, host, port);
+         console.log("Firestore emulator connected.");
+       } catch (error: any) {
+         if (error.message.includes("already connected")) {
+            console.log("Firestore emulator already connected.");
+         } else {
+            console.error("Error connecting to Firestore emulator:", error);
+         }
+       }
+   } else {
+       console.error(`Invalid FIRESTORE_EMULATOR_HOST port: ${portString}`);
+   }
 }
+
+// Connect to Auth Emulator if NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN indicates localhost/emulator
+if (firebaseConfig.authDomain?.includes("localhost")) {
+    const authEmulatorUrl = `http://${firebaseConfig.authDomain}`;
+    console.log(`Connecting to Auth emulator at ${authEmulatorUrl}`);
+     try {
+         connectAuthEmulator(auth, authEmulatorUrl);
+         console.log("Auth emulator connected.");
+     } catch (error: any) {
+        if (error.message.includes("already connected")) {
+           console.log("Auth emulator already connected.");
+        } else {
+           console.error("Error connecting to Auth emulator:", error);
+        }
+     }
+}
+
+
+export { db, auth, app }; // Export db, auth, and app

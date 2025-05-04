@@ -1,6 +1,5 @@
 // src/app/page.tsx - Root page, typically defaults to Admin Dashboard
 'use client';
-
 import * as React from 'react'; // Import React
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Users, ClipboardList, CheckCircle, AlertCircle, BarChart3 } from "lucide-react";
@@ -162,4 +161,5 @@ export default function RootPage() {
             <AdminDashboardContent />
         </ConditionalLayout>
     );
+=======
 }
