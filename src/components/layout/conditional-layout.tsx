@@ -17,7 +17,7 @@ interface ConditionalLayoutProps {
 export function ConditionalLayout({ children }: ConditionalLayoutProps) {
   const { role, isLoading, isGuest } = useAuth();
   const pathname = usePathname();
-  const router = useRouter();
+  const router = useRouter(); // Ensure useRouter is imported
 
   console.log(`[ConditionalLayout START] Path: ${pathname}, Role: ${role}, isLoading: ${isLoading}, isGuest: ${isGuest}`);
 
