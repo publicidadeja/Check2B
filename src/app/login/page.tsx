@@ -38,8 +38,7 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
-} from "@/components/ui/dialog";
+} from "@/components/ui/dialog"; // Removed DialogTrigger
 import {
   Form,
   FormControl,
@@ -49,7 +48,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { loginUser, setAuthCookie, logoutUser, sendPasswordReset } from '@/lib/auth';
+import { loginUser, setAuthCookie as setAuthCookiesLib, logoutUser, sendPasswordReset } from '@/lib/auth'; // Renamed setAuthCookie import
 import { Separator } from '@/components/ui/separator';
 import { Logo } from '@/components/logo';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -57,7 +56,7 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
 const loginSchema = z.object({
   email: z.string().email({ message: 'Por favor, insira um email válido.' }),
-  password: z.string().min(1, { message: 'Senha é obrigatória.' }), // Keep min 1, actual length check can be on submit if needed
+  password: z.string().min(1, { message: 'Senha é obrigatória.' }),
 });
 
 const forgotPasswordSchema = z.object({
@@ -106,6 +105,8 @@ function LoginContent() {
           setLoginError("Usuário autenticado, mas perfil não encontrado no banco de dados. Contate o suporte.");
       } else if (reason === 'profile_error') {
           setLoginError("Erro ao carregar dados do perfil. Contate o suporte.");
+      } else if (reason === 'conditional_layout_fallback') {
+          setLoginError("Não foi possível determinar seu acesso. Por favor, tente fazer login.");
       }
       if (reason && typeof window !== 'undefined') {
            const currentUrl = new URL(window.location.href);
@@ -121,10 +122,10 @@ function LoginContent() {
     try {
       const { userCredential, userData } = await loginUser(data.email, data.password);
 
-       if (userCredential?.user) {
+       if (userCredential?.user && userData) { // Ensure userData is also checked
         const { role, organizationId } = userData;
          const idToken = await userCredential.user.getIdToken(true);
-         setAuthCookie(idToken, role, organizationId);
+         setAuthCookiesLib(idToken, role, organizationId); // Use renamed import
 
         toast({
           title: 'Login bem-sucedido!',
@@ -140,12 +141,13 @@ function LoginContent() {
         } else {
           console.warn(`[Login Page] Invalid role detected after login: ${role}`);
           setLoginError("Perfil de usuário inválido após login. Contate o suporte.");
-          await logoutUser();
+          await logoutUser(); // Ensure logout clears auth state
           setIsLoading(false);
           return;
         }
       } else {
-        throw new Error("Credenciais inválidas ou erro desconhecido.");
+        // This case should ideally be handled by more specific errors from loginUser
+        throw new Error("Credenciais inválidas ou erro desconhecido durante o login.");
       }
     } catch (error: any) {
       console.error('Erro no login:', error);
@@ -170,12 +172,18 @@ function LoginContent() {
             break;
           default:
             console.warn(`Unhandled Firebase Auth error code: ${error.code}`);
-            errorMessage = `Erro inesperado (${error.message || error.code}). Tente novamente.`;
+            errorMessage = error.message || `Erro inesperado (${error.code}). Tente novamente.`;
         }
       } else if (error.message) {
+          // Use the error message from loginUser if it's a custom error (like "Perfil de usuário não encontrado...")
           errorMessage = error.message;
       }
        setLoginError(errorMessage);
+       // Ensure all auth-related cookies are cleared on login failure to prevent inconsistent states
+       Cookies.remove('auth-token');
+       Cookies.remove('user-role');
+       Cookies.remove('organization-id');
+       Cookies.remove('guest-mode');
     } finally {
       setIsLoading(false);
     }
@@ -216,7 +224,7 @@ function LoginContent() {
         targetPath = '/colaborador/dashboard';
         roleName = 'Colaborador';
      } else if (role === 'super_admin') {
-        targetPath = '/superadmin'; // Corrected path for super_admin
+        targetPath = '/superadmin';
         roleName = 'Super Admin';
      }
 
@@ -225,27 +233,28 @@ function LoginContent() {
           description: `Entrando no painel...`,
           duration: 2000,
       });
-      Cookies.set('guest-mode', role, { path: '/', expires: 0.1 });
+      // Clear any existing auth tokens before setting guest mode
       Cookies.remove('auth-token');
       Cookies.remove('user-role');
       Cookies.remove('organization-id');
+      Cookies.set('guest-mode', role, { path: '/' }); // Set as session cookie
       console.log(`[Login] Setting guest mode cookie to: ${role}`);
       router.push(targetPath);
   };
 
   return (
-     <Card className="w-full max-w-md shadow-lg border-none overflow-hidden rounded-xl">
-         <div className="bg-gradient-to-r from-teal-500 to-cyan-600 dark:from-teal-700 dark:to-cyan-800 p-6 text-center">
-              <Logo className="w-20 h-20 text-white mx-auto mb-3 opacity-95"/>
-             <CardTitle className="text-xl font-bold text-white">Bem-vindo ao Check2B</CardTitle>
-             <CardDescription className="text-teal-100 dark:text-teal-200">Faça login para acessar seu painel.</CardDescription>
+     <Card className="w-full max-w-md shadow-xl border-none overflow-hidden rounded-xl bg-card">
+         <div className="bg-gradient-to-br from-primary to-primary/80 dark:from-primary/90 dark:to-primary/70 p-6 text-center">
+              <Logo className="w-20 h-20 text-primary-foreground mx-auto mb-3 opacity-95"/>
+             <CardTitle className="text-xl font-bold text-primary-foreground">Bem-vindo ao Check2B</CardTitle>
+             <CardDescription className="text-primary-foreground/80">Faça login para acessar seu painel.</CardDescription>
         </div>
 
-        <CardContent className="p-6 bg-background">
+        <CardContent className="p-6">
            {loginError && (
                <Alert variant="destructive" className="mb-4">
                   <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>Erro</AlertTitle>
+                  <AlertTitle>Erro de Acesso</AlertTitle>
                   <AlertDescription>{loginError}</AlertDescription>
                </Alert>
            )}
@@ -275,7 +284,7 @@ function LoginContent() {
                   <FormItem>
                     <div className="flex items-center justify-between">
                         <FormLabel className="text-sm">Senha</FormLabel>
-                        <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs text-primary" onClick={() => setIsForgotPasswordOpen(true)}>
+                        <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs text-primary" onClick={() => setIsForgotPasswordOpen(true)} disabled={isLoading}>
                           Esqueceu a senha?
                         </Button>
                     </div>
@@ -295,6 +304,7 @@ function LoginContent() {
                           className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground"
                           onClick={() => setShowPassword(!showPassword)}
                           aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                          disabled={isLoading}
                         >
                           {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </Button>
@@ -316,20 +326,20 @@ function LoginContent() {
           </Form>
         </CardContent>
 
-        <CardFooter className="flex-col gap-4 pt-4 pb-6 bg-background">
+        <CardFooter className="flex-col gap-4 pt-4 pb-6">
             <div className="relative w-full">
                 <div className="absolute inset-0 flex items-center">
                    <Separator />
                 </div>
                  <div className="relative flex justify-center">
-                     <span className="bg-background px-2 text-xs text-muted-foreground">
+                     <span className="bg-card px-2 text-xs text-muted-foreground">
                          Ou
                      </span>
                 </div>
             </div>
              <Button variant="outline" className="w-full h-10 text-sm" onClick={handleGuestLoginClick} disabled={isLoading}>
                 <Eye className="mr-2 h-4 w-4"/>
-                Entrar como Convidado
+                Explorar como Convidado
              </Button>
         </CardFooter>
 
@@ -408,3 +418,4 @@ export default function LoginPage() {
     </div>
   );
 }
+
