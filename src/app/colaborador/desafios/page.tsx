@@ -39,8 +39,8 @@
 
  // Import types
  import type { Challenge, ChallengeParticipation } from '@/types/challenge'; // Import ChallengeParticipation
- import { mockEmployeesSimple } from '@/lib/mockData/ranking'; // Updated import path
- import { mockChallenges as allAdminChallenges, mockParticipants, mockCurrentParticipations } from '@/lib/mockData/challenges'; // Updated import
+ import { mockEmployeesSimple } from '@/lib/mockData/ranking'; 
+ import { mockChallenges as allAdminChallenges, mockParticipants, mockCurrentParticipations } from '@/lib/mockData/challenges';
 
  // Mock Employee ID
  const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
@@ -78,9 +78,9 @@
          if (challenge.status === 'draft' || challenge.status === 'archived') return; // Skip drafts/archived
 
          if (challenge.eligibility.type === 'all') isEligible = true;
-         else if (challenge.eligibility.type === 'department' && ch.eligibility.entityIds?.includes(employee.department)) isEligible = true;
-         else if (challenge.eligibility.type === 'role' && ch.eligibility.entityIds?.includes(employee.role)) isEligible = true;
-         else if (challenge.eligibility.type === 'individual' && ch.eligibility.entityIds?.includes(employee.id)) isEligible = true;
+         else if (challenge.eligibility.type === 'department' && challenge.eligibility.entityIds?.includes(employee.department)) isEligible = true;
+         else if (challenge.eligibility.type === 'role' && challenge.eligibility.entityIds?.includes(employee.role)) isEligible = true;
+         else if (challenge.eligibility.type === 'individual' && challenge.eligibility.entityIds?.includes(employee.id)) isEligible = true;
 
          if (!isEligible) return; // Skip if not eligible
 
@@ -531,7 +531,7 @@
                                   <div className="text-center text-muted-foreground text-xs p-3 bg-muted/50 rounded-md border">
                                       {isChallengeNotStarted ? 'Este desafio ainda não começou.' : isChallengeOver ? 'Este desafio já encerrou.' : 'Aguardando início ou status.'}
                                  </div>
-                               </>
+                                </>
                           )}
 
                      </div>
