@@ -38,7 +38,7 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-} from "@/components/ui/dialog"; // Removed DialogTrigger
+} from "@/components/ui/dialog";
 import {
   Form,
   FormControl,
@@ -48,7 +48,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { loginUser, setAuthCookie as setAuthCookiesLib, logoutUser, sendPasswordReset } from '@/lib/auth'; // Renamed setAuthCookie import
+import { loginUser, setAuthCookie as setAuthCookiesLib, logoutUser, sendPasswordReset } from '@/lib/auth';
 import { Separator } from '@/components/ui/separator';
 import { Logo } from '@/components/logo';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -95,7 +95,7 @@ function LoginContent() {
 
   React.useEffect(() => {
       const reason = searchParams.get('reason');
-      if (reason === 'unauthenticated') {
+      if (reason === 'unauthenticated' || reason === 'cl_critical_fallback_v5' || reason === 'cl_guest_unhandled_path_v5' || reason === 'cl_bypass_no_path_match_v4') {
           setLoginError("Sua sessão expirou ou você não está autenticado. Por favor, faça login novamente.");
       } else if (reason === 'no_org') {
            setLoginError("Seu usuário não está vinculado a uma organização. Contate o administrador.");
@@ -122,10 +122,10 @@ function LoginContent() {
     try {
       const { userCredential, userData } = await loginUser(data.email, data.password);
 
-       if (userCredential?.user && userData) { // Ensure userData is also checked
+       if (userCredential?.user && userData) {
         const { role, organizationId } = userData;
          const idToken = await userCredential.user.getIdToken(true);
-         setAuthCookiesLib(idToken, role, organizationId); // Use renamed import
+         setAuthCookiesLib(idToken, role, organizationId);
 
         toast({
           title: 'Login bem-sucedido!',
@@ -141,12 +141,11 @@ function LoginContent() {
         } else {
           console.warn(`[Login Page] Invalid role detected after login: ${role}`);
           setLoginError("Perfil de usuário inválido após login. Contate o suporte.");
-          await logoutUser(); // Ensure logout clears auth state
+          await logoutUser();
           setIsLoading(false);
           return;
         }
       } else {
-        // This case should ideally be handled by more specific errors from loginUser
         throw new Error("Credenciais inválidas ou erro desconhecido durante o login.");
       }
     } catch (error: any) {
@@ -175,11 +174,9 @@ function LoginContent() {
             errorMessage = error.message || `Erro inesperado (${error.code}). Tente novamente.`;
         }
       } else if (error.message) {
-          // Use the error message from loginUser if it's a custom error (like "Perfil de usuário não encontrado...")
           errorMessage = error.message;
       }
        setLoginError(errorMessage);
-       // Ensure all auth-related cookies are cleared on login failure to prevent inconsistent states
        Cookies.remove('auth-token');
        Cookies.remove('user-role');
        Cookies.remove('organization-id');
@@ -233,12 +230,11 @@ function LoginContent() {
           description: `Entrando no painel...`,
           duration: 2000,
       });
-      // Clear any existing auth tokens before setting guest mode
       Cookies.remove('auth-token');
       Cookies.remove('user-role');
       Cookies.remove('organization-id');
-      Cookies.set('guest-mode', role, { path: '/' }); // Set as session cookie
-      console.log(`[Login] Setting guest mode cookie to: ${role}`);
+      Cookies.set('guest-mode', role, { path: '/' }); // Session cookie
+      console.log(`[Login Page] Setting guest mode cookie to: ${role}`); // Added log
       router.push(targetPath);
   };
 
@@ -418,4 +414,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
