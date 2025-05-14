@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { LogIn, Loader2, User, Shield, Eye, EyeOff, AlertTriangle, Settings2, Mail, KeyRound } from 'lucide-react'; // Added Mail, KeyRound
+import { LogIn, Loader2, User, Shield, Eye, EyeOff, AlertTriangle, Settings2, Mail, KeyRound } from 'lucide-react';
 import Cookies from 'js-cookie';
 
 import { Button } from '@/components/ui/button';
@@ -38,7 +38,7 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger, // Added DialogTrigger
+    DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Form,
@@ -49,7 +49,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { loginUser, setAuthCookie, logoutUser, sendPasswordReset } from '@/lib/auth'; // Added sendPasswordReset
+import { loginUser, setAuthCookie, logoutUser, sendPasswordReset } from '@/lib/auth';
 import { Separator } from '@/components/ui/separator';
 import { Logo } from '@/components/logo';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -57,10 +57,9 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
 const loginSchema = z.object({
   email: z.string().email({ message: 'Por favor, insira um email válido.' }),
-  password: z.string().min(6, { message: 'Senha deve ter pelo menos 6 caracteres.' }),
+  password: z.string().min(1, { message: 'Senha é obrigatória.' }), // Keep min 1, actual length check can be on submit if needed
 });
 
-// Schema for the forgot password form
 const forgotPasswordSchema = z.object({
     resetEmail: z.string().email({ message: 'Por favor, insira um email válido para redefinição.' }),
 });
@@ -69,15 +68,14 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
 type UserRole = 'super_admin' | 'admin' | 'collaborator';
 
-// Separate component to contain logic using useSearchParams
 function LoginContent() {
   const router = useRouter();
-  const searchParams = useSearchParams(); // Use the hook here
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = React.useState(false);
   const [isGuestChoiceOpen, setIsGuestChoiceOpen] = React.useState(false);
-  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = React.useState(false); // State for forgot password dialog
-  const [isSendingReset, setIsSendingReset] = React.useState(false); // Loading state for reset email
+  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = React.useState(false);
+  const [isSendingReset, setIsSendingReset] = React.useState(false);
   const [showPassword, setShowPassword] = React.useState(false);
   const [loginError, setLoginError] = React.useState<string | null>(null);
 
@@ -96,7 +94,6 @@ function LoginContent() {
       },
   });
 
-   // Display messages based on redirect reason
   React.useEffect(() => {
       const reason = searchParams.get('reason');
       if (reason === 'unauthenticated') {
@@ -110,41 +107,34 @@ function LoginContent() {
       } else if (reason === 'profile_error') {
           setLoginError("Erro ao carregar dados do perfil. Contate o suporte.");
       }
-      // Clear reason after showing message
       if (reason && typeof window !== 'undefined') {
-           // Check if running on client before using replace
            const currentUrl = new URL(window.location.href);
            currentUrl.searchParams.delete('reason');
-           currentUrl.searchParams.delete('from'); // Remove 'from' as well if present
+           currentUrl.searchParams.delete('from');
            window.history.replaceState(null, '', currentUrl.toString());
       }
    }, [searchParams]);
-
 
   const onSubmit = async (data: LoginFormValues) => {
     setIsLoading(true);
     setLoginError(null);
     try {
-      // Assume loginUser returns necessary data including role and orgId
       const { userCredential, userData } = await loginUser(data.email, data.password);
 
        if (userCredential?.user) {
         const { role, organizationId } = userData;
-
-         // Get ID token *after* confirming user and fetching profile data
          const idToken = await userCredential.user.getIdToken(true);
-         setAuthCookie(idToken, role, organizationId); // Pass role and orgId
+         setAuthCookie(idToken, role, organizationId);
 
         toast({
           title: 'Login bem-sucedido!',
           description: `Bem-vindo(a)! Redirecionando...`,
         });
 
-        // Redirect based on role
         if (role === 'super_admin') {
           router.push('/superadmin');
         } else if (role === 'admin') {
-          router.push('/'); // Admin root
+          router.push('/');
         } else if (role === 'collaborator') {
           router.push('/colaborador/dashboard');
         } else {
@@ -155,10 +145,8 @@ function LoginContent() {
           return;
         }
       } else {
-        // This case might be redundant if loginUser throws, but kept as fallback
         throw new Error("Credenciais inválidas ou erro desconhecido.");
       }
-
     } catch (error: any) {
       console.error('Erro no login:', error);
       let errorMessage = 'Falha no login. Verifique suas credenciais.';
@@ -182,14 +170,12 @@ function LoginContent() {
             break;
           default:
             console.warn(`Unhandled Firebase Auth error code: ${error.code}`);
-            errorMessage = `Erro inesperado (${error.code}). Tente novamente.`;
+            errorMessage = `Erro inesperado (${error.message || error.code}). Tente novamente.`;
         }
       } else if (error.message) {
           errorMessage = error.message;
       }
-
        setLoginError(errorMessage);
-
     } finally {
       setIsLoading(false);
     }
@@ -203,8 +189,8 @@ function LoginContent() {
               title: "Email Enviado",
               description: "Verifique sua caixa de entrada para o link de redefinição de senha.",
           });
-          setIsForgotPasswordOpen(false); // Close dialog on success
-          forgotPasswordForm.reset(); // Clear the form
+          setIsForgotPasswordOpen(false);
+          forgotPasswordForm.reset();
       } catch (error: any) {
           console.error("Erro ao enviar email de reset:", error);
           toast({
@@ -225,11 +211,12 @@ function LoginContent() {
      setIsGuestChoiceOpen(false);
      let targetPath = '/';
      let roleName = 'Admin';
+
      if (role === 'collaborator') {
         targetPath = '/colaborador/dashboard';
         roleName = 'Colaborador';
      } else if (role === 'super_admin') {
-        targetPath = '/superadmin';
+        targetPath = '/superadmin'; // Corrected path for super_admin
         roleName = 'Super Admin';
      }
 
@@ -246,11 +233,10 @@ function LoginContent() {
       router.push(targetPath);
   };
 
-
   return (
      <Card className="w-full max-w-md shadow-lg border-none overflow-hidden rounded-xl">
          <div className="bg-gradient-to-r from-teal-500 to-cyan-600 dark:from-teal-700 dark:to-cyan-800 p-6 text-center">
-              <Logo className="w-16 h-16 text-white mx-auto mb-2 opacity-90"/>
+              <Logo className="w-20 h-20 text-white mx-auto mb-3 opacity-95"/>
              <CardTitle className="text-xl font-bold text-white">Bem-vindo ao Check2B</CardTitle>
              <CardDescription className="text-teal-100 dark:text-teal-200">Faça login para acessar seu painel.</CardDescription>
         </div>
@@ -271,11 +257,14 @@ function LoginContent() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email Corporativo</FormLabel>
+                    <FormLabel className="text-sm">Email Corporativo</FormLabel>
                     <FormControl>
-                      <Input type="email" placeholder="seu.email@check2b.com" {...field} />
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input type="email" placeholder="seu.email@check2b.com" {...field} className="pl-10 h-10 text-sm"/>
+                      </div>
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-xs"/>
                   </FormItem>
                 )}
               />
@@ -285,18 +274,19 @@ function LoginContent() {
                 render={({ field }) => (
                   <FormItem>
                     <div className="flex items-center justify-between">
-                        <FormLabel>Senha</FormLabel>
-                         {/* Button to open Forgot Password dialog */}
+                        <FormLabel className="text-sm">Senha</FormLabel>
                         <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs text-primary" onClick={() => setIsForgotPasswordOpen(true)}>
                           Esqueceu a senha?
                         </Button>
                     </div>
                     <FormControl>
                       <div className="relative">
+                        <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           type={showPassword ? 'text' : 'password'}
                           placeholder="********"
                           {...field}
+                          className="pl-10 h-10 text-sm"
                         />
                         <Button
                           type="button"
@@ -310,11 +300,11 @@ function LoginContent() {
                         </Button>
                       </div>
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-xs"/>
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full h-10 text-sm" disabled={isLoading}>
                 {isLoading ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
@@ -337,13 +327,12 @@ function LoginContent() {
                      </span>
                 </div>
             </div>
-             <Button variant="outline" className="w-full" onClick={handleGuestLoginClick} disabled={isLoading}>
+             <Button variant="outline" className="w-full h-10 text-sm" onClick={handleGuestLoginClick} disabled={isLoading}>
                 <Eye className="mr-2 h-4 w-4"/>
                 Entrar como Convidado
              </Button>
         </CardFooter>
 
-         {/* Guest Choice Dialog */}
          <AlertDialog open={isGuestChoiceOpen} onOpenChange={setIsGuestChoiceOpen}>
             <AlertDialogContent>
                 <AlertDialogHeader>
@@ -367,7 +356,6 @@ function LoginContent() {
             </AlertDialogContent>
         </AlertDialog>
 
-         {/* Forgot Password Dialog */}
          <Dialog open={isForgotPasswordOpen} onOpenChange={setIsForgotPasswordOpen}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
@@ -383,11 +371,14 @@ function LoginContent() {
                             name="resetEmail"
                             render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Email</FormLabel>
+                                <FormLabel className="text-sm">Email</FormLabel>
                                 <FormControl>
-                                <Input type="email" placeholder="seu.email@check2b.com" {...field} />
+                                  <div className="relative">
+                                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                      <Input type="email" placeholder="seu.email@check2b.com" {...field} className="pl-10 h-10 text-sm"/>
+                                  </div>
                                 </FormControl>
-                                <FormMessage />
+                                <FormMessage className="text-xs"/>
                             </FormItem>
                             )}
                         />
@@ -404,16 +395,14 @@ function LoginContent() {
                 </Form>
             </DialogContent>
         </Dialog>
-
      </Card>
   );
 }
 
-// Main export includes the Suspense boundary
 export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sky-50 via-white to-gray-100 dark:from-slate-900 dark:via-slate-950 dark:to-slate-800 p-4">
-      <Suspense fallback={<LoadingSpinner size="lg" text="Carregando login..."/>}>
+      <Suspense fallback={<div className="flex h-screen w-screen items-center justify-center"><LoadingSpinner size="lg" text="Carregando..."/></div>}>
         <LoginContent />
       </Suspense>
     </div>
