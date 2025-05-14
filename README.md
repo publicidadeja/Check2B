@@ -85,4 +85,4 @@ This is a Next.js application for managing daily employee evaluations using a ch
 ```
   </change>
   <change>
-    <file>docs/important_notes.md
+    <file>docs/important_notes.md# Check2B2
