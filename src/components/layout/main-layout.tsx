@@ -39,7 +39,8 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { logoutUser } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Logo } from '@/components/logo'; // Import the new Logo component
+import { Logo } from '@/components/logo';
+import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import LoadingSpinner
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -60,7 +61,6 @@ const adminTools = [
    { href: '/settings', label: 'Configurações', icon: Settings },
 ]
 
-// Helper to get initials from a name
 const getInitials = (name: string = '') => {
     return name
         ?.split(' ')
@@ -75,8 +75,13 @@ export function MainLayout({ children }: MainLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
+  const [isClient, setIsClient] = React.useState(false);
 
-   const handleLogout = async () => {
+  React.useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  const handleLogout = async () => {
     try {
         await logoutUser();
         toast({ title: "Logout", description: "Você saiu com sucesso." });
@@ -87,42 +92,45 @@ export function MainLayout({ children }: MainLayoutProps) {
     }
   };
 
-  // Function to determine if a menu item should be active
   const isNavItemActive = (itemHref: string) => {
     if (itemHref === '/') {
-      return pathname === '/'; // Exact match for root dashboard
+      return pathname === '/';
     }
-    // Use startsWith for other routes within the group
     return pathname.startsWith(itemHref);
   };
 
   const getCurrentPageTitle = () => {
-    // Combine both navigation arrays for title lookup
     const allNavItems = [...navItems, ...adminTools];
-    // Find the *most specific* match first (longer href)
     const sortedNavItems = [...allNavItems].sort((a, b) => b.href.length - a.href.length);
     const currentNavItem = sortedNavItems.find(item => isNavItemActive(item.href));
     return currentNavItem?.label || 'Check2B Admin';
   };
 
+  if (!isClient) {
+    // Render a placeholder or null on the server and during initial client render
+    // This helps prevent hydration mismatches caused by `useIsMobile`
+    return (
+        <div className="flex min-h-screen items-center justify-center">
+            <LoadingSpinner size="lg" text="Carregando layout administrativo..." />
+        </div>
+    );
+  }
 
   return (
     <TooltipProvider>
       <SidebarProvider defaultOpen={!isMobile} collapsible="icon">
-        {/* Sidebar Component */}
         <Sidebar variant="sidebar" side="left" collapsible="icon">
           <SidebarHeader className="items-center justify-center gap-2 p-4">
              <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
-                <Logo className="w-7 h-7 text-primary" /> {/* Use Logo component */}
+                <Logo className="w-7 h-7 text-primary" />
                <span className="text-xl font-semibold text-primary">Check2B</span>
              </div>
               <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=offcanvas]:hidden group-data-[state=expanded]:hidden hidden">
-                  <Logo className="w-7 h-7 text-primary" /> {/* Use Logo component */}
+                  <Logo className="w-7 h-7 text-primary" />
              </div>
              <SidebarTrigger className="group-data-[collapsible=offcanvas]:flex hidden ml-auto" />
           </SidebarHeader>
           <Separator />
-          {/* Sidebar Content (Menus) */}
           <SidebarContent className="p-2">
             <SidebarMenu>
               {navItems.map((item) => (
@@ -130,7 +138,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                   <Link href={item.href} passHref legacyBehavior>
                     <SidebarMenuButton
                       as="a"
-                      isActive={isNavItemActive(item.href)} // Use updated logic
+                      isActive={isNavItemActive(item.href)}
                       tooltip={item.label}
                     >
                       <item.icon />
@@ -149,7 +157,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                         <Link href={item.href} passHref legacyBehavior>
                           <SidebarMenuButton
                             as="a"
-                            isActive={isNavItemActive(item.href)} // Use updated logic
+                            isActive={isNavItemActive(item.href)}
                             tooltip={item.label}
                           >
                             <item.icon />
@@ -161,14 +169,12 @@ export function MainLayout({ children }: MainLayoutProps) {
                   </SidebarMenu>
               </SidebarGroup>
           </SidebarContent>
-          {/* Sidebar Footer */}
            <SidebarFooter className="p-2">
               <Separator />
               <div className="flex items-center justify-between p-2 group-data-[collapsible=icon]:hidden">
                  <div className="flex items-center gap-2">
                    <Avatar className="h-8 w-8">
-                     {/* Placeholder image for admin */}
-                     <AvatarImage src="https://picsum.photos/seed/admin/40/40" alt="Admin User" />
+                     <AvatarImage src="https://placehold.co/40x40.png" alt="Admin User" data-ai-hint="user avatar" />
                      <AvatarFallback>AD</AvatarFallback>
                    </Avatar>
                    <div className="flex flex-col">
@@ -200,17 +206,13 @@ export function MainLayout({ children }: MainLayoutProps) {
           </SidebarFooter>
         </Sidebar>
 
-        {/* Main Content Area */}
         <SidebarInset className="flex flex-col">
-          {/* Header */}
           <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 lg:px-6">
-            <SidebarTrigger className="md:hidden" /> {/* Mobile trigger */}
+            <SidebarTrigger className="md:hidden" />
             <h1 className="text-lg font-semibold">
-               {getCurrentPageTitle()} {/* Display dynamic title */}
+               {getCurrentPageTitle()}
             </h1>
-            {/* Add any header actions here if needed */}
           </header>
-          {/* Page Content */}
           <main className="flex-1 overflow-auto p-4 lg:p-6">{children}</main>
         </SidebarInset>
       </SidebarProvider>
