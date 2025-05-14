@@ -26,7 +26,7 @@
 
  // --- Mock Data & Fetching ---
  // Use exported mock data from admin page
- import { mockRanking as allAdminRanking } from '@/app/(admin)/ranking/page'; // Reuse admin mock data
+ import { mockRanking as allAdminRanking } from '@/lib/mockData/ranking'; // Corrected import path
  import { mockAwards as allAdminAwards } from '@/lib/mockData/awards'; // Update import path
 
  // Function to fetch ranking data for a specific month, adapted for employee view
