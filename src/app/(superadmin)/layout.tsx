@@ -1,12 +1,12 @@
 // src/app/(superadmin)/layout.tsx
 import type { ReactNode } from 'react';
-import { ConditionalLayout } from '@/components/layout/conditional-layout';
 
 interface SuperAdminLayoutProps {
   children: ReactNode;
 }
 
-// Wrap the children with ConditionalLayout. It will handle rendering the correct UI.
+// This layout should be a simple pass-through.
+// The ConditionalLayout in the root layout will handle applying SuperAdminLayout.
 export default function SuperAdminLayout({ children }: SuperAdminLayoutProps) {
-  return <ConditionalLayout>{children}</ConditionalLayout>;
+  return <>{children}</>;
 }

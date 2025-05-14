@@ -5,11 +5,11 @@ import * as React from 'react'; // Import React
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Users, ClipboardList, CheckCircle, AlertCircle, BarChart3 } from "lucide-react";
 // Import necessary chart components directly from recharts or the custom wrapper
-import { BarChart, XAxis, YAxis, Bar, CartesianGrid } from "recharts"; // Import Recharts components directly
+import { BarChart, XAxis, YAxis, Bar, CartesianGrid, ResponsiveContainer } from "recharts"; // Import Recharts components directly
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"; // Import chart container and tooltip
 import type { ChartConfig } from "@/components/ui/chart"; // Import ChartConfig type
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { ConditionalLayout } from '@/components/layout/conditional-layout'; // Import ConditionalLayout
+// Removed ConditionalLayout import from here, as it's handled by the root layout
 
 // Mock data for the chart - replace with actual data fetching
 const chartData = [
@@ -152,14 +152,8 @@ function AdminDashboardContent() {
   );
 }
 
-// Export default the page component wrapped in ConditionalLayout
+// Export default the page component.
+// ConditionalLayout from the root layout will wrap this content.
 export default function RootPage() {
-    // ConditionalLayout will handle redirecting if the user is not an admin
-    // or rendering the appropriate layout based on the role.
-    // We render the Admin Dashboard content here as the default for the root path.
-    return (
-        <ConditionalLayout>
-            <AdminDashboardContent />
-        </ConditionalLayout>
-    );
+    return <AdminDashboardContent />;
 }
