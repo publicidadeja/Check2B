@@ -32,14 +32,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { TaskForm } from '@/components/task/task-form'; // Corrected import path
+import { TaskForm } from '@/components/task/task-form';
 import type { Task } from '@/types/task';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import { mockTasks } from '@/lib/mockData/tasks'; // Import from the new data file
-import { mockEmployeesSimple } from '@/lib/mockData/employees'; // Import employees for name lookup
+import { mockEmployees } from '@/lib/mockData/employees'; // Import employees for name lookup
 import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import LoadingSpinner
 
 // Removed mock data definition from here
@@ -103,7 +103,7 @@ export default function TasksPage() {
           case 'individual': typeText = 'Indiv.'; break;
           default: typeText = task.assignedTo;
       }
-      const entityName = task.assignedTo === 'individual' ? mockEmployeesSimple.find(e => e.id === task.assignedEntityId)?.name : task.assignedEntityId;
+      const entityName = task.assignedTo === 'individual' ? mockEmployees.find(e => e.id === task.assignedEntityId)?.name : task.assignedEntityId;
       return `${typeText}${entityName ? `: ${entityName}` : ''}`;
   }
 
