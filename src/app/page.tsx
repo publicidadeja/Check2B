@@ -1,7 +1,7 @@
 // src/app/page.tsx - Root page, typically defaults to Admin Dashboard
 'use client';
 
-import * as React from 'react'; // Import React
+import *as React from 'react'; // Import React
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Users, ClipboardList, CheckCircle, AlertCircle, BarChart3 } from "lucide-react";
 // Import necessary chart components directly from recharts or the custom wrapper
@@ -9,7 +9,6 @@ import { BarChart, XAxis, YAxis, Bar, CartesianGrid, ResponsiveContainer } from 
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"; // Import chart container and tooltip
 import type { ChartConfig } from "@/components/ui/chart"; // Import ChartConfig type
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-// Removed ConditionalLayout import from here, as it's handled by the root layout
 
 // Mock data for the chart - replace with actual data fetching
 const chartData = [
@@ -155,5 +154,6 @@ function AdminDashboardContent() {
 // Export default the page component.
 // ConditionalLayout from the root layout will wrap this content.
 export default function RootPage() {
+    console.log("[RootPage /] Rendering AdminDashboardContent. This should be wrapped by ConditionalLayout -> MainLayout.");
     return <AdminDashboardContent />;
 }

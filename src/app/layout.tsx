@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google'; // Using Inter as Geist fonts might no
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster'; // Import Toaster for notifications
 import { AuthProvider } from '@/hooks/use-auth'; // Import AuthProvider
+import { ConditionalLayout } from '@/components/layout/conditional-layout';
 
 // Using Inter font as a common, well-supported alternative
 const inter = Inter({
@@ -26,7 +27,9 @@ export default function RootLayout({
     <html lang="pt-BR" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased`} suppressHydrationWarning={true}> {/* Apply font variable and suppress hydration warning */}
         <AuthProvider> {/* Wrap the entire application with AuthProvider */}
+        <ConditionalLayout> {/* Use ConditionalLayout here */}
             {children}
+          </ConditionalLayout>
             <Toaster /> {/* Add Toaster component here */}
         </AuthProvider>
       </body>

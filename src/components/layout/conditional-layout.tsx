@@ -15,7 +15,7 @@ interface ConditionalLayoutProps {
 
 // Variável para simular o bypass do middleware (para desenvolvimento)
 // Em um cenário real, você removeria ou controlaria isso de outra forma.
-const MIDDLEWARE_BYPASS_ACTIVE = true; // Mude para false para testar o middleware real
+const MIDDLEWARE_BYPASS_ACTIVE = false; // Mude para false para testar o middleware real
 
 export function ConditionalLayout({ children }: ConditionalLayoutProps) {
   const { role, isLoading, isGuest } = useAuth();

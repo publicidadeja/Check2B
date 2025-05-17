@@ -34,7 +34,7 @@ import {
     DialogClose,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import type { Organization } from '@/app/(superadmin)/organizations/page'; // Assuming type is exported from page
+import type { Organization } from '@/app/(superadmin)/superadmin/organizations/page'; // Assuming type is exported from page
 
 // Schema for Organization Form Validation
 const organizationSchema = z.object({
