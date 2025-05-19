@@ -2,11 +2,10 @@
 'use client';
 
 import * as React from 'react';
-import { Building, PlusCircle, MoreHorizontal, Edit, Trash2, ToggleRight, Eye, CircleSlash, Users as UsersIcon, CalendarDays } from 'lucide-react'; // Added UsersIcon, CalendarDays
+import { Building, PlusCircle, MoreHorizontal, Edit, Trash2, ToggleRight, Eye, CircleSlash, Users as UsersIcon, CalendarDays, Settings2 } from 'lucide-react'; // Added Settings2 for Gerenciar
 import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Button } from '@/components/ui/button';
-// Removed Input import as filter is part of DataTable
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -23,6 +22,7 @@ import { OrganizationForm } from '@/components/organization/organization-form';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import Link from 'next/link'; // Import Link for navigation
 
 // Define Organization type specifically for this context
 export interface Organization {
@@ -168,8 +168,10 @@ export default function OrganizationsPage() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => { toast({title: "Pendente", description:"Visualizar/Gerenciar ainda não implementado."}) }}>
-                  <Eye className="mr-2 h-4 w-4" /> Gerenciar
+                <DropdownMenuItem asChild>
+                  <Link href={`/superadmin/organizations/${org.id}/manage`}>
+                    <Settings2 className="mr-2 h-4 w-4" /> Gerenciar Admins
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => openEditForm(org)}>
                   <Edit className="mr-2 h-4 w-4" /> Editar Detalhes

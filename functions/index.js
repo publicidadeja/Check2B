@@ -20,7 +20,7 @@ if (admin.apps.length === 0) {
 }
 
 
-exports.setCustomUserClaims = functions.https.onCall(async (data, context) => {
+exports.setCustomUserClaimsFirebase = functions.https.onCall(async (data, context) => {
   // Ensure the caller is authenticated.
   if (!context.auth) {
     throw new functions.https.HttpsError(
@@ -32,13 +32,13 @@ exports.setCustomUserClaims = functions.https.onCall(async (data, context) => {
   // TODO: IMPORTANT - Add authorization logic here!
   // Check if context.auth.uid has permission to set claims for data.uid
   // For example, check if the caller is a super_admin.
-  // const callerUserRecord = await admin.auth().getUser(context.auth.uid);
-  // if (callerUserRecord.customClaims && callerUserRecord.customClaims.role !== 'super_admin') {
-  //   throw new functions.https.HttpsError(
-  //     'permission-denied',
-  //     'Você não tem permissão para executar esta ação.'
-  //   );
-  // }
+   const callerUserRecord = await admin.auth().getUser(context.auth.uid);
+   if (!callerUserRecord.customClaims || callerUserRecord.customClaims.role !== 'super_admin') {
+     throw new functions.https.HttpsError(
+       'permission-denied',
+       'Você não tem permissão para executar esta ação (apenas Super Admin).'
+     );
+   }
 
   const { uid, claims } = data;
 
@@ -66,14 +66,12 @@ exports.setCustomUserClaims = functions.https.onCall(async (data, context) => {
   // Specific logic for organizationId based on role
   if (claims.role === 'super_admin') {
     if (claims.organizationId !== undefined && claims.organizationId !== null) {
-        // Super admins should not have an organizationId, or it should be explicitly null
         throw new functions.https.HttpsError(
             "invalid-argument",
             "Super admin não deve ter um organizationId ou ele deve ser nulo.",
         );
     }
-    // Ensure organizationId is explicitly set to null for super_admin if not already
-    claims.organizationId = null;
+    claims.organizationId = null; // Ensure organizationId is explicitly set to null
   } else if (claims.role === 'admin' || claims.role === 'collaborator') {
     if (typeof claims.organizationId !== 'string' || !claims.organizationId.trim()) {
         throw new functions.https.HttpsError(
@@ -87,6 +85,14 @@ exports.setCustomUserClaims = functions.https.onCall(async (data, context) => {
   try {
     await admin.auth().setCustomUserClaims(uid, claims);
     console.log(\`Custom claims definidos para \${uid}:\`, claims);
+    // Also update the user document in Firestore with the new role and orgId for consistency
+    const userDocRef = admin.firestore().collection('users').doc(uid);
+    await userDocRef.update({
+        role: claims.role,
+        organizationId: claims.organizationId,
+    }, { merge: true });
+    console.log(\`Documento do usuário \${uid} atualizado no Firestore com novos claims.\`);
+
     return {
       message: \`Sucesso! Custom claims \${JSON.stringify(claims)} definidos para o usuário \${uid}.\`,
     };
@@ -100,39 +106,78 @@ exports.setCustomUserClaims = functions.https.onCall(async (data, context) => {
   }
 });
 
-// Example: Create a user (auth only, Firestore doc separate) and set claims
-// This would typically be part of a larger user creation/management flow
-// For simplicity, this example assumes the user already exists in Firebase Auth
-// and you're just setting/updating claims.
+exports.createOrganizationAdmin = functions.https.onCall(async (data, context) => {
+  // 1. Verify caller is Super Admin
+  if (!context.auth || !context.auth.token || context.auth.token.role !== 'super_admin') {
+    throw new functions.https.HttpsError(
+      'permission-denied',
+      'Apenas Super Admins podem criar administradores de organização.'
+    );
+  }
 
-// If you need a function to create a user AND set claims:
-// exports.createUserAndSetClaims = functions.https.onCall(async (data, context) => {
-//   // ... (auth and permission checks as above) ...
-//   const { email, password, displayName, role, organizationId } = data;
-//   try {
-//     const userRecord = await admin.auth().createUser({
-//       email: email,
-//       password: password,
-//       displayName: displayName,
-//       // photoURL: data.photoURL, // Optional
-//       disabled: false,
-//     });
-//     const claimsToSet = { role, organizationId: role === 'super_admin' ? null : organizationId };
-//     await admin.auth().setCustomUserClaims(userRecord.uid, claimsToSet);
+  const { name, email, password, organizationId } = data;
 
-//     // Create user document in Firestore (example)
-//     await admin.firestore().collection('users').doc(userRecord.uid).set({
-//       name: displayName,
-//       email: email,
-//       role: role,
-//       organizationId: claimsToSet.organizationId,
-//       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-//       status: 'active' // or 'pending'
-//     });
+  // Validate input
+  if (!name || !email || !password || !organizationId) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'Nome, email, senha e ID da organização são obrigatórios.'
+    );
+  }
+  if (password.length < 6) {
+     throw new functions.https.HttpsError(
+      'invalid-argument',
+      'A senha deve ter pelo menos 6 caracteres.'
+    );
+  }
 
-//     return { uid: userRecord.uid, message: 'Usuário criado e claims definidos com sucesso.' };
-//   } catch (error) {
-//     console.error("Erro ao criar usuário e definir claims:", error);
-//     throw new functions.https.HttpsError("internal", "Falha ao criar usuário.");
-//   }
-// });
+  try {
+    // 2. Create user in Firebase Authentication
+    const userRecord = await admin.auth().createUser({
+      email: email,
+      password: password,
+      displayName: name,
+      emailVerified: false, // Or true if you have an email verification flow
+      disabled: false,
+    });
+
+    console.log('Novo admin de organização criado no Auth:', userRecord.uid);
+
+    // 3. Set Custom Claims
+    const claimsToSet = {
+      role: 'admin',
+      organizationId: organizationId,
+    };
+    await admin.auth().setCustomUserClaims(userRecord.uid, claimsToSet);
+    console.log('Custom claims definidos para o novo admin:', claimsToSet);
+
+    // 4. Create user profile in Firestore
+    const userDocRef = admin.firestore().collection('users').doc(userRecord.uid);
+    await userDocRef.set({
+      uid: userRecord.uid,
+      name: name,
+      email: email,
+      role: 'admin',
+      organizationId: organizationId,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      status: 'active', // Or 'pending_verification' if email verification is used
+    });
+    console.log('Perfil do admin criado no Firestore:', userRecord.uid);
+
+    // 5. Optionally, send a welcome email (implementation not shown here)
+    // await sendWelcomeEmailToNewAdmin(email, name, organizationName);
+
+    return {
+      success: true,
+      userId: userRecord.uid,
+      message: `Administrador '${name}' criado com sucesso para a organização ${organizationId}.`,
+    };
+  } catch (error) {
+    console.error('Erro ao criar admin de organização:', error);
+    // Handle specific errors like 'auth/email-already-exists'
+    if (error.code === 'auth/email-already-exists') {
+      throw new functions.https.HttpsError('already-exists', 'Este email já está em uso.');
+    }
+    throw new functions.https.HttpsError('internal', 'Falha ao criar administrador de organização.', error.message);
+  }
+});
