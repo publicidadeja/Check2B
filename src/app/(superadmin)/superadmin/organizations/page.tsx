@@ -1,12 +1,12 @@
-// src/app/(superadmin)/organizations/page.tsx
+// src/app/(superadmin)/superadmin/organizations/page.tsx
 'use client';
 
 import * as React from 'react';
-import { Building, PlusCircle, Search, MoreHorizontal, Edit, Trash2, ToggleRight, Eye, CircleSlash } from 'lucide-react';
+import { Building, PlusCircle, MoreHorizontal, Edit, Trash2, ToggleRight, Eye, CircleSlash, Users as UsersIcon, CalendarDays } from 'lucide-react'; // Added UsersIcon, CalendarDays
 import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+// Removed Input import as filter is part of DataTable
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -19,18 +19,19 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { OrganizationForm } from '@/components/organization/organization-form'; // Assume this component exists or will be created
+import { OrganizationForm } from '@/components/organization/organization-form';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 // Define Organization type specifically for this context
 export interface Organization {
   id: string;
   name: string;
-  plan: 'basic' | 'premium' | 'enterprise'; // Example plans
+  plan: 'basic' | 'premium' | 'enterprise';
   status: 'active' | 'inactive' | 'pending';
   createdAt: Date;
-  adminCount?: number; // Optional counts
+  adminCount?: number;
   userCount?: number;
 }
 
@@ -48,14 +49,16 @@ const fetchOrganizations = async (): Promise<Organization[]> => {
   return [...mockOrganizations];
 };
 
-const saveOrganization = async (orgData: Omit<Organization, 'id' | 'createdAt' | 'adminCount' | 'userCount'> | Organization): Promise<Organization> => {
+// Ensure OrganizationFormData matches the form's output
+type OrganizationFormData = Pick<Organization, 'name' | 'plan' | 'status'>;
+
+const saveOrganization = async (orgData: OrganizationFormData, existingId?: string): Promise<Organization> => {
   await new Promise(resolve => setTimeout(resolve, 700));
-  if ('id' in orgData && orgData.id) {
-    const index = mockOrganizations.findIndex(o => o.id === orgData.id);
+  if (existingId) {
+    const index = mockOrganizations.findIndex(o => o.id === existingId);
     if (index !== -1) {
-      // Merge existing data with new data, keep counts and creation date
       mockOrganizations[index] = {
-          ...mockOrganizations[index],
+          ...mockOrganizations[index], // Keep existing createdAt, counts etc.
           name: orgData.name,
           plan: orgData.plan,
           status: orgData.status,
@@ -72,13 +75,11 @@ const saveOrganization = async (orgData: Omit<Organization, 'id' | 'createdAt' |
       plan: orgData.plan,
       status: orgData.status,
       createdAt: new Date(),
-      adminCount: 0, // Initial counts for new org
+      adminCount: 0,
       userCount: 0,
-      // ... other fields from orgData if needed
     };
     mockOrganizations.push(newOrg);
     console.log("Nova organização criada:", newOrg);
-    // Here you would typically also create the initial admin user
     return newOrg;
   }
 };
@@ -92,7 +93,6 @@ const deleteOrganization = async (orgId: string): Promise<void> => {
   if (index !== -1) {
     mockOrganizations.splice(index, 1);
     console.log("Organização removida:", orgId);
-    // Note: In a real system, this would involve complex cleanup (users, data, billing etc.)
   } else {
     throw new Error("Organização não encontrada para remoção");
   }
@@ -124,9 +124,9 @@ export default function OrganizationsPage() {
 
    const getStatusBadgeVariant = (status: Organization['status']): "default" | "secondary" | "outline" | "destructive" => {
         switch (status) {
-            case 'active': return 'default'; // Use primary color (teal) for active
-            case 'inactive': return 'secondary'; // Grey for inactive
-            case 'pending': return 'outline'; // Outline for pending
+            case 'active': return 'default';
+            case 'inactive': return 'secondary';
+            case 'pending': return 'outline';
             default: return 'secondary';
         }
     };
@@ -142,52 +142,56 @@ export default function OrganizationsPage() {
 
 
   const columns: ColumnDef<Organization>[] = [
-    { accessorKey: "name", header: "Nome", cell: ({ row }) => <span className="font-medium">{row.original.name}</span> },
-    { accessorKey: "plan", header: "Plano", cell: ({ row }) => <Badge variant="outline" className="capitalize">{row.original.plan}</Badge> },
+    { accessorKey: "name", header: "Nome", cell: ({ row }) => <span className="font-medium">{row.original.name}</span>, minSize: 200 },
+    { accessorKey: "plan", header: "Plano", cell: ({ row }) => <Badge variant="outline" className="capitalize text-xs">{row.original.plan}</Badge>, size:100 },
     {
         accessorKey: "status",
         header: "Status",
-        cell: ({ row }) => <Badge variant={getStatusBadgeVariant(row.original.status)} className={row.original.status === 'active' ? 'bg-green-100 text-green-800' : ''}>{getStatusText(row.original.status)}</Badge>
+        cell: ({ row }) => <Badge variant={getStatusBadgeVariant(row.original.status)} className={row.original.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200' : 'text-xs'}>{getStatusText(row.original.status)}</Badge>,
+        size: 100
     },
-    { accessorKey: "userCount", header: "Usuários", cell: ({ row }) => <div className="text-center">{row.original.userCount ?? '-'}</div> },
-    { accessorKey: "adminCount", header: "Admins", cell: ({ row }) => <div className="text-center">{row.original.adminCount ?? '-'}</div> },
-    { accessorKey: "createdAt", header: "Criada em", cell: ({ row }) => format(row.original.createdAt, 'dd/MM/yyyy') },
+    { accessorKey: "userCount", header: () => <div className="text-center flex items-center gap-1"><UsersIcon className="h-3 w-3"/>Usuários</div>, cell: ({ row }) => <div className="text-center text-xs">{row.original.userCount ?? '-'}</div>, size: 100 },
+    { accessorKey: "createdAt", header: () => <div className="flex items-center gap-1"><CalendarDays className="h-3 w-3"/>Criada em</div>, cell: ({ row }) => <span className="text-xs">{format(row.original.createdAt, 'dd/MM/yyyy', { locale: ptBR })}</span>, size: 120 },
     {
       id: "actions",
+      header: () => <div className="text-right">Ações</div>,
       cell: ({ row }) => {
         const org = row.original;
         return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0">
-                <span className="sr-only">Abrir menu</span>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Ações</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => { /* TODO: Implement View/Manage Org */ toast({title: "Pendente", description:"Visualizar/Gerenciar ainda não implementado."}) }}>
-                <Eye className="mr-2 h-4 w-4" /> Gerenciar
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => openEditForm(org)}>
-                <Edit className="mr-2 h-4 w-4" /> Editar Detalhes
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleToggleStatus(org)}>
-                 {org.status === 'active' ? <CircleSlash className="mr-2 h-4 w-4" /> : <ToggleRight className="mr-2 h-4 w-4" />}
-                 {org.status === 'active' ? 'Desativar' : 'Ativar'}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => handleDeleteClick(org)}
-                className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                disabled={org.id === 'org_default'} // Disable deleting the default org
-              >
-                <Trash2 className="mr-2 h-4 w-4" /> Remover
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="text-right">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-8 w-8 p-0">
+                  <span className="sr-only">Abrir menu</span>
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => { toast({title: "Pendente", description:"Visualizar/Gerenciar ainda não implementado."}) }}>
+                  <Eye className="mr-2 h-4 w-4" /> Gerenciar
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openEditForm(org)}>
+                  <Edit className="mr-2 h-4 w-4" /> Editar Detalhes
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleToggleStatus(org)}>
+                   {org.status === 'active' ? <CircleSlash className="mr-2 h-4 w-4" /> : <ToggleRight className="mr-2 h-4 w-4" />}
+                   {org.status === 'active' ? 'Desativar' : 'Ativar'}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => handleDeleteClick(org)}
+                  className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                  disabled={org.id === 'org_default'}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" /> Remover
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         );
       },
+      size: 80
     },
   ];
 
@@ -195,7 +199,7 @@ export default function OrganizationsPage() {
     setIsLoading(true);
     try {
       const data = await fetchOrganizations();
-      setOrganizations(data);
+      setOrganizations(data.sort((a,b) => a.name.localeCompare(b.name)));
     } catch (error) {
       console.error("Falha ao carregar organizações:", error);
       toast({ title: "Erro", description: "Falha ao carregar organizações.", variant: "destructive" });
@@ -208,10 +212,10 @@ export default function OrganizationsPage() {
     loadOrganizations();
   }, [loadOrganizations]);
 
-  const handleSaveOrg = async (data: any) => {
-    setIsLoading(true); // Use general loading indicator for simplicity
+  const handleSaveOrg = async (data: OrganizationFormData) => {
+    setIsLoading(true);
     try {
-      await saveOrganization(selectedOrganization ? { ...selectedOrganization, ...data } : data);
+      await saveOrganization(data, selectedOrganization?.id);
       setIsFormOpen(false);
       setSelectedOrganization(null);
       await loadOrganizations();
@@ -268,7 +272,6 @@ export default function OrganizationsPage() {
       }
   }
 
-
   const openEditForm = (org: Organization) => {
     setSelectedOrganization(org);
     setIsFormOpen(true);
@@ -298,16 +301,18 @@ export default function OrganizationsPage() {
               columns={columns}
               data={organizations}
               filterColumn="name"
-              filterPlaceholder="Buscar por nome..."
+              filterPlaceholder="Buscar por nome ou plano..."
             />
           )}
         </CardContent>
-        <CardFooter className="flex justify-end">
-           <Button onClick={openAddForm}>
-             <PlusCircle className="mr-2 h-4 w-4" />
-             Adicionar Organização
-           </Button>
-        </CardFooter>
+        {!isLoading && (
+            <CardFooter className="flex justify-end">
+               <Button onClick={openAddForm}>
+                 <PlusCircle className="mr-2 h-4 w-4" />
+                 Adicionar Organização
+               </Button>
+            </CardFooter>
+        )}
       </Card>
 
        <OrganizationForm

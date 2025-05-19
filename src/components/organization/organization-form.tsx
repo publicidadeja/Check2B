@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Building } from 'lucide-react'; // Added Building icon
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,28 +34,29 @@ import {
     DialogClose,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import type { Organization } from '@/app/(superadmin)/superadmin/organizations/page'; // Assuming type is exported from page
+// Explicitly type Organization based on its usage in organizations/page.tsx
+interface Organization {
+  id: string;
+  name: string;
+  plan: 'basic' | 'premium' | 'enterprise';
+  status: 'active' | 'inactive' | 'pending';
+  createdAt: Date; // Assuming createdAt is part of the display or internal logic
+  adminCount?: number;
+  userCount?: number;
+}
 
 // Schema for Organization Form Validation
 const organizationSchema = z.object({
   name: z.string().min(2, { message: 'Nome da organização deve ter pelo menos 2 caracteres.' }),
   plan: z.enum(['basic', 'premium', 'enterprise'], { required_error: "Plano é obrigatório." }),
   status: z.enum(['active', 'inactive', 'pending'], { required_error: "Status é obrigatório." }),
-  // Add fields for initial admin creation if doing it here
-  // initialAdminEmail: z.string().email("Email do admin inválido.").optional(),
-  // initialAdminName: z.string().min(2, "Nome do admin inválido.").optional(),
 });
-// .refine(data => (data.initialAdminEmail && data.initialAdminName) || (!data.initialAdminEmail && !data.initialAdminName), {
-//     message: "Se fornecer email do admin, o nome também é obrigatório.",
-//     path: ["initialAdminName"]
-// });
-
 
 type OrganizationFormData = z.infer<typeof organizationSchema>;
 
 interface OrganizationFormProps {
-  organization?: Organization | null;
-  onSave: (data: OrganizationFormData) => Promise<void>;
+  organization?: Organization | null; // Use the defined Organization interface
+  onSave: (data: OrganizationFormData) => Promise<void>; // onSave expects OrganizationFormData
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -79,8 +80,6 @@ export function OrganizationForm({
       name: '',
       plan: 'basic',
       status: 'pending',
-      // initialAdminEmail: '',
-      // initialAdminName: ''
     },
   });
 
@@ -93,12 +92,10 @@ export function OrganizationForm({
           status: organization.status || 'pending',
         });
       } else {
-        form.reset({
+        form.reset({ // Default values for a new organization
           name: '',
           plan: 'basic',
           status: 'pending',
-          // initialAdminEmail: '',
-          // initialAdminName: ''
         });
       }
     }
@@ -107,7 +104,7 @@ export function OrganizationForm({
   const onSubmit = async (data: OrganizationFormData) => {
     setIsSaving(true);
     try {
-      await onSave(data);
+      await onSave(data); // Pass the validated form data
       // Toast is handled in parent component
       setIsOpen(false);
     } catch (error) {
@@ -126,7 +123,10 @@ export function OrganizationForm({
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>{organization ? 'Editar Organização' : 'Adicionar Nova Organização'}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Building className="h-5 w-5" /> 
+            {organization ? 'Editar Organização' : 'Adicionar Nova Organização'}
+          </DialogTitle>
           <DialogDescription>
             {organization ? 'Atualize os detalhes da organização cliente.' : 'Preencha os detalhes da nova organização cliente.'}
           </DialogDescription>
@@ -153,7 +153,7 @@ export function OrganizationForm({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Plano Contratado</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                         </FormControl>
@@ -173,7 +173,7 @@ export function OrganizationForm({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Status</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                         </FormControl>
@@ -188,17 +188,6 @@ export function OrganizationForm({
                   )}
                 />
             </div>
-             {/* TODO: Add fields for initial admin creation if needed */}
-             {/* {!organization && (
-                <>
-                    <Separator />
-                    <h4 className="text-sm font-medium">Admin Inicial (Opcional)</h4>
-                     <FormField control={form.control} name="initialAdminEmail" ... />
-                     <FormField control={form.control} name="initialAdminName" ... />
-                </>
-             )} */}
-
-
             <DialogFooter>
               <DialogClose asChild>
                  <Button type="button" variant="outline">Cancelar</Button>
