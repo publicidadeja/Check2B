@@ -1,4 +1,3 @@
-
 // src/components/layout/superadmin-layout.tsx
 'use client';
 
@@ -58,7 +57,7 @@ interface SuperAdminLayoutProps {
 const navItems = [
   { href: '/superadmin', label: 'Visão Geral', icon: LayoutDashboard },
   { href: '/superadmin/organizations', label: 'Organizações', icon: Building },
-  { href: '/superadmin/users', label: 'Usuários Globais', icon: Users, disabled: true }, // Example: Disabled item
+  { href: '/superadmin/users', label: 'Usuários Globais', icon: Users, disabled: true }, // Reverted to disabled
   { href: '/superadmin/plans', label: 'Planos', icon: DollarSign },
   { href: '/superadmin/settings', label: 'Config. SaaS', icon: Settings, disabled: true },
   { href: '/superadmin/analytics', label: 'Analytics', icon: BarChart, disabled: true },

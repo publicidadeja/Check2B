@@ -5,10 +5,11 @@ export interface UserProfile {
   email: string;
   role: 'super_admin' | 'admin' | 'collaborator';
   organizationId: string | null; // Null for super_admin
-  createdAt: Date | any; // Use 'any' for Firebase ServerTimestamp compatibility or import it
-  status: 'active' | 'inactive' | 'pending';
-  photoUrl?: string;
-  // Add other relevant profile fields from Employee type if needed for admins/superadmins too
-  department?: string;
-  phone?: string;
+  // Minimal fields before user management expansion
+  // createdAt?: Date | any; // Example of a field that might have existed
+  // status?: 'active' | 'inactive' | 'pending';
+  // photoUrl?: string;
+  // department?: string;
+  // phone?: string;
+  // isActive?: boolean; // This might be redundant if 'status' exists
 }
