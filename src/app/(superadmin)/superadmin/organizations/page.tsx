@@ -76,7 +76,19 @@ export default function OrganizationsPage() {
         size: 100
     },
     { accessorKey: "userCount", header: () => <div className="text-center flex items-center gap-1"><UsersIcon className="h-3 w-3"/>Usuários</div>, cell: ({ row }) => <div className="text-center text-xs">{row.original.userCount ?? '-'}</div>, size: 100 },
-    { accessorKey: "createdAt", header: () => <div className="flex items-center gap-1"><CalendarDays className="h-3 w-3"/>Criada em</div>, cell: ({ row }) => <span className="text-xs">{row.original.createdAt ? format(new Date(row.original.createdAt), 'dd/MM/yyyy', { locale: ptBR }) : '-'}</span>, size: 120 },
+    { 
+      accessorKey: "createdAt", 
+      header: () => <div className="flex items-center gap-1"><CalendarDays className="h-3 w-3"/>Criada em</div>, 
+      cell: ({ row }) => {
+        const createdAtDate = row.original.createdAt;
+        if (createdAtDate && createdAtDate instanceof Date && !isNaN(createdAtDate.getTime())) {
+          return <span className="text-xs">{format(createdAtDate, 'dd/MM/yyyy', { locale: ptBR })}</span>;
+        }
+        console.warn(`OrganizationsPage: Invalid createdAt value for org ${row.original.id}:`, createdAtDate);
+        return <span className="text-xs">-</span>;
+      }, 
+      size: 120 
+    },
     {
       id: "actions",
       header: () => <div className="text-right">Ações</div>,
@@ -142,7 +154,9 @@ export default function OrganizationsPage() {
   const handleSaveOrg = async (data: OrganizationFormData) => {
     setIsLoading(true);
     try {
-      const orgPayload = selectedOrganization ? { ...selectedOrganization, ...data } : data;
+      const orgPayload = selectedOrganization 
+        ? { ...selectedOrganization, ...data, createdAt: selectedOrganization.createdAt } // Preserve original createdAt on update
+        : data;
       await saveOrganizationToFirestore(orgPayload as any); // Cast as any for now, or refine type
       setIsFormOpen(false);
       setSelectedOrganization(null);
