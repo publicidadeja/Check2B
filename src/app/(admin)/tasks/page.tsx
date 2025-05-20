@@ -1,18 +1,16 @@
-
+// src/app/(admin)/tasks/page.tsx
 'use client';
 
 import * as React from 'react';
-import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Copy, ClipboardList, Loader2, Frown } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, Edit, Trash2, Copy, ClipboardList, Loader2, Frown } from 'lucide-react';
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from '@/components/ui/table'; // Keep Table specific imports
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
     DropdownMenu,
@@ -38,54 +36,13 @@ import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
-import { mockTasks } from '@/lib/mockData/tasks'; // Import from the new data file
-import { mockEmployees } from '@/lib/mockData/employees'; // Import employees for name lookup
-import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import LoadingSpinner
-
-// Removed mock data definition from here
-
-const fetchTasks = async (): Promise<Task[]> => {
-  await new Promise(resolve => setTimeout(resolve, 500));
-  return [...mockTasks]; // Use imported data
-};
-
-const saveTask = async (taskData: Omit<Task, 'id'> | Task): Promise<Task> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    if ('id' in taskData && taskData.id) {
-        const index = mockTasks.findIndex(t => t.id === taskData.id);
-        if (index !== -1) {
-            mockTasks[index] = { ...mockTasks[index], ...taskData };
-            console.log("Tarefa atualizada:", mockTasks[index]);
-            return mockTasks[index];
-        } else {
-            throw new Error("Tarefa não encontrada para atualização");
-        }
-    } else {
-        const newTask: Task = {
-            id: `t${Date.now()}`,
-            ...(taskData as Omit<Task, 'id'>),
-             periodicity: taskData.periodicity || 'daily',
-            organizationId: 'org_default', // Assuming a default org for now
-        };
-        mockTasks.push(newTask);
-        console.log("Nova tarefa adicionada:", newTask);
-        return newTask;
-    }
-};
-
-const deleteTask = async (taskId: string): Promise<void> => {
-     await new Promise(resolve => setTimeout(resolve, 500));
-    const index = mockTasks.findIndex(t => t.id === taskId);
-    if (index !== -1) {
-        mockTasks.splice(index, 1);
-        console.log("Tarefa removida com ID:", taskId);
-    } else {
-         throw new Error("Tarefa não encontrada para remoção");
-    }
-};
-
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { useAuth } from '@/hooks/use-auth';
+import { getTasksByOrganization, saveTask as saveTaskToFirestore, deleteTask as deleteTaskFromFirestore } from '@/lib/task-service';
+import { mockEmployees } from '@/lib/mockData/employees'; // Keep for name lookup if needed
 
 export default function TasksPage() {
+  const { organizationId, role: adminRole } = useAuth();
   const [tasks, setTasks] = React.useState<Task[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [selectedTask, setSelectedTask] = React.useState<Task | null>(null);
@@ -103,6 +60,7 @@ export default function TasksPage() {
           case 'individual': typeText = 'Indiv.'; break;
           default: typeText = task.assignedTo;
       }
+      // For individual, you might want to fetch employee name based on assignedEntityId
       const entityName = task.assignedTo === 'individual' ? mockEmployees.find(e => e.id === task.assignedEntityId)?.name : task.assignedEntityId;
       return `${typeText}${entityName ? `: ${entityName}` : ''}`;
   }
@@ -115,7 +73,6 @@ export default function TasksPage() {
           default: return periodicity;
       }
   }
-
 
   const columns: ColumnDef<Task>[] = [
     { accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
@@ -170,9 +127,14 @@ export default function TasksPage() {
   ];
 
   const loadTasks = React.useCallback(async () => {
+    if (!organizationId || adminRole !== 'admin') {
+      setIsLoading(false);
+      setTasks([]);
+      return;
+    }
     setIsLoading(true);
     try {
-      const data = await fetchTasks();
+      const data = await getTasksByOrganization(organizationId);
       setTasks(data);
     } catch (error) {
       console.error("Falha ao carregar tarefas:", error);
@@ -180,16 +142,23 @@ export default function TasksPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [organizationId, adminRole, toast]);
 
   React.useEffect(() => {
     loadTasks();
   }, [loadTasks]);
 
-  const handleSaveTask = async (data: any) => {
-     const taskDataToSave = selectedTask ? { ...selectedTask, ...data } : data;
+  const handleSaveTask = async (data: any) => { // data is TaskFormData from TaskForm
+     if (!organizationId) {
+         toast({ title: "Erro", description: "ID da organização não disponível.", variant: "destructive" });
+         return;
+     }
+     const taskDataToSave: Omit<Task, 'id' | 'organizationId'> | Task = selectedTask
+        ? { ...selectedTask, ...data, organizationId } // Ensure orgId is part of the object for type compatibility if needed
+        : { ...data, organizationId }; // Add orgId for new tasks
+
      try {
-        await saveTask(taskDataToSave);
+        await saveTaskToFirestore(organizationId, taskDataToSave);
         setIsFormOpen(false);
         setSelectedTask(null);
         await loadTasks();
@@ -213,9 +182,9 @@ export default function TasksPage() {
   };
 
  const confirmDelete = async () => {
-    if (taskToDelete) {
+    if (taskToDelete && organizationId) {
        try {
-        await deleteTask(taskToDelete.id);
+        await deleteTaskFromFirestore(organizationId, taskToDelete.id);
         toast({ title: "Sucesso", description: "Tarefa removida com sucesso." });
         await loadTasks();
       } catch (error) {
@@ -229,16 +198,14 @@ export default function TasksPage() {
   };
 
    const handleDuplicateTask = async (task: Task) => {
-    const { id, title, ...taskData } = task;
+    if (!organizationId) return;
+    const { id, title, ...taskData } = task; // Exclude id
     const duplicatedTaskData = {
-        ...taskData,
+        ...taskData, // This already contains organizationId if it's part of your Task type
         title: `${title} (Cópia)`,
-        description: task.description,
-        criteria: task.criteria,
-        periodicity: task.periodicity,
     };
     try {
-       await saveTask(duplicatedTaskData as Omit<Task, 'id'>);
+       await saveTaskToFirestore(organizationId, duplicatedTaskData as Omit<Task, 'id' | 'organizationId'>); // Cast if necessary
       toast({ title: "Sucesso", description: "Tarefa duplicada com sucesso." });
       await loadTasks();
     } catch (error) {
@@ -259,7 +226,7 @@ export default function TasksPage() {
 
 
   return (
-     <div className="space-y-6"> {/* Main container */}
+     <div className="space-y-6">
        <Card>
          <CardHeader>
              <CardTitle className="flex items-center gap-2">
@@ -270,13 +237,17 @@ export default function TasksPage() {
          <CardContent>
             {isLoading ? (
                  <div className="flex justify-center items-center py-10">
-                     {/* Use LoadingSpinner */}
                      <LoadingSpinner text="Carregando tarefas..." />
+                 </div>
+            ) : !organizationId && adminRole !== 'super_admin' && !isLoading ? (
+                 <div className="text-center py-10 text-muted-foreground">
+                     <Frown className="mx-auto h-10 w-10 mb-2" />
+                     <p>Selecione uma organização para gerenciar tarefas ou você não tem permissão.</p>
                  </div>
             ) : tasks.length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground">
                     <Frown className="mx-auto h-10 w-10 mb-2" />
-                    <p>Nenhuma tarefa encontrada.</p>
+                    <p>Nenhuma tarefa encontrada para esta organização.</p>
                     <Button className="mt-4" onClick={openAddForm}>
                         <PlusCircle className="mr-2 h-4 w-4" />
                         Criar Primeira Tarefa
@@ -291,7 +262,7 @@ export default function TasksPage() {
                 />
             )}
          </CardContent>
-          { !isLoading && tasks.length > 0 && ( // Only show footer if not loading and tasks exist
+          { !isLoading && tasks.length > 0 && organizationId && (
               <CardFooter className="flex justify-end">
                     <Button onClick={openAddForm}>
                        <PlusCircle className="mr-2 h-4 w-4" />
@@ -327,5 +298,3 @@ export default function TasksPage() {
     </div>
   );
 }
-
-    

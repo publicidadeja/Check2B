@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { Building, PlusCircle, MoreHorizontal, Edit, Trash2, ToggleRight, Eye, CircleSlash, Users as UsersIcon, CalendarDays, Settings2 } from 'lucide-react'; // Added Settings2 for Gerenciar
+import { Building, PlusCircle, MoreHorizontal, Edit, Trash2, ToggleRight, Settings2, CircleSlash, Users as UsersIcon, CalendarDays } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Button } from '@/components/ui/button';
@@ -22,9 +22,9 @@ import { OrganizationForm } from '@/components/organization/organization-form';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import Link from 'next/link'; // Import Link for navigation
+import Link from 'next/link';
+import { getAllOrganizations, saveOrganization as saveOrganizationToFirestore, deleteOrganizationFromFirestore, updateOrganizationStatusInFirestore } from '@/lib/organization-service';
 
-// Define Organization type specifically for this context
 export interface Organization {
   id: string;
   name: string;
@@ -35,83 +35,8 @@ export interface Organization {
   userCount?: number;
 }
 
-// Mock data for organizations
-const mockOrganizations: Organization[] = [
-  { id: 'org_default', name: 'Empresa Padrão (Dev)', plan: 'premium', status: 'active', createdAt: new Date(2023, 5, 15), adminCount: 2, userCount: 15 },
-  { id: 'org_abc', name: 'Cliente ABC Ltda.', plan: 'basic', status: 'active', createdAt: new Date(2024, 0, 10), adminCount: 1, userCount: 5 },
-  { id: 'org_xyz', name: 'Consultoria XYZ', plan: 'enterprise', status: 'inactive', createdAt: new Date(2023, 10, 1), adminCount: 5, userCount: 50 },
-  { id: 'org_new', name: 'Nova Empresa S/A', plan: 'premium', status: 'pending', createdAt: new Date(2024, 4, 1), adminCount: 0, userCount: 0 },
-];
-
-// Mock API functions (replace with actual Firestore calls)
-const fetchOrganizations = async (): Promise<Organization[]> => {
-  await new Promise(resolve => setTimeout(resolve, 600));
-  return [...mockOrganizations];
-};
-
-// Ensure OrganizationFormData matches the form's output
 type OrganizationFormData = Pick<Organization, 'name' | 'plan' | 'status'>;
 
-const saveOrganization = async (orgData: OrganizationFormData, existingId?: string): Promise<Organization> => {
-  await new Promise(resolve => setTimeout(resolve, 700));
-  if (existingId) {
-    const index = mockOrganizations.findIndex(o => o.id === existingId);
-    if (index !== -1) {
-      mockOrganizations[index] = {
-          ...mockOrganizations[index], // Keep existing createdAt, counts etc.
-          name: orgData.name,
-          plan: orgData.plan,
-          status: orgData.status,
-       };
-      console.log("Organização atualizada:", mockOrganizations[index]);
-      return mockOrganizations[index];
-    } else {
-      throw new Error("Organização não encontrada para atualização");
-    }
-  } else {
-    const newOrg: Organization = {
-      id: `org_${Date.now()}`,
-      name: orgData.name,
-      plan: orgData.plan,
-      status: orgData.status,
-      createdAt: new Date(),
-      adminCount: 0,
-      userCount: 0,
-    };
-    mockOrganizations.push(newOrg);
-    console.log("Nova organização criada:", newOrg);
-    return newOrg;
-  }
-};
-
-const deleteOrganization = async (orgId: string): Promise<void> => {
-  await new Promise(resolve => setTimeout(resolve, 500));
-   if (orgId === 'org_default') {
-      throw new Error("Não é possível remover a organização padrão de desenvolvimento.");
-  }
-  const index = mockOrganizations.findIndex(o => o.id === orgId);
-  if (index !== -1) {
-    mockOrganizations.splice(index, 1);
-    console.log("Organização removida:", orgId);
-  } else {
-    throw new Error("Organização não encontrada para remoção");
-  }
-};
-
-const toggleOrganizationStatus = async (orgId: string): Promise<Organization> => {
-   await new Promise(resolve => setTimeout(resolve, 400));
-    if (orgId === 'org_default') {
-      throw new Error("Não é possível alterar o status da organização padrão.");
-    }
-   const index = mockOrganizations.findIndex(o => o.id === orgId);
-   if (index !== -1) {
-       mockOrganizations[index].status = mockOrganizations[index].status === 'active' ? 'inactive' : 'active';
-       console.log("Status da organização alterado:", mockOrganizations[index]);
-       return mockOrganizations[index];
-   } else {
-        throw new Error("Organização não encontrada para alterar status");
-   }
-}
 
 export default function OrganizationsPage() {
   const [organizations, setOrganizations] = React.useState<Organization[]>([]);
@@ -151,7 +76,7 @@ export default function OrganizationsPage() {
         size: 100
     },
     { accessorKey: "userCount", header: () => <div className="text-center flex items-center gap-1"><UsersIcon className="h-3 w-3"/>Usuários</div>, cell: ({ row }) => <div className="text-center text-xs">{row.original.userCount ?? '-'}</div>, size: 100 },
-    { accessorKey: "createdAt", header: () => <div className="flex items-center gap-1"><CalendarDays className="h-3 w-3"/>Criada em</div>, cell: ({ row }) => <span className="text-xs">{format(row.original.createdAt, 'dd/MM/yyyy', { locale: ptBR })}</span>, size: 120 },
+    { accessorKey: "createdAt", header: () => <div className="flex items-center gap-1"><CalendarDays className="h-3 w-3"/>Criada em</div>, cell: ({ row }) => <span className="text-xs">{row.original.createdAt ? format(new Date(row.original.createdAt), 'dd/MM/yyyy', { locale: ptBR }) : '-'}</span>, size: 120 },
     {
       id: "actions",
       header: () => <div className="text-right">Ações</div>,
@@ -184,7 +109,7 @@ export default function OrganizationsPage() {
                 <DropdownMenuItem
                   onClick={() => handleDeleteClick(org)}
                   className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                  disabled={org.id === 'org_default'}
+                  disabled={org.id === 'org_default' || org.userCount && org.userCount > 0} // Example: cannot delete if has users
                 >
                   <Trash2 className="mr-2 h-4 w-4" /> Remover
                 </DropdownMenuItem>
@@ -200,7 +125,7 @@ export default function OrganizationsPage() {
   const loadOrganizations = React.useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await fetchOrganizations();
+      const data = await getAllOrganizations();
       setOrganizations(data.sort((a,b) => a.name.localeCompare(b.name)));
     } catch (error) {
       console.error("Falha ao carregar organizações:", error);
@@ -217,7 +142,8 @@ export default function OrganizationsPage() {
   const handleSaveOrg = async (data: OrganizationFormData) => {
     setIsLoading(true);
     try {
-      await saveOrganization(data, selectedOrganization?.id);
+      const orgPayload = selectedOrganization ? { ...selectedOrganization, ...data } : data;
+      await saveOrganizationToFirestore(orgPayload as any); // Cast as any for now, or refine type
       setIsFormOpen(false);
       setSelectedOrganization(null);
       await loadOrganizations();
@@ -238,6 +164,14 @@ export default function OrganizationsPage() {
   };
 
   const handleDeleteClick = (org: Organization) => {
+     if (org.id === 'org_default') {
+        toast({ title: "Ação Bloqueada", description: "A organização padrão de desenvolvimento não pode ser removida.", variant: "destructive" });
+        return;
+    }
+    if (org.userCount && org.userCount > 0) {
+        toast({ title: "Ação Bloqueada", description: "Não é possível remover organizações com usuários ativos. Desative-a primeiro.", variant: "destructive" });
+        return;
+    }
     setOrganizationToDelete(org);
     setIsDeleting(true);
   };
@@ -246,7 +180,7 @@ export default function OrganizationsPage() {
     if (organizationToDelete) {
        setIsLoading(true);
       try {
-        await deleteOrganization(organizationToDelete.id);
+        await deleteOrganizationFromFirestore(organizationToDelete.id);
         toast({ title: "Sucesso", description: "Organização removida com sucesso." });
         await loadOrganizations();
       } catch (error: any) {
@@ -261,10 +195,15 @@ export default function OrganizationsPage() {
   };
 
    const handleToggleStatus = async (org: Organization) => {
+      if (org.id === 'org_default') {
+          toast({ title: "Ação Bloqueada", description: "Não é possível alterar o status da organização padrão.", variant: "destructive" });
+          return;
+      }
       setIsLoading(true);
+      const newStatus = org.status === 'active' ? 'inactive' : 'active';
       try {
-          await toggleOrganizationStatus(org.id);
-          toast({ title: "Sucesso", description: `Status da organização ${org.name} alterado.` });
+          await updateOrganizationStatusInFirestore(org.id, newStatus);
+          toast({ title: "Sucesso", description: `Status da organização ${org.name} alterado para ${getStatusText(newStatus)}.` });
           await loadOrganizations();
       } catch (error: any) {
           console.error("Falha ao alterar status:", error);
@@ -329,7 +268,7 @@ export default function OrganizationsPage() {
                 <AlertDialogHeader>
                     <AlertDialogTitle>Confirmar Remoção</AlertDialogTitle>
                     <AlertDialogDescription>
-                        Tem certeza que deseja remover a organização "{organizationToDelete?.name}"? Esta ação é irreversível e removerá todos os dados associados (usuários, avaliações, etc.). A organização padrão não pode ser removida.
+                        Tem certeza que deseja remover a organização "{organizationToDelete?.name}"? Esta ação é irreversível e removerá todos os dados associados.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

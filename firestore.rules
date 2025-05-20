@@ -1,0 +1,83 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users collection
+    match /users/{userId} {
+      // Allow user to read their own profile
+      allow read: if request.auth.uid == userId;
+      // Super Admin can read/write any user profile
+      allow read, write: if request.auth.token.role == 'super_admin';
+      // Admin can read/write users within their own organization
+      allow read, write: if request.auth.token.role == 'admin' && request.auth.token.organizationId == resource.data.organizationId;
+      // Allow creation if user is creating their own profile OR if it's an admin/super_admin
+      allow create: if request.auth.uid == userId || request.auth.token.role == 'admin' || request.auth.token.role == 'super_admin';
+    }
+
+    // Organizations collection
+    match /organizations/{organizationId} {
+      // Super Admin can read/write any organization document
+      allow read, write: if request.auth.token.role == 'super_admin';
+      // Admin can read their own organization document
+      allow read: if request.auth.token.role == 'admin' && request.auth.token.organizationId == organizationId;
+      // Collaborators can read their own organization document (e.g., for settings)
+      allow read: if request.auth.token.role == 'collaborator' && request.auth.token.organizationId == organizationId;
+
+      // Subcollections within an organization
+      match /{subcollection}/{docId} {
+        // Super Admin can read/write anything within any organization
+        allow read, write: if request.auth.token.role == 'super_admin';
+        // Admin can read/write anything within their own organization
+        allow read, write: if request.auth.token.role == 'admin' && request.auth.token.organizationId == organizationId;
+
+        // Collaborator specific access (more granular rules needed per subcollection)
+        // Example: Collaborators can read tasks of their organization
+        allow read: if request.auth.token.role == 'collaborator' && request.auth.token.organizationId == organizationId && subcollection == 'tasks';
+        
+        // Example: Collaborators can read evaluations where they are the employeeId
+        match /evaluations/{evaluationId} {
+            allow read: if request.auth.token.role == 'collaborator' && 
+                           request.auth.token.organizationId == organizationId &&
+                           resource.data.employeeId == request.auth.uid;
+            // Admins of the org can create/update evaluations
+            allow write: if request.auth.token.role == 'admin' && request.auth.token.organizationId == organizationId;
+        }
+
+        // Add similar granular rules for challenges, participations, departments, roles etc.
+        // Example for challenges:
+        match /challenges/{challengeId} {
+            allow read: if request.auth.token.organizationId == organizationId; // All in org can read
+            allow write: if request.auth.token.role == 'admin' && request.auth.token.organizationId == organizationId; // Only admins of org can write
+        }
+        match /challengeParticipations/{participationId} {
+            allow read: if request.auth.token.organizationId == organizationId && 
+                           (resource.data.employeeId == request.auth.uid || request.auth.token.role == 'admin');
+            allow create: if request.auth.token.organizationId == organizationId && resource.data.employeeId == request.auth.uid;
+            allow update: if request.auth.token.organizationId == organizationId && 
+                             (resource.data.employeeId == request.auth.uid || request.auth.token.role == 'admin'); // Admin can update (e.g. evaluate)
+        }
+         match /awards/{awardId} {
+            allow read: if request.auth.token.organizationId == organizationId;
+            allow write: if request.auth.token.role == 'admin' && request.auth.token.organizationId == organizationId;
+        }
+         match /departments/{departmentId} {
+            allow read: if request.auth.token.organizationId == organizationId;
+            allow write: if request.auth.token.role == 'admin' && request.auth.token.organizationId == organizationId;
+        }
+         match /roles/{roleId} {
+            allow read: if request.auth.token.organizationId == organizationId;
+            allow write: if request.auth.token.role == 'admin' && request.auth.token.organizationId == organizationId;
+        }
+      }
+    }
+
+    // Plans collection (Global)
+    match /plans/{planId} {
+        // Allow read for authenticated users (e.g., for display on a pricing page)
+        allow read: if request.auth != null;
+        // Only Super Admin can create/update/delete plans
+        allow write: if request.auth.token.role == 'super_admin';
+    }
+  }
+}

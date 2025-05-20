@@ -13,14 +13,13 @@ interface ConditionalLayoutProps {
   children: React.ReactNode;
 }
 
-// Variável para simular o bypass do middleware (para desenvolvimento)
-// Em um cenário real, você removeria ou controlaria isso de outra forma.
-const MIDDLEWARE_BYPASS_ACTIVE = false; // Mude para false para testar o middleware real
+// Mude para false para testar o middleware real e o fluxo de autenticação
+const MIDDLEWARE_BYPASS_ACTIVE = true; 
 
 export function ConditionalLayout({ children }: ConditionalLayoutProps) {
   const { role, isLoading, isGuest } = useAuth();
   const pathname = usePathname();
-  const router = useRouter();
+  const router = useRouter(); // Import and use router
 
   console.log(`[ConditionalLayout START V5] Path: ${pathname}, Role: ${role}, isLoading: ${isLoading}, isGuest: ${isGuest}, Middleware Bypass: ${MIDDLEWARE_BYPASS_ACTIVE}`);
 
@@ -38,6 +37,7 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
     return <>{children}</>;
   }
 
+  // Define path types
   const isAdminPath = !pathname.startsWith('/colaborador') && !pathname.startsWith('/superadmin') && pathname !== '/login';
   const isColaboradorPath = pathname.startsWith('/colaborador');
   const isSuperAdminPath = pathname.startsWith('/superadmin');
@@ -47,6 +47,10 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
   // --- MODO BYPASS DO MIDDLEWARE (APENAS PARA DESENVOLVIMENTO) ---
   if (MIDDLEWARE_BYPASS_ACTIVE) {
     console.log("[ConditionalLayout BYPASS ACTIVE V5]");
+    if (isSuperAdminPath) {
+      console.log(`[ConditionalLayout DECISION V5] (Middleware Bypass) Renderizando SuperAdminLayout para: ${pathname}`);
+      return <SuperAdminLayout>{children}</SuperAdminLayout>;
+    }
     if (isAdminPath) {
       console.log(`[ConditionalLayout DECISION V5] (Middleware Bypass) Renderizando MainLayout para: ${pathname}`);
       return <MainLayout>{children}</MainLayout>;
@@ -55,19 +59,13 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
       console.log(`[ConditionalLayout DECISION V5] (Middleware Bypass) Renderizando MobileLayout para: ${pathname}`);
       return <MobileLayout>{children}</MobileLayout>;
     }
-    if (isSuperAdminPath) {
-      console.log(`[ConditionalLayout DECISION V5] (Middleware Bypass) Renderizando SuperAdminLayout para: ${pathname}`);
-      return <SuperAdminLayout>{children}</SuperAdminLayout>;
-    }
-    // Se não for nenhuma das rotas conhecidas no modo bypass, talvez a página não exista ou seja um erro.
-    // Poderia renderizar children diretamente ou uma página de erro genérica.
     console.warn(`[ConditionalLayout BYPASS UNHANDLED V5] Path não corresponde a nenhum layout conhecido: ${pathname}. Renderizando children diretamente.`);
-    return <>{children}</>; // Ou uma página de erro/fallback mais robusta
+    return <>{children}</>; // Fallback for unknown paths in bypass mode
   }
 
-  // --- ROTEAMENTO NORMAL (QUANDO O MIDDLEWARE ESTIVER ATIVO E CONTROLAR O ACESSO) ---
+  // --- ROTEAMENTO NORMAL (QUANDO O MIDDLEWARE ESTIVER ATIVO) ---
 
-  // --- GUEST MODE ROUTING ---
+  // GUEST MODE ROUTING
   if (isGuest) {
     console.log(`[ConditionalLayout GUEST MODE V5] Role (from guest cookie): ${role}`);
     if (role === 'super_admin' && isSuperAdminPath) {
@@ -87,7 +85,7 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
     return <div className="flex min-h-screen items-center justify-center"><LoadingSpinner size="lg" text="Redirecionando..." /></div>;
   }
 
-  // --- AUTHENTICATED USER ROUTING ---
+  // AUTHENTICATED USER ROUTING
   if (role) {
     console.log(`[ConditionalLayout AUTH MODE V5] Role: ${role}`);
     if (role === 'super_admin') {
@@ -121,7 +119,7 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
     }
   }
 
-  // Final fallback
+  // Final fallback if no conditions met (should ideally not be reached if middleware and auth logic is correct)
   console.error(`[ConditionalLayout CRITICAL FALLBACK V5] Unhandled state. Path: ${pathname}, Role: ${role}, Guest: ${isGuest}. Redirecting to login.`);
   if (typeof window !== 'undefined') router.push('/login?reason=cl_critical_fallback_v5');
   return <div className="flex min-h-screen items-center justify-center"><LoadingSpinner size="lg" text="Erro de Roteamento..." /></div>;

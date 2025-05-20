@@ -27,8 +27,9 @@ import {
     DialogClose,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getFirebaseApp } from '@/lib/firebase';
 
-// Schema for Add Admin Form Validation
 const addAdminSchema = z.object({
   name: z.string().min(3, { message: 'Nome deve ter pelo menos 3 caracteres.' }),
   email: z.string().email({ message: 'Email inválido.' }),
@@ -40,7 +41,7 @@ type AddAdminFormData = z.infer<typeof addAdminSchema>;
 interface AddAdminFormProps {
   organizationId: string;
   organizationName: string;
-  onAdminAdded: () => void; // Callback after admin is successfully added
+  onAdminAdded: () => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -56,6 +57,7 @@ export function AddAdminForm({
   const [isSaving, setIsSaving] = React.useState(false);
   const [showPassword, setShowPassword] = React.useState(false);
   const { toast } = useToast();
+  const firebaseApp = getFirebaseApp();
 
   const isOpen = controlledOpen ?? internalOpen;
   const setIsOpen = controlledOnOpenChange ?? setInternalOpen;
@@ -71,32 +73,40 @@ export function AddAdminForm({
 
   React.useEffect(() => {
     if (isOpen) {
-      form.reset(); // Reset form when opened
+      form.reset();
       setShowPassword(false);
     }
   }, [form, isOpen]);
 
   const onSubmit = async (data: AddAdminFormData) => {
+    if (!firebaseApp) {
+        toast({ title: "Erro de Configuração", description: "Firebase não inicializado.", variant: "destructive" });
+        return;
+    }
     setIsSaving(true);
     try {
-      // Here you would call the Cloud Function `createOrganizationAdmin`
-      // For now, we simulate a success and call the callback.
-      console.log('Simulating call to createOrganizationAdmin with:', { ...data, organizationId });
+      const functions = getFunctions(firebaseApp);
+      const createOrgAdmin = httpsCallable(functions, 'createOrganizationAdmin');
       
-      // Replace with actual Cloud Function call
-      // const functions = getFunctions(getFirebaseApp()); // Assuming getFirebaseApp initializes Firebase
-      // const createOrgAdmin = httpsCallable(functions, 'createOrganizationAdmin');
-      // const result = await createOrgAdmin({ ...data, organizationId });
-
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      toast({
-        title: 'Sucesso!',
-        description: `Administrador ${data.name} adicionado à organização ${organizationName}.`,
+      const result = await createOrgAdmin({
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        organizationId: organizationId,
       });
-      onAdminAdded(); // Notify parent to refresh admin list or take other actions
-      setIsOpen(false);
+      
+      const resultData = result.data as { success?: boolean, userId?: string, message?: string, error?: string };
+
+      if (resultData.success) {
+        toast({
+          title: 'Sucesso!',
+          description: resultData.message || `Administrador ${data.name} adicionado à organização ${organizationName}.`,
+        });
+        onAdminAdded();
+        setIsOpen(false);
+      } else {
+        throw new Error(resultData.error || 'Falha ao criar administrador na Cloud Function.');
+      }
     } catch (error: any) {
       console.error("Falha ao adicionar administrador:", error);
       toast({

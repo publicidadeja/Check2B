@@ -1,10 +1,11 @@
+// src/components/task/task-form.tsx
 'use client';
 
 import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { ClipboardPlus, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,9 +37,9 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import type { Task } from '@/types/task';
-import { DatePicker } from '@/components/ui/date-picker'; // Verified correct import path
+// DatePicker import is not used here, can be removed if not planned for specific_days/dates
+// import { DatePicker } from '@/components/ui/date-picker';
 
-// Updated schema with Portuguese messages and refinement
 const taskSchema = z.object({
   title: z.string().min(3, { message: 'Título deve ter pelo menos 3 caracteres.' }),
   description: z.string().min(5, { message: 'Descrição deve ter pelo menos 5 caracteres.' }),
@@ -48,15 +49,15 @@ const taskSchema = z.object({
   periodicity: z.enum(['daily', 'specific_days', 'specific_dates'], { required_error: "Periodicidade é obrigatória." }),
   assignedTo: z.enum(['role', 'department', 'individual']).optional(),
   assignedEntityId: z.string().optional().or(z.literal('')),
+  // organizationId is handled by the service, not part of the form data directly
 }).refine(data => {
-     // If assignedTo is set, assignedEntityId must also be set and not empty
      if (data.assignedTo && !data.assignedEntityId?.trim()) {
        return false;
      }
      return true;
    }, {
     message: "Se 'Atribuído a' for selecionado, o ID/Nome correspondente é obrigatório.",
-    path: ["assignedEntityId"], // Attach error to assignedEntityId field
+    path: ["assignedEntityId"],
    });
 
 
@@ -64,7 +65,7 @@ type TaskFormData = z.infer<typeof taskSchema>;
 
 interface TaskFormProps {
   task?: Task | null;
-  onSave: (data: TaskFormData) => Promise<void>;
+  onSave: (data: TaskFormData) => Promise<void>; // onSave expects TaskFormData
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -110,7 +111,7 @@ export function TaskForm({
             assignedEntityId: task.assignedEntityId || '',
           });
         } else {
-           form.reset({ // Reset to default empty values for new task
+           form.reset({
              title: '',
              description: '',
              criteria: '',
@@ -127,8 +128,7 @@ export function TaskForm({
   const onSubmit = async (data: TaskFormData) => {
     setIsSaving(true);
     try {
-      await onSave(data);
-      // Toast is handled in parent component
+      await onSave(data); // Pass validated form data to parent
       setIsOpen(false);
     } catch (error) {
        console.error("Falha ao salvar tarefa:", error);
@@ -142,11 +142,8 @@ export function TaskForm({
     }
   };
 
-  // Trigger is handled in the parent component (TasksPage)
-
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-       {/* <DialogTrigger asChild> ... </DialogTrigger> */}
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>{task ? 'Editar Tarefa' : 'Criar Nova Tarefa'}</DialogTitle>
@@ -207,7 +204,6 @@ export function TaskForm({
                     <FormItem>
                       <FormLabel>Categoria (Opcional)</FormLabel>
                       <FormControl>
-                        {/* TODO: Substituir por Select/Combobox que carrega categorias existentes */}
                         <Input placeholder="Ex: Vendas, TI" {...field} value={field.value ?? ''} />
                       </FormControl>
                       <FormMessage />
@@ -254,7 +250,6 @@ export function TaskForm({
                           <SelectItem value="specific_dates">Datas Específicas</SelectItem>
                         </SelectContent>
                       </Select>
-                       {/* TODO: Adicionar inputs condicionais para specific_days/dates */}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -269,7 +264,6 @@ export function TaskForm({
                       <FormLabel>Atribuído a (Opcional)</FormLabel>
                        <Select onValueChange={(value) => {
                            field.onChange(value);
-                           // Clear entity ID when assignment type changes to avoid invalid state
                            form.setValue('assignedEntityId', '');
                        }} value={field.value ?? ''}>
                         <FormControl>
@@ -290,7 +284,6 @@ export function TaskForm({
                     </FormItem>
                   )}
                 />
-                 {/* Input Condicional baseado em assignedTo */}
                  {form.watch('assignedTo') && (
                    <FormField
                      control={form.control}
@@ -303,7 +296,6 @@ export function TaskForm({
                              'Nome/ID do Colaborador' }
                          </FormLabel>
                          <FormControl>
-                           {/* TODO: Idealmente, substituir por Combobox/Select que busca entidades */}
                            <Input
                                 placeholder={
                                     form.watch('assignedTo') === 'role' ? 'Ex: Recrutadora' :
@@ -320,7 +312,6 @@ export function TaskForm({
                    />
                  )}
             </div>
-
 
             <DialogFooter>
               <DialogClose asChild>

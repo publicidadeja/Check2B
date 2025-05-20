@@ -3,9 +3,9 @@
 
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Building, Users, PlusCircle, MoreHorizontal, Edit2, Trash2, ShieldAlert, Loader2, ArrowLeft } from 'lucide-react';
+import { Building, Users, PlusCircle, MoreHorizontal, Edit2, Trash2, ShieldAlert, Loader2, ArrowLeft, UserX, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'; // CardFooter removed as not used
 import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useToast } from '@/hooks/use-toast';
@@ -13,49 +13,16 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import Link from 'next/link';
-import { AddAdminForm } from '@/components/organization/add-admin-form'; // Component to be created
-import type { UserProfile } from '@/types/user'; // Assuming UserProfile is defined
-import { Organization } from '@/app/(superadmin)/superadmin/organizations/page'; // Import Organization type
+import { AddAdminForm } from '@/components/organization/add-admin-form';
+import type { UserProfile } from '@/types/user';
+import type { Organization } from '@/app/(superadmin)/superadmin/organizations/page';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { getFunctions, httpsCallable } from "firebase/functions"; // For calling Cloud Functions
-import { getFirebaseApp } from '@/lib/firebase'; // Your Firebase app instance
-
-// Mock data - replace with actual data fetching
-const mockOrganizationsData: Organization[] = [
-  { id: 'org_default', name: 'Empresa Padrão (Dev)', plan: 'premium', status: 'active', createdAt: new Date(2023, 5, 15), adminCount: 2, userCount: 15 },
-  { id: 'org_abc', name: 'Cliente ABC Ltda.', plan: 'basic', status: 'active', createdAt: new Date(2024, 0, 10), adminCount: 1, userCount: 5 },
-  { id: 'org_xyz', name: 'Consultoria XYZ', plan: 'enterprise', status: 'inactive', createdAt: new Date(2023, 10, 1), adminCount: 5, userCount: 50 },
-];
-
-let mockOrgAdmins: UserProfile[] = [ // Let, so we can modify it
-    { uid: 'admin1_org_default', name: 'Admin Dev 1', email: 'dev1@orgdefault.com', role: 'admin', organizationId: 'org_default', status: 'active' },
-    { uid: 'admin2_org_default', name: 'Admin Dev 2', email: 'dev2@orgdefault.com', role: 'admin', organizationId: 'org_default', status: 'active' },
-    { uid: 'admin1_org_abc', name: 'Admin ABC', email: 'admin@orgabc.com', role: 'admin', organizationId: 'org_abc', status: 'active' },
-];
-
-
-// Mock API functions
-const fetchOrganizationDetails = async (orgId: string): Promise<Organization | null> => {
-    await new Promise(resolve => setTimeout(resolve, 300));
-    return mockOrganizationsData.find(org => org.id === orgId) || null;
-};
-
-const fetchOrganizationAdmins = async (orgId: string): Promise<UserProfile[]> => {
-    await new Promise(resolve => setTimeout(resolve, 400));
-    return mockOrgAdmins.filter(admin => admin.organizationId === orgId);
-};
-
-const removeAdminFromOrganization = async (adminUserId: string, organizationId: string): Promise<void> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    // In a real app, this would involve:
-    // 1. Removing/updating custom claims (e.g., set role to 'collaborator' or remove organizationId)
-    // 2. Updating the user's document in Firestore
-    // For mock, just filter out:
-    mockOrgAdmins = mockOrgAdmins.filter(admin => !(admin.uid === adminUserId && admin.organizationId === organizationId));
-    console.log(`Mock: Admin ${adminUserId} removed from org ${organizationId}`);
-    // Potentially disable the user in Firebase Auth if they have no other roles/orgs
-};
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { getFirebaseApp } from '@/lib/firebase';
+import { getOrganizationById } from '@/lib/organization-service';
+import { getUsersByRoleAndOrganization } from '@/lib/user-service';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'; // Added DropdownMenu imports
 
 
 export default function ManageOrganizationPage() {
@@ -63,24 +30,30 @@ export default function ManageOrganizationPage() {
   const params = useParams();
   const organizationId = params.organizationId as string;
   const { toast } = useToast();
+  const firebaseApp = getFirebaseApp();
 
   const [organization, setOrganization] = React.useState<Organization | null>(null);
   const [admins, setAdmins] = React.useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isAddAdminFormOpen, setIsAddAdminFormOpen] = React.useState(false);
-  const [adminToRemove, setAdminToRemove] = React.useState<UserProfile | null>(null);
-  const [isDeletingAdmin, setIsDeletingAdmin] = React.useState(false);
+  const [adminToModify, setAdminToModify] = React.useState<UserProfile | null>(null);
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = React.useState(false);
+  const [confirmDialogAction, setConfirmDialogAction] = React.useState<'remove' | 'toggleStatus' | null>(null);
+  const [isProcessing, setIsProcessing] = React.useState(false);
+  // Add EditAdminForm state if you create that component
+  // const [isEditAdminFormOpen, setIsEditAdminFormOpen] = React.useState(false);
+
 
   const loadData = React.useCallback(async () => {
     if (!organizationId) return;
     setIsLoading(true);
     try {
       const [orgDetails, orgAdmins] = await Promise.all([
-        fetchOrganizationDetails(organizationId),
-        fetchOrganizationAdmins(organizationId),
+        getOrganizationById(organizationId),
+        getUsersByRoleAndOrganization('admin', organizationId),
       ]);
       setOrganization(orgDetails);
-      setAdmins(orgAdmins);
+      setAdmins(orgAdmins || []);
     } catch (error) {
       console.error("Falha ao carregar dados da organização:", error);
       toast({ title: "Erro", description: "Não foi possível carregar os dados.", variant: "destructive" });
@@ -93,33 +66,53 @@ export default function ManageOrganizationPage() {
     loadData();
   }, [loadData]);
 
-  const getInitials = (name: string) => name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+  const getInitials = (name?: string) => name ? name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() : 'AD';
 
   const handleAdminAdded = () => {
-    loadData(); // Refresh admin list
+    loadData();
   };
 
-  const handleDeleteAdminClick = (admin: UserProfile) => {
-    setAdminToRemove(admin);
-    setIsDeletingAdmin(true);
+  const openConfirmDialog = (admin: UserProfile, action: 'remove' | 'toggleStatus') => {
+    setAdminToModify(admin);
+    setConfirmDialogAction(action);
+    setIsConfirmDialogOpen(true);
   };
 
-  const confirmDeleteAdmin = async () => {
-    if (adminToRemove && organization) {
-      try {
-        // Here you would call a Cloud Function to properly remove admin privileges
-        // For mock purposes:
-        await removeAdminFromOrganization(adminToRemove.uid, organization.id);
-        toast({ title: "Sucesso", description: `Admin ${adminToRemove.name} removido da organização.` });
-        loadData(); // Refresh admin list
-      } catch (error: any) {
-        toast({ title: "Erro", description: error.message || "Falha ao remover admin.", variant: "destructive" });
-      } finally {
-        setIsDeletingAdmin(false);
-        setAdminToRemove(null);
-      }
+  const handleConfirmAction = async () => {
+    if (!adminToModify || !organization || !confirmDialogAction || !firebaseApp) return;
+    setIsProcessing(true);
+    const functions = getFunctions(firebaseApp);
+
+    try {
+        if (confirmDialogAction === 'remove') {
+            const removeAdminFunc = httpsCallable(functions, 'removeAdminFromOrganizationFirebase');
+            await removeAdminFunc({ userId: adminToModify.uid, organizationId: organization.id });
+            toast({ title: "Sucesso", description: `Admin ${adminToModify.name} removido da organização.` });
+        } else if (confirmDialogAction === 'toggleStatus') {
+            const newStatus = adminToModify.status === 'active' ? 'inactive' : 'active';
+            const toggleStatusFunc = httpsCallable(functions, 'toggleUserStatusFirebase'); // Changed from toggleAdminStatusFirebase
+            await toggleStatusFunc({ userId: adminToModify.uid, status: newStatus });
+            toast({ title: "Sucesso", description: `Status do admin ${adminToModify.name} alterado para ${newStatus}.` });
+        }
+        await loadData();
+    } catch (error: any) {
+        console.error(`Error ${confirmDialogAction} admin:`, error);
+        toast({ title: "Erro", description: error.message || `Falha ao ${confirmDialogAction === 'remove' ? 'remover' : 'alterar status do'} admin.`, variant: "destructive" });
+    } finally {
+        setIsProcessing(false);
+        setIsConfirmDialogOpen(false);
+        setAdminToModify(null);
+        setConfirmDialogAction(null);
     }
   };
+
+  // Placeholder for edit functionality
+  const handleEditAdmin = (admin: UserProfile) => {
+      console.log("Edit admin clicked:", admin);
+      toast({title: "Info", description: "Funcionalidade de edição de admin ainda não implementada."});
+      // setSelectedAdminToEdit(admin);
+      // setIsEditAdminFormOpen(true);
+  }
 
   const columns: ColumnDef<UserProfile>[] = [
     {
@@ -146,9 +139,21 @@ export default function ManageOrganizationPage() {
       cell: ({ row }) => {
         const adminUser = row.original;
         return (
-          <Button variant="ghost" size="sm" onClick={() => handleDeleteAdminClick(adminUser)} className="text-destructive hover:text-destructive hover:bg-destructive/10">
-             <Trash2 className="mr-2 h-3.5 w-3.5" /> Remover
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleEditAdmin(adminUser)}>
+                    <Edit2 className="mr-2 h-4 w-4" /> Editar
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openConfirmDialog(adminUser, 'toggleStatus')}>
+                    {adminUser.status === 'active' ? <UserX className="mr-2 h-4 w-4"/> : <UserCheck className="mr-2 h-4 w-4"/>}
+                    {adminUser.status === 'active' ? 'Desativar' : 'Ativar'}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openConfirmDialog(adminUser, 'remove')} className="text-destructive focus:text-destructive">
+                    <Trash2 className="mr-2 h-4 w-4" /> Remover da Organização
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         );
       },
     },
@@ -161,9 +166,10 @@ export default function ManageOrganizationPage() {
   if (!organization) {
     return (
       <div className="text-center py-10">
-        <p className="text-muted-foreground">Organização não encontrada.</p>
-        <Button variant="outline" onClick={() => router.back()} className="mt-4">
-          <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
+        <ShieldAlert className="mx-auto h-12 w-12 text-destructive mb-4" />
+        <p className="text-muted-foreground text-lg">Organização não encontrada.</p>
+        <Button variant="outline" onClick={() => router.push('/superadmin/organizations')} className="mt-6">
+          <ArrowLeft className="mr-2 h-4 w-4" /> Voltar para Organizações
         </Button>
       </div>
     );
@@ -181,7 +187,7 @@ export default function ManageOrganizationPage() {
                 Gerenciar Organização: {organization.name}
             </h1>
             <p className="text-sm text-muted-foreground">
-                Adicione ou remova administradores para esta organização.
+                Adicione, remova ou gerencie administradores para esta organização.
             </p>
         </div>
       </div>
@@ -215,19 +221,19 @@ export default function ManageOrganizationPage() {
         onOpenChange={setIsAddAdminFormOpen}
       />
 
-      <AlertDialog open={isDeletingAdmin} onOpenChange={setIsDeletingAdmin}>
+      <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar Remoção de Admin</AlertDialogTitle>
+            <AlertDialogTitle>Confirmar Ação</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja remover {adminToRemove?.name} como administrador desta organização?
-              Isso não removerá o usuário do sistema, apenas suas permissões de admin para esta organização.
+              {confirmDialogAction === 'remove' && `Tem certeza que deseja remover ${adminToModify?.name} como administrador desta organização? Isso revogará suas permissões de admin para esta organização.`}
+              {confirmDialogAction === 'toggleStatus' && `Tem certeza que deseja ${adminToModify?.status === 'active' ? 'desativar' : 'ativar'} o administrador ${adminToModify?.name}?`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteAdmin} className="bg-destructive hover:bg-destructive/90">
-              Remover Admin
+            <AlertDialogCancel disabled={isProcessing}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmAction} className={confirmDialogAction === 'remove' ? "bg-destructive hover:bg-destructive/90" : ""} disabled={isProcessing}>
+              {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (confirmDialogAction === 'remove' ? 'Remover' : 'Confirmar')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

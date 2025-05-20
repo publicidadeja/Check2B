@@ -1,8 +1,8 @@
-
+// src/app/login/page.tsx
 'use client';
 
 import * as React from 'react';
-import { Suspense } from 'react'; // Import Suspense
+import { Suspense } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
@@ -48,7 +48,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { loginUser, setAuthCookie as setAuthCookiesLib, logoutUser, sendPasswordReset } from '@/lib/auth';
+import { loginUser, logoutUser, sendPasswordReset } from '@/lib/auth'; // Removed setAuthCookie as it's handled by loginUser
 import { Separator } from '@/components/ui/separator';
 import { Logo } from '@/components/logo';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -56,7 +56,7 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
 const loginSchema = z.object({
   email: z.string().email({ message: 'Por favor, insira um email válido.' }),
-  password: z.string().min(1, { message: 'Senha é obrigatória.' }),
+  password: z.string().min(6, { message: 'Senha deve ter pelo menos 6 caracteres.' }),
 });
 
 const forgotPasswordSchema = z.object({
@@ -95,7 +95,7 @@ function LoginContent() {
 
   React.useEffect(() => {
       const reason = searchParams.get('reason');
-      if (reason === 'unauthenticated' || reason === 'cl_critical_fallback_v5' || reason === 'cl_guest_unhandled_path_v5' || reason === 'cl_bypass_no_path_match_v4') {
+      if (reason === 'unauthenticated' || reason === 'cl_critical_fallback_v5' || reason === 'cl_guest_unhandled_path_v5' || reason === 'cl_bypass_no_path_match_v4' || reason === 'conditional_layout_fallback' || reason === 'no_layout_applied_fallback') {
           setLoginError("Sua sessão expirou ou você não está autenticado. Por favor, faça login novamente.");
       } else if (reason === 'no_org') {
            setLoginError("Seu usuário não está vinculado a uma organização. Contate o administrador.");
@@ -105,8 +105,6 @@ function LoginContent() {
           setLoginError("Usuário autenticado, mas perfil não encontrado no banco de dados. Contate o suporte.");
       } else if (reason === 'profile_error') {
           setLoginError("Erro ao carregar dados do perfil. Contate o suporte.");
-      } else if (reason === 'conditional_layout_fallback') {
-          setLoginError("Não foi possível determinar seu acesso. Por favor, tente fazer login.");
       }
       if (reason && typeof window !== 'undefined') {
            const currentUrl = new URL(window.location.href);
@@ -120,12 +118,11 @@ function LoginContent() {
     setIsLoading(true);
     setLoginError(null);
     try {
-      const { userCredential, userData } = await loginUser(data.email, data.password);
+      // loginUser now handles setting cookies internally after successful auth and profile fetch
+      const { userData } = await loginUser(data.email, data.password);
 
-       if (userCredential?.user && userData) {
-        const { role, organizationId } = userData;
-         const idToken = await userCredential.user.getIdToken(true);
-         setAuthCookiesLib(idToken, role, organizationId);
+       if (userData) {
+        const { role } = userData;
 
         toast({
           title: 'Login bem-sucedido!',
@@ -135,17 +132,18 @@ function LoginContent() {
         if (role === 'super_admin') {
           router.push('/superadmin');
         } else if (role === 'admin') {
-          router.push('/');
+          router.push('/'); // Admin dashboard is root
         } else if (role === 'collaborator') {
           router.push('/colaborador/dashboard');
         } else {
           console.warn(`[Login Page] Invalid role detected after login: ${role}`);
           setLoginError("Perfil de usuário inválido após login. Contate o suporte.");
-          await logoutUser();
+          await logoutUser(); // Use the centralized logoutUser from lib/auth
           setIsLoading(false);
           return;
         }
       } else {
+        // This case should ideally be handled by an error in loginUser if userData is not returned
         throw new Error("Credenciais inválidas ou erro desconhecido durante o login.");
       }
     } catch (error: any) {
@@ -233,8 +231,8 @@ function LoginContent() {
       Cookies.remove('auth-token');
       Cookies.remove('user-role');
       Cookies.remove('organization-id');
+      console.log(`[Login Page] Setting guest mode cookie to: ${role}`);
       Cookies.set('guest-mode', role, { path: '/' }); // Session cookie
-      console.log(`[Login Page] Setting guest mode cookie to: ${role}`); // Added log
       router.push(targetPath);
   };
 
