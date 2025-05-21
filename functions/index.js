@@ -340,7 +340,7 @@ exports.removeAdminFromOrganizationFirebase = functions.https.onCall(async (data
     console.log('[removeAdminFromOrganizationFirebase] Caller Auth context:', JSON.stringify(context.auth));
 
     if (!context.auth || !context.auth.token || context.auth.token.role !== 'super_admin') {
-        console.error(`[removeAdminFromOrganizationFirebase] Permission denied. Caller role: ${context.auth.token?.role}`);
+        //console.error(`[removeAdminFromOrganizationFirebase] Permission denied. Caller role: ${context.auth.token?.role}`);
         throw new functions.https.HttpsError('permission-denied', 'Apenas Super Admins podem remover administradores de organização.');
     }
     const { userId, organizationId } = data;
