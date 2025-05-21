@@ -28,7 +28,8 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { getFirebaseApp } from '@/lib/firebase';
+import { getFirebaseApp, getAuthInstance } from '@/lib/firebase'; // Import getAuthInstance
+import { getIdTokenResult } from 'firebase/auth'; // Import getIdTokenResult for more detailed token info
 
 const addAdminSchema = z.object({
   name: z.string().min(3, { message: 'Nome deve ter pelo menos 3 caracteres.' }),
@@ -58,6 +59,7 @@ export function AddAdminForm({
   const [showPassword, setShowPassword] = React.useState(false);
   const { toast } = useToast();
   const firebaseApp = getFirebaseApp();
+  const auth = getAuthInstance();
 
   const isOpen = controlledOpen ?? internalOpen;
   const setIsOpen = controlledOnOpenChange ?? setInternalOpen;
@@ -80,14 +82,45 @@ export function AddAdminForm({
 
   const onSubmit = async (data: AddAdminFormData) => {
     if (!firebaseApp) {
-        toast({ title: "Erro de Configuração", description: "Firebase não inicializado.", variant: "destructive" });
+        toast({ title: "Erro de Configuração", description: "Firebase App não inicializado.", variant: "destructive" });
+        console.error("[AddAdminForm] Firebase App not initialized.");
         return;
     }
+    if (!auth) {
+        toast({ title: "Erro de Configuração", description: "Firebase Auth não inicializado.", variant: "destructive" });
+        console.error("[AddAdminForm] Firebase Auth not initialized.");
+        return;
+    }
+
     setIsSaving(true);
+
+    // Log current user's token claims (frontend)
+    if (auth.currentUser) {
+        try {
+            const tokenResult = await getIdTokenResult(auth.currentUser, true); // Force refresh
+            console.log('[AddAdminForm] Current user token claims before calling CF:', tokenResult.claims);
+            if (!tokenResult.claims.role || tokenResult.claims.role !== 'super_admin') {
+                 console.warn('[AddAdminForm] Logged in user does NOT have super_admin claim in their token.');
+            }
+        } catch (tokenError) {
+            console.error('[AddAdminForm] Error getting user token:', tokenError);
+        }
+    } else {
+        console.warn('[AddAdminForm] No current user found in Firebase Auth before calling CF.');
+    }
+
+
     try {
       const functions = getFunctions(firebaseApp);
       const createOrgAdmin = httpsCallable(functions, 'createOrganizationAdmin');
       
+      console.log(`[AddAdminForm] Calling createOrganizationAdmin with data:`, {
+        name: data.name,
+        email: data.email,
+        organizationId: organizationId,
+        // Password is not logged for security
+      });
+
       const result = await createOrgAdmin({
         name: data.name,
         email: data.email,
@@ -96,6 +129,7 @@ export function AddAdminForm({
       });
       
       const resultData = result.data as { success?: boolean, userId?: string, message?: string, error?: string };
+      console.log('[AddAdminForm] Cloud Function result:', resultData);
 
       if (resultData.success) {
         toast({
@@ -105,13 +139,21 @@ export function AddAdminForm({
         onAdminAdded();
         setIsOpen(false);
       } else {
+        // Prefer error message from CF if available
         throw new Error(resultData.error || 'Falha ao criar administrador na Cloud Function.');
       }
     } catch (error: any) {
-      console.error("Falha ao adicionar administrador:", error);
+      console.error("[AddAdminForm] Falha ao adicionar administrador:", error);
+      // Check if it's a Firebase Functions HttpsError and use its message
+      let errorMessage = `Falha ao adicionar administrador. Tente novamente.`;
+      if (error.code && error.message) { // Firebase HttpsError has code and message
+          errorMessage = error.message;
+      } else if (error.message) {
+          errorMessage = error.message;
+      }
       toast({
         title: 'Erro!',
-        description: error.message || `Falha ao adicionar administrador. Tente novamente.`,
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {

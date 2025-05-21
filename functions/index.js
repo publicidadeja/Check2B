@@ -11,21 +11,34 @@ if (admin.apps.length === 0) {
  * Can only be called by an authenticated user (preferably a Super Admin).
  */
 exports.setCustomUserClaimsFirebase = functions.https.onCall(async (data, context) => {
+  console.log('[setCustomUserClaimsFirebase] Function called with data:', JSON.stringify(data));
+  console.log('[setCustomUserClaimsFirebase] Caller Auth context:', JSON.stringify(context.auth));
+
   if (!context.auth) {
     throw new functions.https.HttpsError("unauthenticated", "A função só pode ser chamada por usuários autenticados.");
   }
 
-  // IMPORTANT: Implement robust authorization here.
-  // Example: Check if the caller is a super_admin.
-  const callerUserRecord = await admin.auth().getUser(context.auth.uid);
-  if (!callerUserRecord.customClaims || callerUserRecord.customClaims.role !== 'super_admin') {
-    // Allow admin to set claims for users in their own organization if needed
-    // if (callerUserRecord.customClaims.role === 'admin' && data.claims.organizationId !== callerUserRecord.customClaims.organizationId) {
-    //   throw new functions.https.HttpsError('permission-denied', 'Você não tem permissão para definir claims para esta organização.');
-    // } else if (callerUserRecord.customClaims.role !== 'admin') {
-    //   throw new functions.https.HttpsError('permission-denied', 'Você não tem permissão para executar esta ação.');
-    // }
-     throw new functions.https.HttpsError('permission-denied', 'Apenas Super Admins podem definir claims diretamente.');
+  const callerUid = context.auth.uid;
+  let callerClaims = context.auth.token; // Claims from the ID token of the caller
+
+  // If token is empty, try to fetch user record to get claims (fallback, might not be ideal for callable functions)
+  if (!callerClaims || Object.keys(callerClaims).length === 0) {
+    console.warn('[setCustomUserClaimsFirebase] Caller token is empty or missing. Fetching user record for claims for UID:', callerUid);
+    try {
+        const callerUserRecord = await admin.auth().getUser(callerUid);
+        callerClaims = callerUserRecord.customClaims || {};
+        console.log('[setCustomUserClaimsFirebase] Fetched custom claims for caller:', JSON.stringify(callerClaims));
+    } catch (fetchError) {
+        console.error('[setCustomUserClaimsFirebase] Error fetching caller user record:', fetchError);
+        throw new functions.https.HttpsError('internal', 'Não foi possível verificar as permissões do chamador.');
+    }
+  }
+
+
+  // IMPORTANT: Robust authorization
+  if (!callerClaims || callerClaims.role !== 'super_admin') {
+    console.error(`[setCustomUserClaimsFirebase] Permission denied for UID: ${callerUid}. Claims: ${JSON.stringify(callerClaims)}`);
+    throw new functions.https.HttpsError('permission-denied', 'Apenas Super Admins podem definir claims diretamente.');
   }
 
   const { uid, claims } = data;
@@ -50,7 +63,7 @@ exports.setCustomUserClaimsFirebase = functions.https.onCall(async (data, contex
 
   try {
     await admin.auth().setCustomUserClaims(uid, claims);
-    console.log(`Custom claims definidos para ${uid}:`, claims);
+    console.log(`[setCustomUserClaimsFirebase] Custom claims definidos para ${uid}:`, claims);
 
     // Also update the user document in Firestore with the new role and orgId for consistency
     const userDocRef = admin.firestore().collection('users').doc(uid);
@@ -58,11 +71,11 @@ exports.setCustomUserClaimsFirebase = functions.https.onCall(async (data, contex
         role: claims.role,
         organizationId: claims.organizationId,
     }, { merge: true });
-    console.log(`Documento do usuário ${uid} atualizado no Firestore com novos claims.`);
+    console.log(`[setCustomUserClaimsFirebase] Documento do usuário ${uid} atualizado no Firestore com novos claims.`);
 
-    return { message: `Sucesso! Custom claims ${JSON.stringify(claims)} definidos para o usuário ${uid}` };
+    return { success: true, message: `Sucesso! Custom claims ${JSON.stringify(claims)} definidos para o usuário ${uid}` };
   } catch (error) {
-    console.error("Erro ao definir custom claims:", error);
+    console.error("[setCustomUserClaimsFirebase] Erro ao definir custom claims:", error);
     throw new functions.https.HttpsError("internal", "Não foi possível definir os custom claims.", error.message);
   }
 });
@@ -74,7 +87,19 @@ exports.setCustomUserClaimsFirebase = functions.https.onCall(async (data, contex
  * Can only be called by a Super Admin.
  */
 exports.createOrganizationAdmin = functions.https.onCall(async (data, context) => {
-  if (!context.auth || !context.auth.token || context.auth.token.role !== 'super_admin') {
+  console.log('[createOrganizationAdmin] Function called with data:', JSON.stringify(data));
+  console.log('[createOrganizationAdmin] Caller Auth context:', JSON.stringify(context.auth)); // Log the auth context
+
+  if (!context.auth || !context.auth.token) {
+    console.error('[createOrganizationAdmin] Unauthenticated or token missing.');
+    throw new functions.https.HttpsError('unauthenticated', 'Ação requer autenticação.');
+  }
+  
+  // Log the claims from the token
+  console.log('[createOrganizationAdmin] Caller token claims:', JSON.stringify(context.auth.token));
+
+  if (context.auth.token.role !== 'super_admin') {
+    console.error(`[createOrganizationAdmin] Permission denied. Caller role is '${context.auth.token.role}', not 'super_admin'.`);
     throw new functions.https.HttpsError('permission-denied', 'Apenas Super Admins podem criar administradores de organização.');
   }
 
@@ -92,32 +117,33 @@ exports.createOrganizationAdmin = functions.https.onCall(async (data, context) =
       email: email,
       password: password,
       displayName: name,
-      emailVerified: false,
+      emailVerified: false, // Consider setting to true or implementing verification flow
     });
-    console.log('Novo admin de organização criado no Auth:', userRecord.uid);
+    console.log('[createOrganizationAdmin] Novo admin de organização criado no Auth:', userRecord.uid);
 
     const claimsToSet = { role: 'admin', organizationId: organizationId };
     await admin.auth().setCustomUserClaims(userRecord.uid, claimsToSet);
-    console.log('Custom claims definidos para o novo admin:', claimsToSet);
+    console.log('[createOrganizationAdmin] Custom claims definidos para o novo admin:', claimsToSet);
 
     const userDocRef = admin.firestore().collection('users').doc(userRecord.uid);
     await userDocRef.set({
       uid: userRecord.uid,
       name: name,
       email: email,
-      role: 'admin',
+      role: 'admin', // Explicitly set role in Firestore document
       organizationId: organizationId,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      status: 'active',
+      status: 'active', // Default status for new admin
     });
-    console.log('Perfil do admin criado no Firestore:', userRecord.uid);
+    console.log('[createOrganizationAdmin] Perfil do admin criado no Firestore:', userRecord.uid);
 
     return { success: true, userId: userRecord.uid, message: `Administrador '${name}' criado com sucesso para a organização ${organizationId}.` };
   } catch (error) {
-    console.error('Erro ao criar admin de organização:', error);
+    console.error('[createOrganizationAdmin] Erro ao criar admin de organização:', error);
     if (error.code === 'auth/email-already-exists') {
       throw new functions.https.HttpsError('already-exists', 'Este email já está em uso.');
     }
+    // For other errors, throw a generic internal error
     throw new functions.https.HttpsError('internal', 'Falha ao criar administrador de organização.', error.message);
   }
 });
@@ -125,23 +151,30 @@ exports.createOrganizationAdmin = functions.https.onCall(async (data, context) =
 /**
  * Creates a new user (collaborator for an organization) in Firebase Auth,
  * sets their custom claims, and creates their profile in Firestore.
- * Can be called by an Admin of the same organization.
+ * Can be called by an Admin of the same organization or a Super Admin.
  */
 exports.createOrganizationUser = functions.https.onCall(async (data, context) => {
-    if (!context.auth) {
+    console.log('[createOrganizationUser] Function called with data:', JSON.stringify(data));
+    console.log('[createOrganizationUser] Caller Auth context:', JSON.stringify(context.auth));
+
+    if (!context.auth || !context.auth.token) {
+        console.error('[createOrganizationUser] Unauthenticated or token missing.');
         throw new functions.https.HttpsError('unauthenticated', 'A função só pode ser chamada por usuários autenticados.');
     }
-
-    const callerUid = context.auth.uid;
-    const callerUserRecord = await admin.auth().getUser(callerUid);
-    const callerClaims = callerUserRecord.customClaims;
-
+    
+    console.log('[createOrganizationUser] Caller token claims:', JSON.stringify(context.auth.token));
+    const callerClaims = context.auth.token;
     const { name, email, password, organizationId, department, role: userRole, photoUrl, admissionDate, status = 'active' } = data;
 
     // Authorization: Caller must be an admin of the target organization OR a super_admin
-    if (!(callerClaims && ((callerClaims.role === 'admin' && callerClaims.organizationId === organizationId) || callerClaims.role === 'super_admin'))) {
+    const isAdminOfOrg = callerClaims.role === 'admin' && callerClaims.organizationId === organizationId;
+    const isSuperAdmin = callerClaims.role === 'super_admin';
+
+    if (!isAdminOfOrg && !isSuperAdmin) {
+        console.error(`[createOrganizationUser] Permission denied. Caller role: ${callerClaims.role}, Caller orgId: ${callerClaims.organizationId}, Target orgId: ${organizationId}`);
         throw new functions.https.HttpsError('permission-denied', 'Você não tem permissão para criar usuários para esta organização.');
     }
+
      if (!name || !email || !password || !organizationId || !userRole || !department || !admissionDate) {
         throw new functions.https.HttpsError('invalid-argument', 'Campos obrigatórios: nome, email, senha, ID da organização, função, departamento, data de admissão.');
     }
@@ -155,33 +188,33 @@ exports.createOrganizationUser = functions.https.onCall(async (data, context) =>
             password: password,
             displayName: name,
             photoURL: photoUrl || null,
-            emailVerified: false, // Or true if you have an email verification flow
+            emailVerified: false, 
         });
-        console.log(`Novo colaborador ${userRecord.uid} criado no Firebase Auth.`);
+        console.log(`[createOrganizationUser] Novo colaborador ${userRecord.uid} criado no Firebase Auth.`);
 
         const claimsToSet = { role: 'collaborator', organizationId: organizationId };
         await admin.auth().setCustomUserClaims(userRecord.uid, claimsToSet);
-        console.log('Custom claims definidos para novo colaborador:', claimsToSet);
+        console.log('[createOrganizationUser] Custom claims definidos para novo colaborador:', claimsToSet);
 
         const userDocRef = admin.firestore().collection('users').doc(userRecord.uid);
         await userDocRef.set({
             uid: userRecord.uid,
             name: name,
             email: email,
-            role: 'collaborator', // Explicitly set role
+            role: 'collaborator', 
             organizationId: organizationId,
             department: department,
-            userRole: userRole, // This is the job title, distinct from system role
-            admissionDate: admissionDate, // Should be YYYY-MM-DD string
+            userRole: userRole, 
+            admissionDate: admissionDate,
             photoUrl: photoUrl || null,
-            status: status, // 'active' or 'inactive'
+            status: status, 
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
-        console.log('Perfil do colaborador criado no Firestore:', userRecord.uid);
+        console.log('[createOrganizationUser] Perfil do colaborador criado no Firestore:', userRecord.uid);
 
         return { success: true, userId: userRecord.uid, message: `Colaborador '${name}' criado com sucesso.` };
     } catch (error) {
-        console.error('Erro ao criar colaborador:', error);
+        console.error('[createOrganizationUser] Erro ao criar colaborador:', error);
         if (error.code === 'auth/email-already-exists') {
             throw new functions.https.HttpsError('already-exists', 'Este email já está em uso.');
         }
@@ -195,50 +228,55 @@ exports.createOrganizationUser = functions.https.onCall(async (data, context) =>
  * Authorization: Only Super Admin or Admin of the same organization can delete.
  */
 exports.deleteOrganizationUser = functions.https.onCall(async (data, context) => {
-    if (!context.auth) {
+    console.log('[deleteOrganizationUser] Function called with data:', JSON.stringify(data));
+    console.log('[deleteOrganizationUser] Caller Auth context:', JSON.stringify(context.auth));
+
+    if (!context.auth || !context.auth.token) {
+        console.error('[deleteOrganizationUser] Unauthenticated or token missing.');
         throw new functions.https.HttpsError('unauthenticated', 'Autenticação é necessária.');
     }
-    const callerUid = context.auth.uid;
-    const { userId, organizationId: targetOrganizationId } = data;
+    
+    console.log('[deleteOrganizationUser] Caller token claims:', JSON.stringify(context.auth.token));
+    const callerClaims = context.auth.token;
+    const { userId, organizationId: targetOrganizationId } = data; // targetOrganizationId is for admin scope check
 
     if (!userId) {
         throw new functions.https.HttpsError('invalid-argument', 'UID do usuário é obrigatório.');
     }
 
-    const callerUserRecord = await admin.auth().getUser(callerUid);
-    const callerClaims = callerUserRecord.customClaims;
-
     const userToDeleteRecord = await admin.auth().getUser(userId);
-    const userToDeleteClaims = userToDeleteRecord.customClaims;
+    const userToDeleteClaims = userToDeleteRecord.customClaims || {}; // Ensure claims object exists
 
     // Authorization check
-    const canDelete = callerClaims.role === 'super_admin' ||
-                      (callerClaims.role === 'admin' &&
-                       callerClaims.organizationId === targetOrganizationId && // Admin deleting user from their org
-                       userToDeleteClaims.organizationId === targetOrganizationId && // User belongs to admin's org
-                       userToDeleteClaims.role === 'collaborator'); // Admin can only delete collaborators
+    const isSuperAdmin = callerClaims.role === 'super_admin';
+    // Admin can delete a collaborator from their own organization.
+    const isAdminDeletingCollaboratorInOwnOrg = 
+        callerClaims.role === 'admin' &&
+        callerClaims.organizationId === targetOrganizationId && // Admin is from the target org
+        userToDeleteClaims.organizationId === targetOrganizationId && // User belongs to admin's org
+        userToDeleteClaims.role === 'collaborator'; // Admin can only delete collaborators
 
-    if (!canDelete) {
+    if (!isSuperAdmin && !isAdminDeletingCollaboratorInOwnOrg) {
+        console.error(`[deleteOrganizationUser] Permission denied. Caller role: ${callerClaims.role}, User to delete role: ${userToDeleteClaims.role}`);
         throw new functions.https.HttpsError('permission-denied', 'Você não tem permissão para remover este usuário.');
     }
 
     try {
         // Delete from Firebase Authentication
         await admin.auth().deleteUser(userId);
-        console.log(`Usuário ${userId} removido do Firebase Auth.`);
+        console.log(`[deleteOrganizationUser] Usuário ${userId} removido do Firebase Auth.`);
 
         // Delete from Firestore
         const userDocRef = admin.firestore().collection('users').doc(userId);
         await userDocRef.delete();
-        console.log(`Documento do usuário ${userId} removido do Firestore.`);
+        console.log(`[deleteOrganizationUser] Documento do usuário ${userId} removido do Firestore.`);
 
         return { success: true, message: `Usuário ${userId} removido com sucesso.` };
     } catch (error) {
-        console.error(`Erro ao remover usuário ${userId}:`, error);
+        console.error(`[deleteOrganizationUser] Erro ao remover usuário ${userId}:`, error);
         throw new functions.https.HttpsError('internal', 'Falha ao remover usuário.', error.message);
     }
 });
-
 
 
 /**
@@ -246,12 +284,16 @@ exports.deleteOrganizationUser = functions.https.onCall(async (data, context) =>
  * Can only be called by a Super Admin or an Admin for users in their organization.
  */
 exports.toggleUserStatusFirebase = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
+  console.log('[toggleUserStatusFirebase] Function called with data:', JSON.stringify(data));
+  console.log('[toggleUserStatusFirebase] Caller Auth context:', JSON.stringify(context.auth));
+  
+  if (!context.auth || !context.auth.token) {
+    console.error('[toggleUserStatusFirebase] Unauthenticated or token missing.');
     throw new functions.https.HttpsError("unauthenticated", "A função só pode ser chamada por usuários autenticados.");
   }
 
-  const callerUserRecord = await admin.auth().getUser(context.auth.uid);
-  const callerClaims = callerUserRecord.customClaims;
+  console.log('[toggleUserStatusFirebase] Caller token claims:', JSON.stringify(context.auth.token));
+  const callerClaims = context.auth.token;
   const { userId, status } = data; // status should be 'active' or 'inactive'
 
   if (!userId || !status || !['active', 'inactive'].includes(status)) {
@@ -259,15 +301,17 @@ exports.toggleUserStatusFirebase = functions.https.onCall(async (data, context) 
   }
 
   const userToUpdateRecord = await admin.auth().getUser(userId);
-  const userToUpdateClaims = userToUpdateRecord.customClaims;
+  const userToUpdateClaims = userToUpdateRecord.customClaims || {};
 
   // Authorization: Super Admin or Admin of the same organization
-  const canToggle = callerClaims.role === 'super_admin' ||
-                    (callerClaims.role === 'admin' &&
-                     callerClaims.organizationId && // Ensure caller admin has an org
-                     callerClaims.organizationId === userToUpdateClaims.organizationId); // Target user is in caller's org
+  const isSuperAdmin = callerClaims.role === 'super_admin';
+  const isAdminManagingOwnOrgUser = 
+      callerClaims.role === 'admin' &&
+      callerClaims.organizationId && // Ensure caller admin has an org
+      callerClaims.organizationId === userToUpdateClaims.organizationId; // Target user is in caller's org
 
-  if (!canToggle) {
+  if (!isSuperAdmin && !isAdminManagingOwnOrgUser) {
+    console.error(`[toggleUserStatusFirebase] Permission denied. Caller role: ${callerClaims.role}, Target user org: ${userToUpdateClaims.organizationId}, Caller org: ${callerClaims.organizationId}`);
     throw new functions.https.HttpsError('permission-denied', 'Você não tem permissão para alterar o status deste usuário.');
   }
 
@@ -277,22 +321,26 @@ exports.toggleUserStatusFirebase = functions.https.onCall(async (data, context) 
     // Enable/disable user in Firebase Auth
     await admin.auth().updateUser(userId, { disabled: status === 'inactive' });
 
-    console.log(`Status do usuário ${userId} alterado para ${status} e Auth state para disabled: ${status === 'inactive'}`);
-    return { message: `Status do usuário ${userId} alterado para ${status}.` };
+    console.log(`[toggleUserStatusFirebase] Status do usuário ${userId} alterado para ${status} e Auth state para disabled: ${status === 'inactive'}`);
+    return { success: true, message: `Status do usuário ${userId} alterado para ${status}.` };
   } catch (error) {
-    console.error("Erro ao alterar status do usuário:", error);
+    console.error("[toggleUserStatusFirebase] Erro ao alterar status do usuário:", error);
     throw new functions.https.HttpsError("internal", "Falha ao alterar status do usuário.", error.message);
   }
 });
 
 /**
  * Removes an admin's specific administrative claims for an organization.
- * Typically, this would revert them to a 'collaborator' role within that org,
- * or remove org-specific claims if they have no other role in that org.
+ * This function effectively "demotes" an admin of a specific organization.
+ * It could revert them to a 'collaborator' role within that org, or remove org-specific claims entirely.
  * Can only be called by a Super Admin.
  */
 exports.removeAdminFromOrganizationFirebase = functions.https.onCall(async (data, context) => {
-    if (!context.auth || context.auth.token.role !== 'super_admin') {
+    console.log('[removeAdminFromOrganizationFirebase] Function called with data:', JSON.stringify(data));
+    console.log('[removeAdminFromOrganizationFirebase] Caller Auth context:', JSON.stringify(context.auth));
+
+    if (!context.auth || !context.auth.token || context.auth.token.role !== 'super_admin') {
+        console.error(`[removeAdminFromOrganizationFirebase] Permission denied. Caller role: ${context.auth.token?.role}`);
         throw new functions.https.HttpsError('permission-denied', 'Apenas Super Admins podem remover administradores de organização.');
     }
     const { userId, organizationId } = data;
@@ -301,35 +349,31 @@ exports.removeAdminFromOrganizationFirebase = functions.https.onCall(async (data
     }
 
     try {
-        // Fetch current claims to see if they are admin of THIS org
         const userRecord = await admin.auth().getUser(userId);
         const currentClaims = userRecord.customClaims || {};
 
         if (currentClaims.role === 'admin' && currentClaims.organizationId === organizationId) {
-            // Option 1: Revert to collaborator in the same org
-            // const newClaims = { role: 'collaborator', organizationId: organizationId };
-            // Option 2: Remove all org-specific claims if they are only admin of this org
-            // This depends on your system's logic if a user can be in multiple orgs or have multiple roles.
-            // For simplicity, let's assume they become a collaborator of the same org or lose org-specific claims.
-            // If they should be completely removed from the org, handle that at the user document level.
-            const newClaims = { ...currentClaims, role: 'collaborator' }; // Example: downgrade role
-            // Or, if they should lose org access completely:
-            // const newClaims = { role: null, organizationId: null }; // This might need more thought based on app logic
-
+            // Logic to "demote" or change role. Example: Demote to collaborator in the same org.
+            // Adjust this based on your exact requirements.
+            const newClaims = { role: 'collaborator', organizationId: organizationId }; 
+            
             await admin.auth().setCustomUserClaims(userId, newClaims);
+            console.log(`[removeAdminFromOrganizationFirebase] Custom claims para ${userId} atualizados para:`, newClaims);
+
             // Update Firestore document
             await admin.firestore().collection('users').doc(userId).update({
-                role: newClaims.role,
-                // organizationId: newClaims.organizationId, // if changing/removing
+                role: newClaims.role, // Update role in Firestore
+                // organizationId remains the same if demoting within the org
             });
-            console.log(`Admin ${userId} removido da organização ${organizationId}. Claims atualizados para:`, newClaims);
-            return { success: true, message: `Admin ${userId} removido da organização ${organizationId}.` };
+            console.log(`[removeAdminFromOrganizationFirebase] Documento do usuário ${userId} atualizado no Firestore para role: ${newClaims.role}`);
+            
+            return { success: true, message: `Admin ${userId} removido/rebaixado na organização ${organizationId}.` };
         } else {
-            console.log(`Usuário ${userId} não é admin da organização ${organizationId} ou claims estão inconsistentes.`);
+            console.log(`[removeAdminFromOrganizationFirebase] Usuário ${userId} não é admin da organização ${organizationId} ou claims estão inconsistentes.`);
             throw new functions.https.HttpsError('not-found', 'Usuário não é administrador desta organização ou claims inconsistentes.');
         }
     } catch (error) {
-        console.error(`Erro ao remover admin ${userId} da organização ${organizationId}:`, error);
+        console.error(`[removeAdminFromOrganizationFirebase] Erro ao remover admin ${userId} da organização ${organizationId}:`, error);
         throw new functions.https.HttpsError('internal', 'Falha ao remover admin da organização.', error.message);
     }
 });
