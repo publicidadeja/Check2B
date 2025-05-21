@@ -14,7 +14,7 @@ interface ConditionalLayoutProps {
 }
 
 // Mude para false para testar o middleware real e o fluxo de autenticação
-const MIDDLEWARE_BYPASS_ACTIVE = true; 
+const MIDDLEWARE_BYPASS_ACTIVE = false; 
 
 export function ConditionalLayout({ children }: ConditionalLayoutProps) {
   const { role, isLoading, isGuest } = useAuth();
