@@ -26,77 +26,68 @@ const requiredConfigKeys: (keyof typeof firebaseConfig)[] = [
 
 const missingKeys = requiredConfigKeys.filter(key => !firebaseConfig[key]);
 
-if (typeof window !== 'undefined') { // Ensure this runs only on the client-side for App Check client setup
+if (typeof window !== 'undefined') {
+    console.log("[Firebase Lib V3] Running in browser environment.");
+    console.log("[Firebase Lib V3] NEXT_PUBLIC_FIREBASE_PROJECT_ID:", process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID);
+
     if (missingKeys.length === 0) {
         try {
+            // --- TEMPORARY DEBUGGING FOR APP CHECK ---
+            // !!!!! IMPORTANT: REPLACE WITH YOUR ACTUAL DEBUG TOKEN FOR TESTING !!!!!
+            // !!!!! AND REMOVE THIS HARDCODING BEFORE PRODUCTION !!!!!
+            const YOUR_DEBUG_TOKEN_FOR_TESTING = "COLOQUE_SEU_TOKEN_DE_DEBUG_AQUI_PARA_TESTE"; 
+
+            if (process.env.NODE_ENV === 'development') {
+                if (YOUR_DEBUG_TOKEN_FOR_TESTING && YOUR_DEBUG_TOKEN_FOR_TESTING !== "COLOQUE_SEU_TOKEN_DE_DEBUG_AQUI_PARA_TESTE") {
+                    console.warn("[Firebase Lib DEBUG] HARDCODING App Check Debug Token:", YOUR_DEBUG_TOKEN_FOR_TESTING);
+                    (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = YOUR_DEBUG_TOKEN_FOR_TESTING;
+                } else if (process.env.NEXT_PUBLIC_APPCHECK_DEBUG_TOKEN) {
+                    console.log("[Firebase Lib DEBUG] Using App Check DEBUG TOKEN from process.env:", process.env.NEXT_PUBLIC_APPCHECK_DEBUG_TOKEN);
+                    (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = process.env.NEXT_PUBLIC_APPCHECK_DEBUG_TOKEN;
+                } else {
+                    console.warn("[Firebase Lib DEBUG] App Check Debug Token NOT SET (neither hardcoded nor via env). For localhost, App Check might fail without it or reCAPTCHA setup for localhost.");
+                }
+            }
+            // --- END TEMPORARY DEBUGGING ---
+
             if (!getApps().length) {
                 console.log("[Firebase Lib V3] Initializing Firebase app with config:", firebaseConfig);
                 app = initializeApp(firebaseConfig);
+            } else {
+                app = getApp();
+                console.log("[Firebase Lib V3] Firebase app already initialized.");
+            }
 
-                // Setup App Check Debug Token (Must be done BEFORE initializeAppCheck)
-                if (process.env.NODE_ENV === 'development') {
-                    const debugToken = process.env.NEXT_PUBLIC_APPCHECK_DEBUG_TOKEN;
-                    if (debugToken) {
-                        console.log("[Firebase Lib V3] USING APP CHECK DEBUG TOKEN:", debugToken);
-                        (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken;
-                    } else {
-                        console.warn("[Firebase Lib V3] App Check: NEXT_PUBLIC_APPCHECK_DEBUG_TOKEN not found for development. reCAPTCHA will be attempted if site key is present.");
-                    }
-                }
-
-                // Initialize App Check
+            if (app && !appCheckInstance) { // Initialize App Check if not already done
                 const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
-                if (app && recaptchaSiteKey) {
-                    console.log("[Firebase Lib V3] Initializing App Check with ReCaptchaV3Provider using site key:", recaptchaSiteKey);
+                console.log("[Firebase Lib DEBUG] Value of window.FIREBASE_APPCHECK_DEBUG_TOKEN before initializeAppCheck:", (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN);
+                console.log("[Firebase Lib DEBUG] NEXT_PUBLIC_RECAPTCHA_SITE_KEY:", recaptchaSiteKey);
+
+                if (recaptchaSiteKey) {
+                    console.log("[Firebase Lib V3] Attempting to initialize App Check with ReCaptchaV3Provider using site key:", recaptchaSiteKey);
                     try {
                         appCheckInstance = initializeAppCheck(app, {
                             provider: new ReCaptchaV3Provider(recaptchaSiteKey),
                             isTokenAutoRefreshEnabled: true
                         });
-                        console.log("[Firebase Lib V3] Firebase App Check initialized successfully.");
+                        console.log("[Firebase Lib DEBUG] Firebase App Check initialized successfully.");
                     } catch (appCheckError) {
-                        console.error("[Firebase Lib V3] Error initializing Firebase App Check:", appCheckError);
+                        console.error("[Firebase Lib DEBUG] Error initializing Firebase App Check:", appCheckError);
+                        // Optionally, alert the user or log to a monitoring service
+                        // alert("Erro ao inicializar a verificação de segurança do app. Algumas funcionalidades podem não estar disponíveis.");
                     }
-                } else if (app && !recaptchaSiteKey) {
-                    console.warn("[Firebase Lib V3] App Check: NEXT_PUBLIC_RECAPTCHA_SITE_KEY not found. App Check with reCAPTCHA will not be initialized.");
-                }
-
-            } else {
-                app = getApp();
-                // Ensure App Check is initialized if app already exists but appCheckInstance is not set (e.g., HMR)
-                if (app && !appCheckInstance) {
-                    if (process.env.NODE_ENV === 'development') {
-                        const debugToken = process.env.NEXT_PUBLIC_APPCHECK_DEBUG_TOKEN;
-                        // Re-apply debug token if not already set on window (might be needed on HMR)
-                        if (debugToken && !(window as any).FIREBASE_APPCHECK_DEBUG_TOKEN) {
-                            console.log("[Firebase Lib V3] Re-applying App Check DEBUG TOKEN on HMR:", debugToken);
-                            (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken;
-                        }
-                    }
-                    const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
-                    if (recaptchaSiteKey) {
-                        console.log("[Firebase Lib V3] Initializing App Check for existing app instance using site key:", recaptchaSiteKey);
-                         try {
-                            appCheckInstance = initializeAppCheck(app, {
-                                provider: new ReCaptchaV3Provider(recaptchaSiteKey),
-                                isTokenAutoRefreshEnabled: true
-                            });
-                            console.log("[Firebase Lib V3] Firebase App Check initialized successfully for existing app.");
-                        } catch (appCheckError) {
-                             console.error("[Firebase Lib V3] Error re-initializing App Check for existing app:", appCheckError);
-                        }
-                    } else {
-                        console.warn("[Firebase Lib V3] App Check: NEXT_PUBLIC_RECAPTCHA_SITE_KEY not found for existing app. App Check with reCAPTCHA not initialized.");
-                    }
+                } else {
+                    console.warn("[Firebase Lib V3] App Check: NEXT_PUBLIC_RECAPTCHA_SITE_KEY not found. App Check with reCAPTCHA will not be initialized. DEBUG TOKEN IS CRITICAL FOR LOCAL DEV.");
                 }
             }
+
 
             if (app) {
                 db = getFirestore(app);
                 authInstance = getAuth(app);
                 console.log("[Firebase Lib V3] Firebase App, Firestore, and Auth initialized successfully.");
             } else {
-                 console.error("[Firebase Lib V3] Firebase app could not be initialized.");
+                 console.error("[Firebase Lib V3] Firebase app could not be initialized after checks.");
             }
 
         } catch (error) {
@@ -112,7 +103,7 @@ if (typeof window !== 'undefined') { // Ensure this runs only on the client-side
         alert(`Erro de configuração do Firebase: Chaves CRÍTICAS ausentes: ${missingKeys.join(', ')}. Verifique seu arquivo .env e recarregue a página.`);
     }
 } else {
-    console.log("[Firebase Lib V3] Skipping client-side Firebase initialization (not in browser or critical keys missing).");
+    console.log("[Firebase Lib V3] Skipping client-side Firebase initialization (not in browser).");
 }
 
 
@@ -140,31 +131,12 @@ export const getAuthInstance = (): ReturnType<typeof getAuth> | null => {
 }
 
 export const getAppCheckInstance = (): AppCheck | null => {
-    const currentApp = getFirebaseApp();
-    if (!appCheckInstance && currentApp && typeof window !== 'undefined') {
-        // Attempt re-initialization if called and not initialized, only on client
-        if (process.env.NODE_ENV === 'development') {
-            const debugToken = process.env.NEXT_PUBLIC_APPCHECK_DEBUG_TOKEN;
-            if (debugToken && !(window as any).FIREBASE_APPCHECK_DEBUG_TOKEN) {
-                 console.log("[Firebase Lib V3] Applying App Check DEBUG TOKEN in getter:", debugToken);
-                (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken;
-            }
-        }
-        const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
-        if (recaptchaSiteKey) {
-            try {
-                console.log("[Firebase Lib V3] Attempting to initialize App Check in getter using site key:", recaptchaSiteKey);
-                appCheckInstance = initializeAppCheck(currentApp, {
-                    provider: new ReCaptchaV3Provider(recaptchaSiteKey),
-                    isTokenAutoRefreshEnabled: true
-                });
-                console.log("[Firebase Lib V3] Firebase App Check initialized successfully in getter.");
-            } catch (e) {
-                console.error("[Firebase Lib V3] Error re-initializing App Check in getter:", e);
-            }
-        } else {
-             console.warn("[Firebase Lib V3] App Check: NEXT_PUBLIC_RECAPTCHA_SITE_KEY not found in getter. App Check not initialized.");
-        }
+    // This function might not be strictly necessary if initialization is robust,
+    // but can be a safeguard or for specific checks.
+    if (!appCheckInstance && app) {
+        console.warn("[Firebase Lib V3] getAppCheckInstance called, but instance was not set. This might indicate an issue if called after initial load.");
+        // Avoid re-initializing here as it should happen on load.
+        // If it's null here, it means initial setup failed or hasn't run.
     }
     return appCheckInstance;
 }
