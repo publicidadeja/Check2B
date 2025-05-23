@@ -21,7 +21,7 @@ exports.setCustomUserClaimsFirebase = functions.https.onCall(async (data, contex
         if (Object.prototype.hasOwnProperty.call(context.auth.token, key)) {
             try {
                 const value = context.auth.token[key];
-                console.log(`  ${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`);
+                console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value) : value}`);
             } catch (e) {
                 console.log(`  ${key}: [Could not stringify value for this claim]`);
             }
@@ -32,17 +32,22 @@ exports.setCustomUserClaimsFirebase = functions.https.onCall(async (data, contex
   } else {
       console.log('[setCustomUserClaimsFirebase] Caller token (context.auth.token) is undefined or null.');
   }
+  console.log('[setCustomUserClaimsFirebase] Full context object keys:', Object.keys(context));
+  console.log('[setCustomUserClaimsFirebase] context.app (inspected):', util.inspect(context.app, { depth: null }));
+
 
   if (!context.auth) {
     console.error("[setCustomUserClaimsFirebase] Unauthenticated: No auth context.");
     throw new functions.https.HttpsError("unauthenticated", "A função só pode ser chamada por usuários autenticados.");
   }
 
-  const callerUid = context.auth.uid;
   const callerClaims = context.auth.token || {};
 
   if (callerClaims.role !== 'super_admin') {
-    console.error(`[setCustomUserClaimsFirebase] Permission denied for UID: ${callerUid}. Role received: ${callerClaims.role || 'N/A'}`);
+    console.error(`[setCustomUserClaimsFirebase] Permission denied for UID: ${context.auth.uid}. Role received: ${callerClaims.role || 'N/A'}`);
+    if (context.auth.token) {
+        console.log('[setCustomUserClaimsFirebase] Denied token claims (inspected):', util.inspect(context.auth.token, { depth: null }));
+    }
     throw new functions.https.HttpsError('permission-denied', 'Apenas Super Admins podem definir claims diretamente.');
   }
   console.log('[setCustomUserClaimsFirebase] Permission GRANTED for Super Admin.');
@@ -68,17 +73,15 @@ exports.setCustomUserClaimsFirebase = functions.https.onCall(async (data, contex
   }
 
   try {
-    console.log(`[setCustomUserClaimsFirebase] Attempting to set claims for UID ${uid}:`, claims);
     await admin.auth().setCustomUserClaims(uid, claims);
-    console.log(`[setCustomUserClaimsFirebase] Custom claims set successfully for UID ${uid}.`);
+    console.log(`[setCustomUserClaimsFirebase] Custom claims definidos para ${uid}:`, claims);
 
     const userDocRef = admin.firestore().collection('users').doc(uid);
-    console.log(`[setCustomUserClaimsFirebase] Attempting to update Firestore for UID ${uid}.`);
     await userDocRef.set({
         role: claims.role,
         organizationId: claims.organizationId,
     }, { merge: true });
-    console.log(`[setCustomUserClaimsFirebase] Firestore updated successfully for UID ${uid}.`);
+    console.log(`[setCustomUserClaimsFirebase] Documento do usuário ${uid} atualizado no Firestore com novos claims.`);
 
     return { success: true, message: `Sucesso! Custom claims ${JSON.stringify(claims)} definidos para o usuário ${uid}` };
   } catch (error) {
@@ -98,7 +101,7 @@ exports.createOrganizationAdmin = functions.https.onCall(async (data, context) =
         if (Object.prototype.hasOwnProperty.call(context.auth.token, key)) {
             try {
                 const value = context.auth.token[key];
-                console.log(`  ${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`);
+                console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value) : value}`);
             } catch (e) {
                 console.log(`  ${key}: [Could not stringify value for this claim]`);
             }
@@ -109,7 +112,8 @@ exports.createOrganizationAdmin = functions.https.onCall(async (data, context) =
   } else {
       console.log('[createOrganizationAdmin] Caller token (context.auth.token) is undefined or null.');
   }
-  console.log('[createOrganizationAdmin] App Check token verification status (context.app):', JSON.stringify(context.app));
+  console.log('[createOrganizationAdmin] Full context object keys:', Object.keys(context));
+  console.log('[createOrganizationAdmin] App Check token verification status (context.app):', util.inspect(context.app, { depth: null }));
 
 
   if (!context.auth || !context.auth.token) {
@@ -118,15 +122,31 @@ exports.createOrganizationAdmin = functions.https.onCall(async (data, context) =
   }
   
   const callerClaims = context.auth.token || {};
-  if (callerClaims.role !== 'super_admin') {
-    const callerUid = context.auth.uid || 'N/A'; // Safe access to uid
-    const receivedRole = callerClaims.role || 'N/A (role missing in token)';
-    console.error(`[createOrganizationAdmin] PERMISSION DENIED. Caller UID: ${callerUid}. Role received: ${receivedRole}. Expected 'super_admin'.`);
-    if (context.auth.token) { // Log the token only if it exists
-        console.log('[createOrganizationAdmin] Denied token claims (decoded):', context.auth.token);
+  let hasSuperAdminRole = false;
+  if (callerClaims.role === 'super_admin') {
+      hasSuperAdminRole = true;
+  }
+
+  console.log(`[createOrganizationAdmin] Verificação de Permissão: context.auth existe? ${!!context.auth}`);
+  if(context.auth) {
+      console.log(`[createOrganizationAdmin] Verificação de Permissão: context.auth.token existe? ${!!context.auth.token}`);
+      if(context.auth.token) {
+          console.log(`[createOrganizationAdmin] Verificação de Permissão: typeof context.auth.token é 'object'? ${typeof context.auth.token === 'object'}`);
+          console.log(`[createOrganizationAdmin] Verificação de Permissão: context.auth.token.role é '${context.auth.token.role}' (tipo: ${typeof context.auth.token.role})`);
+      }
+  }
+  console.log(`[createOrganizationAdmin] Verificação de Permissão: hasSuperAdminRole é ${hasSuperAdminRole}`);
+
+  if (!hasSuperAdminRole) {
+    const callerUid = context.auth?.uid || 'N/A';
+    const receivedRole = context.auth?.token?.role || 'N/A (token or role missing)';
+    console.error(`[createOrganizationAdmin] PERMISSION DENIED. Caller UID: ${callerUid}. Role recebida: ${receivedRole}. Esperado 'super_admin'.`);
+    if (context.auth && context.auth.token) {
+        console.log('[createOrganizationAdmin] Denied token claims (inspected):', util.inspect(context.auth.token, { depth: null }));
     }
     throw new functions.https.HttpsError('permission-denied', 'Apenas Super Admins podem criar administradores de organização.');
   }
+
   console.log('[createOrganizationAdmin] Permissão de Super Admin CONCEDIDA, prosseguindo...');
 
   const { name, email, password, organizationId } = data;
@@ -201,7 +221,7 @@ exports.createOrganizationUser = functions.https.onCall(async (data, context) =>
             if (Object.prototype.hasOwnProperty.call(context.auth.token, key)) {
                  try {
                     const value = context.auth.token[key];
-                    console.log(`  ${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`);
+                    console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value) : value}`);
                 } catch (e) {
                     console.log(`  ${key}: [Could not stringify value for this claim]`);
                 }
@@ -212,6 +232,8 @@ exports.createOrganizationUser = functions.https.onCall(async (data, context) =>
     } else {
         console.log('[createOrganizationUser] Caller token (context.auth.token) is undefined or null.');
     }
+    console.log('[createOrganizationUser] App Check token verification status (context.app):', util.inspect(context.app, { depth: null }));
+
 
     if (!context.auth || !context.auth.token) {
         console.error('[createOrganizationUser] Unauthenticated or token missing.');
@@ -288,7 +310,7 @@ exports.deleteOrganizationUser = functions.https.onCall(async (data, context) =>
             if (Object.prototype.hasOwnProperty.call(context.auth.token, key)) {
                  try {
                     const value = context.auth.token[key];
-                    console.log(`  ${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`);
+                    console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value) : value}`);
                 } catch (e) {
                     console.log(`  ${key}: [Could not stringify value for this claim]`);
                 }
@@ -299,6 +321,8 @@ exports.deleteOrganizationUser = functions.https.onCall(async (data, context) =>
     } else {
         console.log('[deleteOrganizationUser] Caller token (context.auth.token) is undefined or null.');
     }
+    console.log('[deleteOrganizationUser] App Check token verification status (context.app):', util.inspect(context.app, { depth: null }));
+
 
     if (!context.auth || !context.auth.token) {
         console.error('[deleteOrganizationUser] Unauthenticated or token missing.');
@@ -314,9 +338,11 @@ exports.deleteOrganizationUser = functions.https.onCall(async (data, context) =>
     
     let userToDeleteRecord;
     try {
+        console.log(`[deleteOrganizationUser] Attempting to fetch user to delete (UID: ${userId}).`);
         userToDeleteRecord = await admin.auth().getUser(userId);
+        console.log(`[deleteOrganizationUser] Successfully fetched user to delete. Claims:`, userToDeleteRecord.customClaims);
     } catch (error) {
-        console.error(`[deleteOrganizationUser] Error fetching user to delete (UID: ${userId}):`, error);
+        console.error(`[deleteOrganizationUser] ERROR fetching user to delete (UID: ${userId}):`, error);
         const errorMessage = (error && typeof error === 'object' && 'message' in error) ? String(error.message) : String(error);
         throw new functions.https.HttpsError('not-found', `Usuário com UID ${userId} não encontrado. Detalhe: ${errorMessage}`);
     }
@@ -330,18 +356,20 @@ exports.deleteOrganizationUser = functions.https.onCall(async (data, context) =>
         userToDeleteClaims.role === 'collaborator';
 
     if (!isSuperAdmin && !isAdminDeletingCollaboratorInOwnOrg) {
-        console.error(`[deleteOrganizationUser] Permission denied. Caller role: ${callerClaims.role}, User to delete role: ${userToDeleteClaims.role}`);
+        console.error(`[deleteOrganizationUser] Permission denied. Caller role: ${callerClaims.role}, User to delete role: ${userToDeleteClaims.role}, Target Org: ${targetOrganizationId}, User Org: ${userToDeleteClaims.organizationId}`);
         throw new functions.https.HttpsError('permission-denied', 'Você não tem permissão para remover este usuário.');
     }
     console.log('[deleteOrganizationUser] Permission GRANTED.');
 
     try {
+        console.log(`[deleteOrganizationUser] Attempting to delete user from Firebase Auth (UID: ${userId}).`);
         await admin.auth().deleteUser(userId);
-        console.log(`[deleteOrganizationUser] Usuário ${userId} removido do Firebase Auth.`);
+        console.log(`[deleteOrganizationUser] User ${userId} removed from Firebase Auth.`);
 
         const userDocRef = admin.firestore().collection('users').doc(userId);
+        console.log(`[deleteOrganizationUser] Attempting to delete user document from Firestore (UID: ${userId}).`);
         await userDocRef.delete();
-        console.log(`[deleteOrganizationUser] Documento do usuário ${userId} removido do Firestore.`);
+        console.log(`[deleteOrganizationUser] User document ${userId} removed from Firestore.`);
 
         return { success: true, message: `Usuário ${userId} removido com sucesso.` };
     } catch (error) {
@@ -361,7 +389,7 @@ exports.toggleUserStatusFirebase = functions.https.onCall(async (data, context) 
         if (Object.prototype.hasOwnProperty.call(context.auth.token, key)) {
             try {
                 const value = context.auth.token[key];
-                console.log(`  ${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`);
+                console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value) : value}`);
             } catch (e) {
                 console.log(`  ${key}: [Could not stringify value for this claim]`);
             }
@@ -372,6 +400,8 @@ exports.toggleUserStatusFirebase = functions.https.onCall(async (data, context) 
   } else {
       console.log('[toggleUserStatusFirebase] Caller token (context.auth.token) is undefined or null.');
   }
+  console.log('[toggleUserStatusFirebase] App Check token verification status (context.app):', util.inspect(context.app, { depth: null }));
+
   
   if (!context.auth || !context.auth.token) {
     console.error('[toggleUserStatusFirebase] Unauthenticated or token missing.');
@@ -387,9 +417,11 @@ exports.toggleUserStatusFirebase = functions.https.onCall(async (data, context) 
 
   let userToUpdateRecord;
   try {
+      console.log(`[toggleUserStatusFirebase] Attempting to fetch user to update (UID: ${userId}).`);
       userToUpdateRecord = await admin.auth().getUser(userId);
+      console.log(`[toggleUserStatusFirebase] Successfully fetched user to update. Claims:`, userToUpdateRecord.customClaims);
   } catch (error) {
-      console.error(`[toggleUserStatusFirebase] Error fetching user to update (UID: ${userId}):`, error);
+      console.error(`[toggleUserStatusFirebase] ERROR fetching user to update (UID: ${userId}):`, error);
       const errorMessage = (error && typeof error === 'object' && 'message' in error) ? String(error.message) : String(error);
       throw new functions.https.HttpsError('not-found', `Usuário com UID ${userId} não encontrado. Detalhe: ${errorMessage}`);
   }
@@ -408,7 +440,9 @@ exports.toggleUserStatusFirebase = functions.https.onCall(async (data, context) 
    console.log('[toggleUserStatusFirebase] Permission GRANTED.');
 
   try {
+    console.log(`[toggleUserStatusFirebase] Attempting to update Firestore status for UID ${userId} to ${status}.`);
     await admin.firestore().collection('users').doc(userId).update({ status: status });
+    console.log(`[toggleUserStatusFirebase] Firestore status updated. Attempting to update Firebase Auth disabled state for UID ${userId} to ${status === 'inactive'}.`);
     await admin.auth().updateUser(userId, { disabled: status === 'inactive' });
 
     console.log(`[toggleUserStatusFirebase] Status do usuário ${userId} alterado para ${status} e Auth state para disabled: ${status === 'inactive'}`);
@@ -430,7 +464,7 @@ exports.removeAdminFromOrganizationFirebase = functions.https.onCall(async (data
             if (Object.prototype.hasOwnProperty.call(context.auth.token, key)) {
                  try {
                     const value = context.auth.token[key];
-                    console.log(`  ${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`);
+                    console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value) : value}`);
                 } catch (e) {
                     console.log(`  ${key}: [Could not stringify value for this claim]`);
                 }
@@ -441,6 +475,8 @@ exports.removeAdminFromOrganizationFirebase = functions.https.onCall(async (data
     } else {
         console.log('[removeAdminFromOrganizationFirebase] Caller token (context.auth.token) is undefined or null.');
     }
+    console.log('[removeAdminFromOrganizationFirebase] App Check token verification status (context.app):', util.inspect(context.app, { depth: null }));
+
 
     if (!context.auth || !context.auth.token) {
         console.error('[removeAdminFromOrganizationFirebase] Unauthenticated or token missing.');
@@ -460,11 +496,14 @@ exports.removeAdminFromOrganizationFirebase = functions.https.onCall(async (data
     }
 
     try {
+        console.log(`[removeAdminFromOrganizationFirebase] Attempting to fetch user (UID: ${userId}) to remove admin role.`);
         const userRecord = await admin.auth().getUser(userId);
         const currentClaims = userRecord.customClaims || {};
+        console.log(`[removeAdminFromOrganizationFirebase] Current claims for UID ${userId}:`, currentClaims);
+
 
         if (currentClaims.role === 'admin' && currentClaims.organizationId === organizationId) {
-            const newClaims = { role: 'collaborator', organizationId: organizationId }; // Example: Demote to collaborator
+            const newClaims = { role: 'collaborator', organizationId: organizationId }; 
             
             console.log(`[removeAdminFromOrganizationFirebase] Attempting to update claims for UID ${userId} to:`, newClaims);
             await admin.auth().setCustomUserClaims(userId, newClaims);
@@ -478,7 +517,7 @@ exports.removeAdminFromOrganizationFirebase = functions.https.onCall(async (data
             
             return { success: true, message: `Admin ${userId} removido/rebaixado na organização ${organizationId}.` };
         } else {
-            console.log(`[removeAdminFromOrganizationFirebase] Usuário ${userId} não é admin da organização ${organizationId} ou claims estão inconsistentes. Current claims:`, currentClaims);
+            console.log(`[removeAdminFromOrganizationFirebase] User ${userId} is not an admin of organization ${organizationId} or claims are inconsistent. Current claims:`, currentClaims);
             throw new functions.https.HttpsError('not-found', 'Usuário não é administrador desta organização ou claims inconsistentes.');
         }
     } catch (error) {
@@ -487,3 +526,5 @@ exports.removeAdminFromOrganizationFirebase = functions.https.onCall(async (data
         throw new functions.https.HttpsError('internal', `Falha ao remover admin da organização. Detalhe: ${errorMessage}`);
     }
 });
+
+    
