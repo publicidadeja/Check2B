@@ -1,5 +1,5 @@
 // functions/index.js
-// Force re-deploy: v1.0.6
+// Force re-deploy: v1.0.7
 const functions = require("firebase-functions/v1"); // Explicitly use v1 for GCF Gen1 syntax
 const admin = require("firebase-admin");
 const util = require("util"); // Importar o módulo util
@@ -549,72 +549,4 @@ exports.removeAdminFromOrganizationFirebase = functions
           throw new functions.https.HttpsError('internal', `Falha ao remover admin da organização. Detalhe: ${errorMessage}`);
       }
   });
-
-```
-o erro que aparece no firebase console é esse:
-```
-[createOrganizationAdmin] Function called with data: {"name":"Admin teste","email":"test@test.com","password":"test@test.com","organizationId":"NNIfXpQao8cw14EVGxwx"}
-
-[createOrganizationAdmin] Full context object keys: [ 'rawRequest', 'auth', 'app', 'data', 'acceptsStreaming' ]
-
-[createOrganizationAdmin] context.app (inspected): {
-  appId: '1:444314642497:web:9097d2a53521143fd9bec0',
-  token: {
-    sub: '1:444314642497:web:9097d2a53521143fd9bec0',
-    aud: [ 'projects/444314642497', 'projects/checkup-ponpf' ],
-    provider: 'debug',
-    iss: 'https://firebaseappcheck.googleapis.com/444314642497',
-    exp: 1748012959,
-    iat: 1748009359,
-    jti: 'gS3jV6M7zFj934c6z1Fq3N3tJt7g0U9y8P9u7f7r6V0',
-    app_id: '1:444314642497:web:9097d2a53521143fd9bec0'
-  }
-}
-
-[createOrganizationAdmin] Caller UID: iDqY42dBZ0hD4tK6CjAD773x4V03
-
-[createOrganizationAdmin] Caller token claims (decoded):
-  name: Admin Master
-  role: super_admin
-  iss: https://securetoken.google.com/checkup-ponpf
-  aud: checkup-ponpf
-  auth_time: 1748009248
-  user_id: iDqY42dBZ0hD4tK6CjAD773x4V03
-  sub: iDqY42dBZ0hD4tK6CjAD773x4V03
-  iat: 1748009359
-  exp: 1748012959
-  email: victor.vh340@gmail.com
-  email_verified: false
-  firebase: { identities: { email: [Array] }, sign_in_provider: 'password' }
-  uid: iDqY42dBZ0hD4tK6CjAD773x4V03
-
-[createOrganizationAdmin] Verificação de Permissão: context.auth existe? true
-
-[createOrganizationAdmin] Verificação de Permissão: context.auth.token existe? true
-
-[createOrganizationAdmin] Verificação de Permissão: typeof context.auth.token é 'object'? true
-
-[createOrganizationAdmin] Verificação de Permissão: context.auth.token.role é 'super_admin' (tipo: string)
-
-[createOrganizationAdmin] Verificação de Permissão: hasSuperAdminRole é true
-
-[createOrganizationAdmin] Permissão de Super Admin CONCEDIDA, prosseguindo...
-
-[createOrganizationAdmin] Attempting to create user in Auth for email: test@test.com
-
-[createOrganizationAdmin] ERROR creating user in Auth: {
-  errorInfo: {
-    code: 'auth/invalid-credential',
-    message: 'A credential argument was not supplied, or was not valid.'
-  },
-  codePrefix: 'auth'
-}
-
-[createOrganizationAdmin] CRITICAL ERROR during admin creation: {
-  errorInfo: {
-    code: 'auth/invalid-credential',
-    message: 'A credential argument was not supplied, or was not valid.'
-  },
-  codePrefix: 'auth'
-}
-```
+// Force re-deploy: v1.0.8
