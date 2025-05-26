@@ -44,11 +44,11 @@ exports.setCustomUserClaimsFirebase = functions
       throw new functions.https.HttpsError("unauthenticated", "A função só pode ser chamada por usuários autenticados.");
     }
 
-    const callerClaims = context.auth.token || {};
+    const callerClaims = context.auth?.token || {};
 
     if (callerClaims.role !== 'super_admin') {
-      console.error(`[setCustomUserClaimsFirebase] Permission denied for UID: ${context.auth.uid}. Role received: ${callerClaims.role || 'N/A'}`);
-      if (context.auth.token) {
+      console.error(`[setCustomUserClaimsFirebase] Permission denied for UID: ${context.auth?.uid}. Role received: ${callerClaims.role || 'N/A'}`);
+      if (context.auth && context.auth.token) {
           console.log('[setCustomUserClaimsFirebase] Denied token claims (inspected):', util.inspect(context.auth.token, { depth: null }));
       }
       throw new functions.https.HttpsError('permission-denied', 'Apenas Super Admins podem definir claims diretamente.');
@@ -128,9 +128,8 @@ exports.createOrganizationAdmin = functions
       throw new functions.https.HttpsError('unauthenticated', 'Ação requer autenticação.');
     }
     
-    const callerClaims = context.auth.token || {};
     let hasSuperAdminRole = false;
-    if (callerClaims.role === 'super_admin') {
+    if (context.auth.token.role === 'super_admin') {
         hasSuperAdminRole = true;
     }
 
@@ -549,5 +548,3 @@ exports.removeAdminFromOrganizationFirebase = functions
           throw new functions.https.HttpsError('internal', `Falha ao remover admin da organização. Detalhe: ${errorMessage}`);
       }
   });
-
-    
