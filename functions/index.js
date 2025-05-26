@@ -548,3 +548,4 @@ exports.removeAdminFromOrganizationFirebase = functions
           throw new functions.https.HttpsError('internal', `Falha ao remover admin da organização. Detalhe: ${errorMessage}`);
       }
   });
+```
