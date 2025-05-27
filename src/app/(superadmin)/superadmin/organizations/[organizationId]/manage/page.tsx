@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Building, Users, PlusCircle, MoreHorizontal, Edit2, Trash2, ShieldAlert, Loader2, ArrowLeft, UserX, UserCheck } from 'lucide-react';
+import { Building, Users, PlusCircle, MoreHorizontal, Edit2, Trash2, ShieldAlert, Loader2, ArrowLeft, UserX, UserCheck, UserMinus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
@@ -36,11 +36,11 @@ export default function ManageOrganizationPage() {
   const [admins, setAdmins] = React.useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isAddAdminFormOpen, setIsAddAdminFormOpen] = React.useState(false);
-  const [adminToModify, setAdminToModify] = React.useState<UserProfile | null>(null);
   
+  const [adminToModify, setAdminToModify] = React.useState<UserProfile | null>(null);
   const [isConfirmToggleStatusDialogOpen, setIsConfirmToggleStatusDialogOpen] = React.useState(false);
   const [isConfirmDeleteUserDialogOpen, setIsConfirmDeleteUserDialogOpen] = React.useState(false);
-  // const [isConfirmRemoveAdminRoleDialogOpen, setIsConfirmRemoveAdminRoleDialogOpen] = React.useState(false); // For demoting
+  const [isConfirmRemoveAdminRoleDialogOpen, setIsConfirmRemoveAdminRoleDialogOpen] = React.useState(false);
 
   const [isProcessing, setIsProcessing] = React.useState(false);
 
@@ -51,7 +51,7 @@ export default function ManageOrganizationPage() {
     try {
       const [orgDetails, orgAdmins] = await Promise.all([
         getOrganizationById(organizationId),
-        getUsersByRoleAndOrganization('admin', organizationId),
+        getUsersByRoleAndOrganization('admin', organizationId), // Fetch only admins for this org
       ]);
       setOrganization(orgDetails);
       setAdmins(orgAdmins || []);
@@ -70,7 +70,7 @@ export default function ManageOrganizationPage() {
   const getInitials = (name?: string) => name ? name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() : 'AD';
 
   const handleAdminAdded = () => {
-    loadData(); // Recarrega os dados após um admin ser adicionado
+    loadData(); 
   };
 
   const openToggleStatusDialog = (admin: UserProfile) => {
@@ -82,11 +82,11 @@ export default function ManageOrganizationPage() {
     setAdminToModify(admin);
     setIsConfirmDeleteUserDialogOpen(true);
   };
-
-  // const openRemoveAdminRoleDialog = (admin: UserProfile) => {
-  //   setAdminToModify(admin);
-  //   setIsConfirmRemoveAdminRoleDialogOpen(true);
-  // };
+  
+  const openRemoveAdminRoleDialog = (admin: UserProfile) => {
+    setAdminToModify(admin);
+    setIsConfirmRemoveAdminRoleDialogOpen(true);
+  };
 
   const handleToggleAdminStatus = async () => {
     if (!adminToModify || !organization || !firebaseApp) return;
@@ -98,7 +98,7 @@ export default function ManageOrganizationPage() {
     try {
         await toggleStatusFunc({ userId: adminToModify.uid, status: newStatus });
         toast({ title: "Sucesso", description: `Status do admin ${adminToModify.name} alterado para ${newStatus}.` });
-        await loadData(); // Recarrega os dados
+        await loadData(); 
     } catch (error: any) {
         console.error(`Error toggling admin status:`, error);
         toast({ title: "Erro", description: error.message || `Falha ao alterar status do admin.`, variant: "destructive" });
@@ -116,11 +116,9 @@ export default function ManageOrganizationPage() {
     const deleteUserFunc = httpsCallable(functions, 'deleteOrganizationUser');
 
     try {
-        // targetOrganizationId is passed for the function's internal check if an Org Admin is deleting a collaborator
-        // For Super Admin, it's less critical but good to pass the context.
         await deleteUserFunc({ userId: adminToModify.uid, organizationId: organization.id });
         toast({ title: "Sucesso", description: `Usuário admin ${adminToModify.name} excluído permanentemente.` });
-        await loadData(); // Recarrega os dados
+        await loadData(); 
     } catch (error: any) {
         console.error(`Error deleting admin user:`, error);
         toast({ title: "Erro", description: error.message || `Falha ao excluir usuário admin.`, variant: "destructive" });
@@ -131,10 +129,32 @@ export default function ManageOrganizationPage() {
     }
   };
 
+  const handleConfirmRemoveAdminRole = async () => {
+    if (!adminToModify || !organization || !firebaseApp) return;
+    setIsProcessing(true);
+    const functions = getFunctions(firebaseApp);
+    const removeAdminRoleFunc = httpsCallable(functions, 'removeAdminFromOrganizationFirebase');
+
+    try {
+        await removeAdminRoleFunc({ userId: adminToModify.uid, organizationId: organization.id });
+        toast({ title: "Sucesso", description: `Privilégios de admin removidos para ${adminToModify.name} na organização ${organization.name}.` });
+        await loadData(); // Recarrega os dados (o usuário pode não ser mais listado como admin aqui)
+    } catch (error: any) {
+        console.error(`Error removing admin role:`, error);
+        toast({ title: "Erro", description: error.message || `Falha ao remover privilégios de admin.`, variant: "destructive" });
+    } finally {
+        setIsProcessing(false);
+        setIsConfirmRemoveAdminRoleDialogOpen(false);
+        setAdminToModify(null);
+    }
+  };
+
+
   // Placeholder for edit functionality
   const handleEditAdmin = (admin: UserProfile) => {
       console.log("Edit admin clicked:", admin);
       toast({title: "Info", description: "Funcionalidade de edição de admin ainda não implementada."});
+      // Example:
       // setSelectedAdminToEdit(admin);
       // setIsEditAdminFormOpen(true);
   }
@@ -170,15 +190,15 @@ export default function ManageOrganizationPage() {
                 <DropdownMenuLabel>Ações para {adminUser.name}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => handleEditAdmin(adminUser)}>
-                    <Edit2 className="mr-2 h-4 w-4" /> Editar
+                    <Edit2 className="mr-2 h-4 w-4" /> Editar Detalhes
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => openToggleStatusDialog(adminUser)}>
                     {adminUser.status === 'active' ? <UserX className="mr-2 h-4 w-4"/> : <UserCheck className="mr-2 h-4 w-4"/>}
                     {adminUser.status === 'active' ? 'Desativar' : 'Ativar'}
                 </DropdownMenuItem>
-                {/* <DropdownMenuItem onClick={() => openRemoveAdminRoleDialog(adminUser)}>
-                    <ShieldAlert className="mr-2 h-4 w-4" /> Remover Papel de Admin (Demote)
-                </DropdownMenuItem> */}
+                <DropdownMenuItem onClick={() => openRemoveAdminRoleDialog(adminUser)}>
+                    <UserMinus className="mr-2 h-4 w-4" /> Remover Privilégios de Admin
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => openDeleteUserDialog(adminUser)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
                     <Trash2 className="mr-2 h-4 w-4" /> Excluir Usuário (Permanente)
@@ -263,7 +283,7 @@ export default function ManageOrganizationPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isProcessing}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={isProcessing} onClick={() => setAdminToModify(null)}>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleToggleAdminStatus} disabled={isProcessing}>
               {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (adminToModify?.status === 'active' ? 'Desativar' : 'Ativar')}
             </AlertDialogAction>
@@ -282,7 +302,7 @@ export default function ManageOrganizationPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isProcessing}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={isProcessing} onClick={() => setAdminToModify(null)}>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmPermanentDeleteUser} className="bg-destructive hover:bg-destructive/90" disabled={isProcessing}>
               {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Excluir Permanentemente'}
             </AlertDialogAction>
@@ -290,7 +310,7 @@ export default function ManageOrganizationPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Dialog para Remover Papel de Admin (Demote) - Se decidir re-adicionar
+      {/* Dialog para Remover Privilégios de Admin (Demote) */}
       <AlertDialog open={isConfirmRemoveAdminRoleDialogOpen} onOpenChange={setIsConfirmRemoveAdminRoleDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -301,16 +321,13 @@ export default function ManageOrganizationPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isProcessing}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={isProcessing} onClick={() => setAdminToModify(null)}>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmRemoveAdminRole} disabled={isProcessing}>
               {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Confirmar Remoção de Privilégios'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      */}
     </div>
   );
 }
-
-    
