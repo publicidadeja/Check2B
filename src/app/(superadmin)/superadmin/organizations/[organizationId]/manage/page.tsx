@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Building, Users, PlusCircle, MoreHorizontal, Edit2, Trash2, ShieldAlert, Loader2, ArrowLeft, UserX, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'; // CardFooter removed as not used
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useToast } from '@/hooks/use-toast';
@@ -22,7 +22,7 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { getFirebaseApp } from '@/lib/firebase';
 import { getOrganizationById } from '@/lib/organization-service';
 import { getUsersByRoleAndOrganization } from '@/lib/user-service';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'; // Added DropdownMenu imports
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 
 
 export default function ManageOrganizationPage() {
@@ -37,11 +37,12 @@ export default function ManageOrganizationPage() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [isAddAdminFormOpen, setIsAddAdminFormOpen] = React.useState(false);
   const [adminToModify, setAdminToModify] = React.useState<UserProfile | null>(null);
-  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = React.useState(false);
-  const [confirmDialogAction, setConfirmDialogAction] = React.useState<'remove' | 'toggleStatus' | null>(null);
+  
+  const [isConfirmToggleStatusDialogOpen, setIsConfirmToggleStatusDialogOpen] = React.useState(false);
+  const [isConfirmDeleteUserDialogOpen, setIsConfirmDeleteUserDialogOpen] = React.useState(false);
+  // const [isConfirmRemoveAdminRoleDialogOpen, setIsConfirmRemoveAdminRoleDialogOpen] = React.useState(false); // For demoting
+
   const [isProcessing, setIsProcessing] = React.useState(false);
-  // Add EditAdminForm state if you create that component
-  // const [isEditAdminFormOpen, setIsEditAdminFormOpen] = React.useState(false);
 
 
   const loadData = React.useCallback(async () => {
@@ -69,40 +70,64 @@ export default function ManageOrganizationPage() {
   const getInitials = (name?: string) => name ? name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() : 'AD';
 
   const handleAdminAdded = () => {
-    loadData();
+    loadData(); // Recarrega os dados após um admin ser adicionado
   };
 
-  const openConfirmDialog = (admin: UserProfile, action: 'remove' | 'toggleStatus') => {
+  const openToggleStatusDialog = (admin: UserProfile) => {
     setAdminToModify(admin);
-    setConfirmDialogAction(action);
-    setIsConfirmDialogOpen(true);
+    setIsConfirmToggleStatusDialogOpen(true);
   };
 
-  const handleConfirmAction = async () => {
-    if (!adminToModify || !organization || !confirmDialogAction || !firebaseApp) return;
+  const openDeleteUserDialog = (admin: UserProfile) => {
+    setAdminToModify(admin);
+    setIsConfirmDeleteUserDialogOpen(true);
+  };
+
+  // const openRemoveAdminRoleDialog = (admin: UserProfile) => {
+  //   setAdminToModify(admin);
+  //   setIsConfirmRemoveAdminRoleDialogOpen(true);
+  // };
+
+  const handleToggleAdminStatus = async () => {
+    if (!adminToModify || !organization || !firebaseApp) return;
     setIsProcessing(true);
     const functions = getFunctions(firebaseApp);
+    const toggleStatusFunc = httpsCallable(functions, 'toggleUserStatusFirebase');
+    const newStatus = adminToModify.status === 'active' ? 'inactive' : 'active';
 
     try {
-        if (confirmDialogAction === 'remove') {
-            const removeAdminFunc = httpsCallable(functions, 'removeAdminFromOrganizationFirebase');
-            await removeAdminFunc({ userId: adminToModify.uid, organizationId: organization.id });
-            toast({ title: "Sucesso", description: `Admin ${adminToModify.name} removido da organização.` });
-        } else if (confirmDialogAction === 'toggleStatus') {
-            const newStatus = adminToModify.status === 'active' ? 'inactive' : 'active';
-            const toggleStatusFunc = httpsCallable(functions, 'toggleUserStatusFirebase'); // Changed from toggleAdminStatusFirebase
-            await toggleStatusFunc({ userId: adminToModify.uid, status: newStatus });
-            toast({ title: "Sucesso", description: `Status do admin ${adminToModify.name} alterado para ${newStatus}.` });
-        }
-        await loadData();
+        await toggleStatusFunc({ userId: adminToModify.uid, status: newStatus });
+        toast({ title: "Sucesso", description: `Status do admin ${adminToModify.name} alterado para ${newStatus}.` });
+        await loadData(); // Recarrega os dados
     } catch (error: any) {
-        console.error(`Error ${confirmDialogAction} admin:`, error);
-        toast({ title: "Erro", description: error.message || `Falha ao ${confirmDialogAction === 'remove' ? 'remover' : 'alterar status do'} admin.`, variant: "destructive" });
+        console.error(`Error toggling admin status:`, error);
+        toast({ title: "Erro", description: error.message || `Falha ao alterar status do admin.`, variant: "destructive" });
     } finally {
         setIsProcessing(false);
-        setIsConfirmDialogOpen(false);
+        setIsConfirmToggleStatusDialogOpen(false);
         setAdminToModify(null);
-        setConfirmDialogAction(null);
+    }
+  };
+  
+  const handleConfirmPermanentDeleteUser = async () => {
+    if (!adminToModify || !organization || !firebaseApp) return;
+    setIsProcessing(true);
+    const functions = getFunctions(firebaseApp);
+    const deleteUserFunc = httpsCallable(functions, 'deleteOrganizationUser');
+
+    try {
+        // targetOrganizationId is passed for the function's internal check if an Org Admin is deleting a collaborator
+        // For Super Admin, it's less critical but good to pass the context.
+        await deleteUserFunc({ userId: adminToModify.uid, organizationId: organization.id });
+        toast({ title: "Sucesso", description: `Usuário admin ${adminToModify.name} excluído permanentemente.` });
+        await loadData(); // Recarrega os dados
+    } catch (error: any) {
+        console.error(`Error deleting admin user:`, error);
+        toast({ title: "Erro", description: error.message || `Falha ao excluir usuário admin.`, variant: "destructive" });
+    } finally {
+        setIsProcessing(false);
+        setIsConfirmDeleteUserDialogOpen(false);
+        setAdminToModify(null);
     }
   };
 
@@ -132,7 +157,7 @@ export default function ManageOrganizationPage() {
     {
       accessorKey: "status",
       header: "Status",
-      cell: ({ row }) => <Badge variant={row.original.status === 'active' ? 'default' : 'secondary'} className={row.original.status === 'active' ? 'bg-green-100 text-green-800' : ''}>{row.original.status}</Badge>,
+      cell: ({ row }) => <Badge variant={row.original.status === 'active' ? 'default' : 'secondary'} className={row.original.status === 'active' ? 'bg-green-100 text-green-800' : ''}>{row.original.status === 'active' ? 'Ativo' : 'Inativo'}</Badge>,
     },
     {
       id: "actions",
@@ -142,15 +167,21 @@ export default function ManageOrganizationPage() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Ações para {adminUser.name}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => handleEditAdmin(adminUser)}>
                     <Edit2 className="mr-2 h-4 w-4" /> Editar
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openConfirmDialog(adminUser, 'toggleStatus')}>
+                <DropdownMenuItem onClick={() => openToggleStatusDialog(adminUser)}>
                     {adminUser.status === 'active' ? <UserX className="mr-2 h-4 w-4"/> : <UserCheck className="mr-2 h-4 w-4"/>}
                     {adminUser.status === 'active' ? 'Desativar' : 'Ativar'}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openConfirmDialog(adminUser, 'remove')} className="text-destructive focus:text-destructive">
-                    <Trash2 className="mr-2 h-4 w-4" /> Remover da Organização
+                {/* <DropdownMenuItem onClick={() => openRemoveAdminRoleDialog(adminUser)}>
+                    <ShieldAlert className="mr-2 h-4 w-4" /> Remover Papel de Admin (Demote)
+                </DropdownMenuItem> */}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => openDeleteUserDialog(adminUser)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                    <Trash2 className="mr-2 h-4 w-4" /> Excluir Usuário (Permanente)
                 </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -184,7 +215,7 @@ export default function ManageOrganizationPage() {
             </Button>
             <h1 className="text-2xl font-semibold flex items-center gap-2">
                 <Building className="h-6 w-6 text-primary" />
-                Gerenciar Organização: {organization.name}
+                Gerenciar Admins: {organization.name}
             </h1>
             <p className="text-sm text-muted-foreground">
                 Adicione, remova ou gerencie administradores para esta organização.
@@ -221,23 +252,65 @@ export default function ManageOrganizationPage() {
         onOpenChange={setIsAddAdminFormOpen}
       />
 
-      <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
+      {/* Dialog para Ativar/Desativar Admin */}
+      <AlertDialog open={isConfirmToggleStatusDialogOpen} onOpenChange={setIsConfirmToggleStatusDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar Ação</AlertDialogTitle>
+            <AlertDialogTitle>Confirmar Alteração de Status</AlertDialogTitle>
             <AlertDialogDescription>
-              {confirmDialogAction === 'remove' && `Tem certeza que deseja remover ${adminToModify?.name} como administrador desta organização? Isso revogará suas permissões de admin para esta organização.`}
-              {confirmDialogAction === 'toggleStatus' && `Tem certeza que deseja ${adminToModify?.status === 'active' ? 'desativar' : 'ativar'} o administrador ${adminToModify?.name}?`}
+              Tem certeza que deseja {adminToModify?.status === 'active' ? 'DESATIVAR' : 'ATIVAR'} o administrador {adminToModify?.name}?
+              {adminToModify?.status === 'active' ? ' O usuário não poderá mais acessar o painel de admin da organização.' : ' O usuário poderá acessar o painel de admin da organização.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isProcessing}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmAction} className={confirmDialogAction === 'remove' ? "bg-destructive hover:bg-destructive/90" : ""} disabled={isProcessing}>
-              {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (confirmDialogAction === 'remove' ? 'Remover' : 'Confirmar')}
+            <AlertDialogAction onClick={handleToggleAdminStatus} disabled={isProcessing}>
+              {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (adminToModify?.status === 'active' ? 'Desativar' : 'Ativar')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Dialog para Excluir Usuário Admin Permanentemente */}
+      <AlertDialog open={isConfirmDeleteUserDialogOpen} onOpenChange={setIsConfirmDeleteUserDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusão Permanente</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja EXCLUIR PERMANENTEMENTE o usuário administrador {adminToModify?.name} ({adminToModify?.email})?
+              Esta ação removerá o usuário do Firebase Authentication e do Firestore. **Esta ação não pode ser desfeita.**
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmPermanentDeleteUser} className="bg-destructive hover:bg-destructive/90" disabled={isProcessing}>
+              {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Excluir Permanentemente'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dialog para Remover Papel de Admin (Demote) - Se decidir re-adicionar
+      <AlertDialog open={isConfirmRemoveAdminRoleDialogOpen} onOpenChange={setIsConfirmRemoveAdminRoleDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Remoção de Privilégios de Admin</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja remover os privilégios de administrador de {adminToModify?.name} para a organização "{organization?.name}"?
+              O usuário será rebaixado para colaborador (ou outro papel padrão, dependendo da lógica da Cloud Function).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmRemoveAdminRole} disabled={isProcessing}>
+              {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Confirmar Remoção de Privilégios'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      */}
     </div>
   );
 }
+
+    
