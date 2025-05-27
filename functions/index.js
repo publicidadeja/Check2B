@@ -1,5 +1,5 @@
 // functions/index.js
-// Force re-deploy: v1.0.8
+// Force re-deploy: v2.0.0
 const functions = require("firebase-functions/v2/https"); // Using v2 for HttpsError and options
 const { setGlobalOptions } = require("firebase-functions/v2/options");
 const admin = require("firebase-admin");
@@ -60,7 +60,7 @@ exports.setCustomUserClaimsFirebase = functions.https.onCall(
                 console.log('[setCustomUserClaimsFirebase] Fetched custom claims for caller:', callerClaims);
             } catch (fetchError) {
                 console.error('[setCustomUserClaimsFirebase] Error fetching caller user record:', fetchError);
-                throw new functions.https.HttpsError('internal', 'Não foi possível verificar as permissões do chamador.', (fetchError as Error).message);
+                throw new functions.https.HttpsError('internal', 'Não foi possível verificar as permissões do chamador.', (fetchError).message);
             }
         }
 
@@ -151,7 +151,7 @@ exports.createOrganizationAdmin = functions.https.onCall(
             console.log(`[createOrganizationAdmin] Verificação de Permissão: contextAuth.token existe? ${!!contextAuth.token}`);
             if(contextAuth.token && typeof contextAuth.token === 'object') {
                 console.log(`[createOrganizationAdmin] Verificação de Permissão: typeof contextAuth.token é 'object'? ${typeof contextAuth.token === 'object'}`);
-                console.log(`[createOrganizationAdmin] Verificação de Permissão: contextAuth.token.role é '${contextAuth.token.role}' (tipo: ${typeof contextAuth.token.role})`);
+                console.log(`[createOrganizationAdmin] Verificação de Permissão: context.auth.token.role é '${contextAuth.token.role}' (tipo: ${typeof contextAuth.token.role})`);
             }
         }
         console.log(`[createOrganizationAdmin] Verificação de Permissão: hasSuperAdminRole é ${hasSuperAdminRole}`);
@@ -190,7 +190,7 @@ exports.createOrganizationAdmin = functions.https.onCall(
         } catch (authError) {
             console.error('[createOrganizationAdmin] ERROR creating user in Auth:', authError);
             const errorMessage = (authError && typeof authError === 'object' && 'message' in authError) ? String(authError.message) : String(authError);
-            if ((authError as any).code === 'auth/email-already-exists') {
+            if ((authError).code === 'auth/email-already-exists') {
                 throw new functions.https.HttpsError('already-exists', 'Este email já está em uso.');
             }
             throw new functions.https.HttpsError('internal', `Falha ao criar usuário no Firebase Auth. Detalhe: ${errorMessage}`);
@@ -318,7 +318,7 @@ exports.createOrganizationUser = functions.https.onCall(
         } catch (error) {
             console.error('[createOrganizationUser] CRITICAL ERROR creating user:', error);
             const errorMessage = (error && typeof error === 'object' && 'message' in error) ? String(error.message) : String(error);
-            if ((error as any).code === 'auth/email-already-exists') {
+            if ((error).code === 'auth/email-already-exists') {
                 throw new functions.https.HttpsError('already-exists', 'Este email já está em uso.');
             }
             throw new functions.https.HttpsError('internal', `Falha ao criar colaborador. Detalhe: ${errorMessage}`);
@@ -596,3 +596,5 @@ exports.removeAdminFromOrganizationFirebase = functions.https.onCall(
         }
     }
 );
+
+```
