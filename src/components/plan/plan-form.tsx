@@ -90,6 +90,7 @@ export function PlanForm({
     },
   });
 
+  // Adjust useForm to handle features array for useFieldArray-like behavior
   const { fields, append, remove } = useForm< { features: { value: string }[] }>({
     // @ts-ignore zodResolver type mismatch with useForm for array fields. It works.
     control: form.control, 
@@ -151,7 +152,7 @@ export function PlanForm({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="w-11/12 max-w-xs sm:max-w-md md:max-w-lg lg:max-w-xl xl:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <DollarSign className="h-5 w-5 text-primary" />
@@ -191,7 +192,7 @@ export function PlanForm({
                     </FormItem>
                   )}
                 />
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="priceMonthly"
@@ -217,7 +218,7 @@ export function PlanForm({
                             step="0.01" 
                             placeholder="Ex: 799.00" 
                             {...field} 
-                            value={field.value === null ? '' : field.value} // Handle null for display
+                            value={field.value === null ? '' : String(field.value)} // Handle null for display, ensure string
                             onChange={e => field.onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
                           />
                         </FormControl>
@@ -243,7 +244,7 @@ export function PlanForm({
                             {form.watch('features', []).length > 1 && (
                               <Button type="button" variant="ghost" size="icon" onClick={() => {
                                 const currentFeatures = form.getValues('features');
-                                form.setValue('features', currentFeatures.filter((_, i) => i !== index));
+                                form.setValue('features', currentFeatures.filter((_, i) => i !== index), { shouldValidate: true });
                               }} className="h-8 w-8 text-destructive">
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -259,14 +260,17 @@ export function PlanForm({
                     variant="outline"
                     size="sm"
                     className="mt-2 text-xs"
-                    onClick={() => form.setValue('features', [...form.getValues('features'), ''])} // Add empty string for new feature
+                    onClick={() => form.setValue('features', [...form.getValues('features'), ''])}
                   >
                     <PlusCircle className="mr-2 h-3 w-3" /> Adicionar Funcionalidade
                   </Button>
-                  <FormMessage>{form.formState.errors.features?.message}</FormMessage>
+                  {/* Display top-level error for features array if needed */}
+                  {form.formState.errors.features && !form.formState.errors.features.root && (
+                     <p className="text-sm font-medium text-destructive">{form.formState.errors.features.message}</p>
+                  )}
                 </FormItem>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="userLimit"
@@ -363,3 +367,5 @@ export function PlanForm({
     </Dialog>
   );
 }
+
+    
