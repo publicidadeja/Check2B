@@ -2,17 +2,10 @@
 'use client';
 
 import * as React from 'react';
-import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Building, Loader2, Frown } from 'lucide-react';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { PlusCircle, MoreHorizontal, Edit, Trash2, Building, Loader2, Frown, AlertTriangle } from 'lucide-react';
+import { DataTable } from '@/components/ui/data-table';
+import type { ColumnDef } from '@tanstack/react-table';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +14,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { useToast } from '@/hooks/use-toast';
+import { DepartmentForm } from '@/components/department/department-form';
+import type { Department } from '@/types/department';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { useAuth } from '@/hooks/use-auth';
+import { getDepartmentsByOrganization, saveDepartment, deleteDepartment as deleteDepartmentFromFirestore } from '@/lib/department-service';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,72 +31,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { useToast } from '@/hooks/use-toast';
-import { DepartmentForm } from '@/components/department/department-form';
-import { DataTable } from '@/components/ui/data-table';
-import type { ColumnDef } from '@tanstack/react-table';
-import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import LoadingSpinner
-
-export interface Department {
-    id: string;
-    name: string;
-    description?: string;
-    headId?: string;
-}
-
-const mockDepartments: Department[] = [
-    { id: 'dept1', name: 'RH', description: 'Recursos Humanos', headId: '1' },
-    { id: 'dept2', name: 'Engenharia', description: 'Desenvolvimento e Tecnologia' },
-    { id: 'dept3', name: 'Marketing', description: 'Promoção e Vendas' },
-    { id: 'dept4', name: 'Vendas' },
-    { id: 'dept5', name: 'Operações', description: 'Operações Gerais' },
-];
-
-const fetchDepartments = async (): Promise<Department[]> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return [...mockDepartments];
-};
-
-const saveDepartment = async (deptData: Omit<Department, 'id'> | Department): Promise<Department> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    if ('id' in deptData && deptData.id) {
-        const index = mockDepartments.findIndex(d => d.id === deptData.id);
-        if (index !== -1) {
-            mockDepartments[index] = { ...mockDepartments[index], ...deptData };
-            console.log("Departamento atualizado:", mockDepartments[index]);
-            return mockDepartments[index];
-        } else {
-            throw new Error("Departamento não encontrado para atualização");
-        }
-    } else {
-        const newDepartment: Department = {
-            id: `dept${Date.now()}`,
-            ...(deptData as Omit<Department, 'id'>),
-        };
-        mockDepartments.push(newDepartment);
-        console.log("Novo departamento adicionado:", newDepartment);
-        return newDepartment;
-    }
-};
-
-const deleteDepartment = async (deptId: string): Promise<void> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const index = mockDepartments.findIndex(d => d.id === deptId);
-    const isCoreDept = ['Engenharia', 'RH', 'Vendas', 'Marketing', 'Operações'].includes(mockDepartments[index]?.name);
-    if (isCoreDept && mockDepartments.length <= 5) {
-        throw new Error("Não é possível remover departamentos essenciais (simulado).");
-    }
-
-    if (index !== -1) {
-        mockDepartments.splice(index, 1);
-        console.log("Departamento removido com ID:", deptId);
-    } else {
-        throw new Error("Departamento não encontrado para remoção");
-    }
-};
 
 export default function DepartmentsPage() {
+    const { organizationId, role, user } = useAuth();
     const [departments, setDepartments] = React.useState<Department[]>([]);
     const [isLoading, setIsLoading] = React.useState(true);
     const [selectedDepartment, setSelectedDepartment] = React.useState<Department | null>(null);
@@ -108,6 +45,7 @@ export default function DepartmentsPage() {
     const columns: ColumnDef<Department>[] = [
         { accessorKey: "name", header: "Nome", cell: ({ row }) => <span className="font-medium">{row.original.name}</span> },
         { accessorKey: "description", header: "Descrição", cell: ({ row }) => row.original.description || '-' },
+        // Add headId display if needed, e.g., fetch employee name by headId
         {
             id: "actions",
             cell: ({ row }) => {
@@ -130,7 +68,7 @@ export default function DepartmentsPage() {
                             <DropdownMenuItem
                                 onClick={() => handleDeleteClick(dept)}
                                 className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                                disabled={['Engenharia', 'RH', 'Vendas', 'Marketing', 'Operações'].includes(dept.name) && departments.length <= 5}
+                                // disabled={['Engenharia', 'RH'].includes(dept.name) && departments.length <= 2} // Example disabled logic
                             >
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 Remover
@@ -144,9 +82,17 @@ export default function DepartmentsPage() {
     ];
 
     const loadDepartments = React.useCallback(async () => {
+        if (!organizationId || (role !== 'admin' && role !== 'super_admin')) {
+            setIsLoading(false);
+            // Optionally show a message or redirect if orgId is missing for an admin
+            if (role === 'admin' && !organizationId) {
+                 toast({ title: "Erro de Configuração", description: "ID da organização não encontrado para o admin.", variant: "destructive" });
+            }
+            return;
+        }
         setIsLoading(true);
         try {
-            const data = await fetchDepartments();
+            const data = await getDepartmentsByOrganization(organizationId);
             setDepartments(data);
         } catch (error) {
             console.error("Falha ao carregar departamentos:", error);
@@ -154,17 +100,25 @@ export default function DepartmentsPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [toast]);
+    }, [organizationId, role, toast]);
 
     React.useEffect(() => {
         loadDepartments();
     }, [loadDepartments]);
 
 
-    const handleSaveDepartment = async (data: Omit<Department, 'id'>) => {
-        const deptDataToSave = selectedDepartment ? { ...selectedDepartment, ...data } : data;
+    const handleSaveDepartment = async (data: Omit<Department, 'id' | 'organizationId' | 'createdAt' | 'updatedAt'>) => {
+         if (!organizationId) {
+            toast({ title: "Erro", description: "ID da organização não disponível para salvar.", variant: "destructive" });
+            return;
+        }
+        const deptDataToSave = selectedDepartment 
+            ? { ...data, id: selectedDepartment.id } 
+            : data;
+        
+        setIsLoading(true); // Indicate loading during save
         try {
-            await saveDepartment(deptDataToSave);
+            await saveDepartment(organizationId, deptDataToSave);
             setIsFormOpen(false);
             setSelectedDepartment(null);
             await loadDepartments();
@@ -179,6 +133,8 @@ export default function DepartmentsPage() {
                 description: `Falha ao ${selectedDepartment ? 'atualizar' : 'criar'} departamento. Tente novamente.`,
                 variant: "destructive",
             });
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -188,15 +144,17 @@ export default function DepartmentsPage() {
     };
 
     const confirmDelete = async () => {
-        if (departmentToDelete) {
+        if (departmentToDelete && organizationId) {
+            setIsLoading(true);
             try {
-                await deleteDepartment(departmentToDelete.id);
+                await deleteDepartmentFromFirestore(organizationId, departmentToDelete.id);
                 toast({ title: "Sucesso", description: "Departamento removido com sucesso." });
                 await loadDepartments();
             } catch (error: any) {
                 console.error("Falha ao remover departamento:", error);
                 toast({ title: "Erro", description: error.message || "Falha ao remover departamento.", variant: "destructive" });
             } finally {
+                setIsLoading(false);
                 setIsDeleting(false);
                 setDepartmentToDelete(null);
             }
@@ -212,9 +170,23 @@ export default function DepartmentsPage() {
         setSelectedDepartment(null);
         setIsFormOpen(true);
     };
+    
+    if (role === 'admin' && !organizationId && !isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full text-center p-4">
+                <AlertTriangle className="h-16 w-16 text-destructive mb-4" />
+                <h2 className="text-xl font-semibold mb-2">Acesso não Configurado</h2>
+                <p className="text-muted-foreground">
+                    Seu perfil de administrador não está vinculado a uma organização.
+                    Por favor, contate o Super Administrador do sistema.
+                </p>
+            </div>
+        );
+    }
+
 
     return (
-        <div className="space-y-6"> {/* Main container */}
+        <div className="space-y-6">
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -226,17 +198,24 @@ export default function DepartmentsPage() {
                 <CardContent>
                     {isLoading ? (
                          <div className="flex justify-center items-center py-10">
-                             {/* Use LoadingSpinner */}
                              <LoadingSpinner text="Carregando departamentos..."/>
+                         </div>
+                    ) : (!organizationId && role==='admin') ? (
+                         <div className="text-center py-10 text-muted-foreground">
+                             <AlertTriangle className="mx-auto h-10 w-10 mb-2 text-yellow-500" />
+                             <p>O administrador não está associado a uma organização.</p>
+                             <p className="text-xs">Não é possível carregar ou criar departamentos.</p>
                          </div>
                     ) : departments.length === 0 ? (
                         <div className="text-center py-10 text-muted-foreground">
                             <Frown className="mx-auto h-10 w-10 mb-2" />
-                            <p>Nenhum departamento encontrado.</p>
-                            <Button className="mt-4" onClick={openAddForm}>
-                                <PlusCircle className="mr-2 h-4 w-4" />
-                                Criar Primeiro Departamento
-                            </Button>
+                            <p>Nenhum departamento encontrado para esta organização.</p>
+                            {organizationId && (
+                                <Button className="mt-4" onClick={openAddForm}>
+                                    <PlusCircle className="mr-2 h-4 w-4" />
+                                    Criar Primeiro Departamento
+                                </Button>
+                            )}
                         </div>
                      ) : (
                         <DataTable
@@ -247,7 +226,7 @@ export default function DepartmentsPage() {
                         />
                     )}
                 </CardContent>
-                 { !isLoading && departments.length > 0 && ( // Only show footer if not loading and departments exist
+                 { !isLoading && departments.length > 0 && organizationId && (
                     <CardFooter className="flex justify-end">
                         <Button onClick={openAddForm}>
                             <PlusCircle className="mr-2 h-4 w-4" />
@@ -257,23 +236,25 @@ export default function DepartmentsPage() {
                  )}
             </Card>
 
-            <DepartmentForm
-                department={selectedDepartment}
-                onSave={handleSaveDepartment}
-                open={isFormOpen}
-                onOpenChange={setIsFormOpen}
-            />
+            {organizationId && (
+                <DepartmentForm
+                    department={selectedDepartment}
+                    onSave={handleSaveDepartment}
+                    open={isFormOpen}
+                    onOpenChange={setIsFormOpen}
+                />
+            )}
 
             <AlertDialog open={isDeleting} onOpenChange={setIsDeleting}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>Confirmar Remoção</AlertDialogTitle>
                         <AlertDialogDescription>
-                             Tem certeza que deseja remover o departamento "{departmentToDelete?.name}"? Esta ação pode afetar colaboradores associados.
+                             Tem certeza que deseja remover o departamento "{departmentToDelete?.name}"? Esta ação pode afetar colaboradores e tarefas associadas.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setDepartmentToDelete(null)}>Cancelar</AlertDialogCancel>
+                        <AlertDialogCancel onClick={() => { setDepartmentToDelete(null); setIsDeleting(false); }}>Cancelar</AlertDialogCancel>
                         <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                             Remover
                         </AlertDialogAction>

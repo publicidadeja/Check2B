@@ -1,14 +1,15 @@
+
 'use client';
 
 import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Building, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react'; // Removed Building, not used here
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea'; // Import Textarea
+import { Textarea } from '@/components/ui/textarea';
 import {
   Form,
   FormControl,
@@ -27,16 +28,18 @@ import {
     DialogClose,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import type { Department } from '@/app/departments/page'; // Assuming type is exported from page
+import type { Department } from '@/types/department'; // Updated import path
 
 // Schema for Department Form Validation
 const departmentSchema = z.object({
   name: z.string().min(2, { message: 'Nome do departamento deve ter pelo menos 2 caracteres.' }),
   description: z.string().optional().or(z.literal('')),
-  // headId: z.string().optional(), // Optional: Add validation if you have employee selection
+  headId: z.string().optional().or(z.literal('')), // Keep headId optional
 });
 
-type DepartmentFormData = z.infer<typeof departmentSchema>;
+// Use Omit to exclude fields managed by the service or parent
+type DepartmentFormData = Omit<Department, 'id' | 'organizationId' | 'createdAt' | 'updatedAt'>;
+
 
 interface DepartmentFormProps {
   department?: Department | null;
@@ -53,7 +56,7 @@ export function DepartmentForm({
 }: DepartmentFormProps) {
   const [internalOpen, setInternalOpen] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
-  const { toast } = useToast();
+  const { toast } = useToast(); // Keep toast for potential future use in form itself
 
   const isOpen = controlledOpen ?? internalOpen;
   const setIsOpen = controlledOnOpenChange ?? setInternalOpen;
@@ -63,7 +66,7 @@ export function DepartmentForm({
     defaultValues: {
       name: '',
       description: '',
-      // headId: '',
+      headId: '',
     },
   });
 
@@ -73,13 +76,13 @@ export function DepartmentForm({
         form.reset({
           name: department.name || '',
           description: department.description || '',
-          // headId: department.headId || '',
+          headId: department.headId || '',
         });
       } else {
-        form.reset({ // Reset to default empty values for new department
+        form.reset({
           name: '',
           description: '',
-          // headId: '',
+          headId: '',
         });
       }
     }
@@ -88,14 +91,14 @@ export function DepartmentForm({
   const onSubmit = async (data: DepartmentFormData) => {
     setIsSaving(true);
     try {
-      await onSave(data);
-      // Toast is handled in parent component
+      await onSave(data); // Parent will handle adding organizationId
+      // Toast is handled in parent component after successful save
       setIsOpen(false);
-    } catch (error) {
-      console.error("Falha ao salvar departamento:", error);
+    } catch (error) { // Catch errors from the onSave promise if any
+      console.error("Falha ao salvar departamento (no formulário):", error);
       toast({
-        title: 'Erro!',
-        description: `Falha ao ${department ? 'atualizar' : 'criar'} departamento. Tente novamente.`,
+        title: 'Erro no Formulário!',
+        description: `Não foi possível processar o salvamento. Verifique os logs.`,
         variant: 'destructive',
       });
     } finally {
@@ -140,22 +143,20 @@ export function DepartmentForm({
                   </FormItem>
                 )}
              />
-            {/* Optional: Field for selecting Department Head */}
-            {/* <FormField
-              control={form.control}
-              name="headId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Responsável (Opcional)</FormLabel>
-                  <FormControl>
-                    {/* Replace with an Employee Select/Combobox component */}
-                    {/*<Input placeholder="ID ou Nome do Responsável" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            /> */}
-
+             <FormField
+                control={form.control}
+                name="headId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>ID do Responsável (Opcional)</FormLabel>
+                    <FormControl>
+                      {/* TODO: Replace with an Employee Select/Combobox component in future */}
+                      <Input placeholder="ID do funcionário líder" {...field} value={field.value ?? ''} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+             />
             <DialogFooter>
               <DialogClose asChild>
                  <Button type="button" variant="outline">Cancelar</Button>
