@@ -45,7 +45,7 @@ const planSchema = z.object({
   name: z.string().min(3, { message: 'Nome do plano deve ter pelo menos 3 caracteres.' }),
   description: z.string().min(10, { message: 'Descrição deve ter pelo menos 10 caracteres.' }),
   priceMonthly: z.coerce.number().min(0, { message: 'Preço mensal deve ser zero ou maior.' }),
-  priceYearly: z.coerce.number().min(0, { message: 'Preço anual deve ser zero ou maior.' }).optional(),
+  priceYearly: z.coerce.number().min(0, { message: 'Preço anual deve ser zero ou maior.' }).optional().nullable(), // Allow null for optional
   features: z.array(z.string().min(1, "Feature não pode ser vazia.")).min(1, { message: 'Adicione pelo menos uma funcionalidade.' }),
   userLimit: z.union([z.coerce.number().int().min(1, "Limite deve ser maior que zero."), z.literal('unlimited')]),
   adminLimit: z.union([z.coerce.number().int().min(1, "Limite deve ser maior que zero."), z.literal('unlimited')]),
@@ -53,7 +53,7 @@ const planSchema = z.object({
   isPopular: z.boolean().default(false),
 });
 
-type PlanFormData = z.infer<typeof planSchema>;
+export type PlanFormData = z.infer<typeof planSchema>; // Export the type
 
 interface PlanFormProps {
   plan?: Plan | null;
@@ -81,7 +81,7 @@ export function PlanForm({
       name: '',
       description: '',
       priceMonthly: 0,
-      priceYearly: undefined,
+      priceYearly: null,
       features: ['Funcionalidade básica'],
       userLimit: 10,
       adminLimit: 1,
@@ -93,7 +93,7 @@ export function PlanForm({
   const { fields, append, remove } = useForm< { features: { value: string }[] }>({
     // @ts-ignore zodResolver type mismatch with useForm for array fields. It works.
     control: form.control, 
-    name: "features"
+    name: "features" // This should be 'features' to match schema
   });
 
 
@@ -104,8 +104,8 @@ export function PlanForm({
           name: plan.name || '',
           description: plan.description || '',
           priceMonthly: plan.priceMonthly || 0,
-          priceYearly: plan.priceYearly || undefined,
-          features: plan.features || [''],
+          priceYearly: plan.priceYearly === undefined ? null : plan.priceYearly, // Handle undefined for optional field
+          features: plan.features && plan.features.length > 0 ? plan.features : [''],
           userLimit: plan.userLimit || 10,
           adminLimit: plan.adminLimit || 1,
           status: plan.status || 'inactive',
@@ -116,7 +116,7 @@ export function PlanForm({
           name: '',
           description: '',
           priceMonthly: 0,
-          priceYearly: undefined,
+          priceYearly: null,
           features: ['Funcionalidade básica'],
           userLimit: 10,
           adminLimit: 1,
@@ -130,7 +130,12 @@ export function PlanForm({
   const onSubmit = async (data: PlanFormData) => {
     setIsSaving(true);
     try {
-      await onSave(data);
+      // Ensure priceYearly is undefined if empty string or null, not 0
+      const dataToSave = {
+        ...data,
+        priceYearly: data.priceYearly === null || data.priceYearly === undefined || data.priceYearly === 0 ? undefined : data.priceYearly,
+      };
+      await onSave(dataToSave);
       setIsOpen(false);
     } catch (error) {
       console.error("Falha ao salvar plano:", error);
@@ -207,7 +212,14 @@ export function PlanForm({
                       <FormItem>
                         <FormLabel>Preço Anual (R$) (Opcional)</FormLabel>
                         <FormControl>
-                          <Input type="number" step="0.01" placeholder="Ex: 799.00" {...field} />
+                          <Input 
+                            type="number" 
+                            step="0.01" 
+                            placeholder="Ex: 799.00" 
+                            {...field} 
+                            value={field.value === null ? '' : field.value} // Handle null for display
+                            onChange={e => field.onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -218,11 +230,11 @@ export function PlanForm({
                 <FormItem>
                   <FormLabel>Funcionalidades Incluídas</FormLabel>
                   <div className="space-y-2">
-                    {form.watch('features', []).map((_, index) => (
+                    {form.watch('features', []).map((featureItem, index) => (
                       <FormField
-                        key={`feature-${index}`}
+                        key={`feature-${index}`} // Unique key
                         control={form.control}
-                        name={`features.${index}`}
+                        name={`features.${index}`} // Correct name for array field
                         render={({ field }) => (
                           <FormItem className="flex items-center gap-2">
                             <FormControl>
@@ -247,11 +259,11 @@ export function PlanForm({
                     variant="outline"
                     size="sm"
                     className="mt-2 text-xs"
-                    onClick={() => form.setValue('features', [...form.getValues('features'), 'Nova funcionalidade'])}
+                    onClick={() => form.setValue('features', [...form.getValues('features'), ''])} // Add empty string for new feature
                   >
                     <PlusCircle className="mr-2 h-3 w-3" /> Adicionar Funcionalidade
                   </Button>
-                  <FormMessage>{/* For array-level errors */}</FormMessage>
+                  <FormMessage>{form.formState.errors.features?.message}</FormMessage>
                 </FormItem>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -265,8 +277,8 @@ export function PlanForm({
                           <Input type="text" placeholder="Ex: 10 ou 'unlimited'" {...field} onChange={(e) => {
                             const val = e.target.value;
                             if (val.toLowerCase() === 'unlimited') field.onChange('unlimited');
-                            else if (!isNaN(Number(val)) && val !== '') field.onChange(Number(val));
-                            else field.onChange(val); // Allow typing 'unlimited'
+                            else if (!isNaN(Number(val)) && val.trim() !== '') field.onChange(Number(val));
+                            else field.onChange(val); 
                           }} />
                         </FormControl>
                         <FormDescription className="text-xs">Nº de colaboradores. Digite 'unlimited' para ilimitado.</FormDescription>
@@ -284,7 +296,7 @@ export function PlanForm({
                            <Input type="text" placeholder="Ex: 1 ou 'unlimited'" {...field} onChange={(e) => {
                             const val = e.target.value;
                             if (val.toLowerCase() === 'unlimited') field.onChange('unlimited');
-                            else if (!isNaN(Number(val)) && val !== '') field.onChange(Number(val));
+                            else if (!isNaN(Number(val)) && val.trim() !== '') field.onChange(Number(val));
                             else field.onChange(val);
                           }} />
                         </FormControl>

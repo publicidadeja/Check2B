@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { DollarSign, PlusCircle, MoreHorizontal, Edit, Trash2, ToggleRight, Eye, CircleSlash, CheckCircle, Archive } from 'lucide-react';
+import { DollarSign, PlusCircle, MoreHorizontal, Edit, Trash2, CheckCircle, CircleSlash, Archive } from 'lucide-react'; // Added more icons
 import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Button } from '@/components/ui/button';
@@ -21,75 +21,11 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { PlanForm } from '@/components/plan/plan-form';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import type { Plan } from '@/types/plan';
-import { mockPlans } from '@/lib/mockData/plans'; // Import mock data
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { getAllPlans, savePlan as savePlanToFirestore, deletePlan as deletePlanFromFirestore, updatePlanStatus as updatePlanStatusInFirestore } from '@/lib/plan-service';
 
-// Mock API functions (replace with actual Firestore calls)
-const fetchPlans = async (): Promise<Plan[]> => {
-  await new Promise(resolve => setTimeout(resolve, 600));
-  return [...mockPlans].map(plan => ({
-    ...plan,
-    createdAt: plan.createdAt instanceof Date ? plan.createdAt : new Date(plan.createdAt),
-    updatedAt: plan.updatedAt && !(plan.updatedAt instanceof Date) ? new Date(plan.updatedAt) : plan.updatedAt,
-  }));
-};
-
-type PlanFormData = Omit<Plan, 'id' | 'createdAt' | 'updatedAt'>; // Form data type might be slightly different
-
-const savePlan = async (planData: PlanFormData, existingId?: string): Promise<Plan> => {
-  await new Promise(resolve => setTimeout(resolve, 700));
-  if (existingId) {
-    const index = mockPlans.findIndex(p => p.id === existingId);
-    if (index !== -1) {
-      mockPlans[index] = {
-          ...mockPlans[index],
-          ...planData,
-          updatedAt: new Date(),
-       };
-      console.log("Plano atualizado:", mockPlans[index]);
-      return mockPlans[index];
-    } else {
-      throw new Error("Plano não encontrado para atualização");
-    }
-  } else {
-    const newPlan: Plan = {
-      id: `plan_${Date.now()}`,
-      ...planData,
-      createdAt: new Date(),
-    };
-    mockPlans.push(newPlan);
-    console.log("Novo plano criado:", newPlan);
-    return newPlan;
-  }
-};
-
-const deletePlan = async (planId: string): Promise<void> => {
-  await new Promise(resolve => setTimeout(resolve, 500));
-  const index = mockPlans.findIndex(p => p.id === planId);
-  if (index !== -1) {
-    if (mockPlans[index].status === 'active') {
-        throw new Error("Não é possível remover um plano ativo. Arquive-o primeiro.");
-    }
-    mockPlans.splice(index, 1);
-    console.log("Plano removido:", planId);
-  } else {
-    throw new Error("Plano não encontrado para remoção");
-  }
-};
-
-const togglePlanStatus = async (planId: string, newStatus: Plan['status']): Promise<Plan> => {
-   await new Promise(resolve => setTimeout(resolve, 400));
-   const index = mockPlans.findIndex(p => p.id === planId);
-   if (index !== -1) {
-       mockPlans[index].status = newStatus;
-       mockPlans[index].updatedAt = new Date();
-       console.log("Status do plano alterado:", mockPlans[index]);
-       return mockPlans[index];
-   } else {
-        throw new Error("Plano não encontrado para alterar status");
-   }
-}
+type PlanFormData = Omit<Plan, 'id' | 'createdAt' | 'updatedAt'>;
 
 export default function PlansPage() {
   const [plans, setPlans] = React.useState<Plan[]>([]);
@@ -102,9 +38,9 @@ export default function PlansPage() {
 
    const getStatusBadgeVariant = (status: Plan['status']): "default" | "secondary" | "outline" | "destructive" => {
         switch (status) {
-            case 'active': return 'default'; // Usually green or primary
+            case 'active': return 'default'; 
             case 'inactive': return 'secondary';
-            case 'archived': return 'outline'; // Destructive or outline for archived
+            case 'archived': return 'outline'; 
             default: return 'secondary';
         }
     };
@@ -129,7 +65,18 @@ export default function PlansPage() {
         cell: ({ row }) => <Badge variant={getStatusBadgeVariant(row.original.status)} className={row.original.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200' : 'text-xs'}>{getStatusText(row.original.status)}</Badge>,
         size: 100
     },
-    { accessorKey: "createdAt", header: "Criado em", cell: ({ row }) => <span className="text-xs">{format(row.original.createdAt, 'dd/MM/yyyy', { locale: ptBR })}</span>, size: 120 },
+    { 
+      accessorKey: "createdAt", 
+      header: "Criado em", 
+      cell: ({ row }) => {
+        const createdAtDate = row.original.createdAt;
+        if (createdAtDate && createdAtDate instanceof Date && !isNaN(createdAtDate.getTime())) {
+          return <span className="text-xs">{format(createdAtDate, 'dd/MM/yyyy', { locale: ptBR })}</span>;
+        }
+        return <span className="text-xs">-</span>;
+      }, 
+      size: 120 
+    },
     {
       id: "actions",
       header: () => <div className="text-right">Ações</div>,
@@ -184,7 +131,7 @@ export default function PlansPage() {
   const loadPlans = React.useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await fetchPlans();
+      const data = await getAllPlans();
       setPlans(data.sort((a,b) => a.name.localeCompare(b.name)));
     } catch (error) {
       console.error("Falha ao carregar planos:", error);
@@ -199,9 +146,12 @@ export default function PlansPage() {
   }, [loadPlans]);
 
   const handleSavePlan = async (data: PlanFormData) => {
-    setIsLoading(true); // Consider using a different loading state for the form if needed
+    setIsLoading(true);
+    const planPayload = selectedPlan 
+        ? { ...data, id: selectedPlan.id } 
+        : data;
     try {
-      await savePlan(data, selectedPlan?.id);
+      await savePlanToFirestore(planPayload);
       setIsFormOpen(false);
       setSelectedPlan(null);
       await loadPlans();
@@ -217,11 +167,15 @@ export default function PlansPage() {
         variant: "destructive",
       });
     } finally {
-        setIsLoading(false); // Reset global loading or form-specific loading
+        setIsLoading(false);
     }
   };
 
   const handleDeleteClick = (plan: Plan) => {
+    if (plan.status === 'active') {
+        toast({ title: "Ação Bloqueada", description: "Planos ativos não podem ser removidos. Arquive-o primeiro.", variant: "destructive" });
+        return;
+    }
     setPlanToDelete(plan);
     setIsDeleting(true);
   };
@@ -230,7 +184,7 @@ export default function PlansPage() {
     if (planToDelete) {
        setIsLoading(true);
       try {
-        await deletePlan(planToDelete.id);
+        await deletePlanFromFirestore(planToDelete.id);
         toast({ title: "Sucesso", description: "Plano removido com sucesso." });
         await loadPlans();
       } catch (error: any) {
@@ -247,7 +201,7 @@ export default function PlansPage() {
    const handleUpdateStatus = async (plan: Plan, newStatus: Plan['status']) => {
       setIsLoading(true);
       try {
-          await togglePlanStatus(plan.id, newStatus);
+          await updatePlanStatusInFirestore(plan.id, newStatus);
           toast({ title: "Sucesso", description: `Status do plano "${plan.name}" alterado para ${getStatusText(newStatus)}.` });
           await loadPlans();
       } catch (error: any) {
@@ -314,7 +268,7 @@ export default function PlansPage() {
                     <AlertDialogTitle>Confirmar Remoção</AlertDialogTitle>
                     <AlertDialogDescription>
                         Tem certeza que deseja remover o plano "{planToDelete?.name}"? Esta ação é irreversível.
-                        Planos ativos não podem ser removidos diretamente.
+                        Planos ativos não podem ser removidos diretamente. Arquive-o primeiro.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
