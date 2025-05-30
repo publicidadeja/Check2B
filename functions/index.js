@@ -19,11 +19,11 @@ setGlobalOptions({region: "us-central1"});
  * Can only be called by an authenticated user (preferably a Super Admin).
  */
 exports.setCustomUserClaimsFirebase = onCall({
-    enforceAppCheck: true, // Rejeita requisições com tokens App Check ausentes ou inválidos.
+    enforceAppCheck: true, 
 }, async (request) => {
   const data = request.data;
   const auth = request.auth;
-  const app = request.app; // App Check context
+  const app = request.app; 
 
   console.log('[setCustomUserClaimsFirebase] Function called with data:', JSON.stringify(data));
   console.log(`[setCustomUserClaimsFirebase] Caller UID: ${auth?.uid || 'N/A'}`);
@@ -33,9 +33,9 @@ exports.setCustomUserClaimsFirebase = onCall({
           if (Object.prototype.hasOwnProperty.call(auth.token, key)) {
               try {
                   const value = auth.token[key];
-                  console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value) : value}`);
+                  console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value, {depth: 2}) : value}`);
               } catch (e) {
-                  console.log(`  ${key}: [Could not stringify value for this claim]`);
+                  console.log(`  ${key}: [Could not stringify/inspect value for this claim]`);
               }
           }
       }
@@ -63,7 +63,7 @@ exports.setCustomUserClaimsFirebase = onCall({
     } catch (fetchError) {
         const err = fetchError;
         console.error('[setCustomUserClaimsFirebase] Error fetching caller user record:', err);
-        throw new HttpsError('internal', `Não foi possível verificar as permissões do chamador. ${err.message}`);
+        throw new HttpsError('internal', `Não foi possível verificar as permissões do chamador. ${(err instanceof Error ? err.message : String(err))}`);
     }
   }
 
@@ -107,7 +107,7 @@ exports.setCustomUserClaimsFirebase = onCall({
   } catch (error) {
     const err = error;
     console.error("[setCustomUserClaimsFirebase] CRITICAL ERROR setting claims or updating Firestore:", err);
-    throw new HttpsError("internal", `Não foi possível definir os custom claims. Detalhe: ${err.message}`);
+    throw new HttpsError("internal", `Não foi possível definir os custom claims. Detalhe: ${(err instanceof Error ? err.message : String(err))}`);
   }
 });
 
@@ -120,7 +120,7 @@ exports.createOrganizationAdmin = onCall({
   const app = request.app;
 
   console.log('[createOrganizationAdmin] Function called with data:', JSON.stringify(data));
-  console.log('[createOrganizationAdmin] Full context object keys:', Object.keys(request)); // Log top-level keys of request
+  console.log('[createOrganizationAdmin] Full context object keys:', Object.keys(request)); 
   console.log('[createOrganizationAdmin] context.app (inspected):', util.inspect(app, { depth: null }));
   console.log(`[createOrganizationAdmin] Caller UID: ${auth?.uid || 'N/A'}`);
     if (auth && auth.token && typeof auth.token === 'object') {
@@ -129,9 +129,9 @@ exports.createOrganizationAdmin = onCall({
             if (Object.prototype.hasOwnProperty.call(auth.token, key)) {
                  try {
                     const value = auth.token[key];
-                    console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value) : value}`);
+                    console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value, {depth: 2}) : value}`);
                 } catch (e) {
-                    console.log(`  ${key}: [Could not stringify value for this claim]`);
+                    console.log(`  ${key}: [Could not stringify/inspect value for this claim]`);
                 }
             }
         }
@@ -141,18 +141,19 @@ exports.createOrganizationAdmin = onCall({
         console.log('[createOrganizationAdmin] Caller token (auth.token) is undefined or null.');
     }
 
-
   let hasSuperAdminRole = false;
   if (auth && auth.token && typeof auth.token === 'object' && auth.token.role === 'super_admin') {
       hasSuperAdminRole = true;
   }
 
   console.log(`[createOrganizationAdmin] Verificação de Permissão: auth existe? ${!!auth}`);
-  if(auth) {
+  if(auth && auth.token) {
       console.log(`[createOrganizationAdmin] Verificação de Permissão: auth.token existe? ${!!auth.token}`);
-      if(auth.token && typeof auth.token === 'object') {
-          console.log(`[createOrganizationAdmin] Verificação de Permissão: typeof auth.token é 'object'? ${typeof auth.token === 'object'}`);
+      if(typeof auth.token === 'object') {
+          console.log(`[createOrganizationAdmin] Verificação de Permissão: typeof auth.token é 'object'? true`);
           console.log(`[createOrganizationAdmin] Verificação de Permissão: auth.token.role é '${auth.token.role}' (tipo: ${typeof auth.token.role})`);
+      } else {
+          console.log(`[createOrganizationAdmin] Verificação de Permissão: typeof auth.token NÃO é 'object'.`);
       }
   }
   console.log(`[createOrganizationAdmin] Verificação de Permissão: hasSuperAdminRole é ${hasSuperAdminRole}`);
@@ -194,7 +195,7 @@ exports.createOrganizationAdmin = onCall({
     if (err.code === 'auth/email-already-exists') {
         throw new HttpsError('already-exists', 'Este email já está em uso.');
     }
-    throw new HttpsError('internal', `Falha ao criar usuário no Firebase Auth. Detalhe: ${err.message}`);
+    throw new HttpsError('internal', `Falha ao criar usuário no Firebase Auth. Detalhe: ${(err instanceof Error ? err.message : String(err))}`);
   }
 
   try {
@@ -205,7 +206,7 @@ exports.createOrganizationAdmin = onCall({
   } catch (claimsError) {
     const err = claimsError;
     console.error(`[createOrganizationAdmin] ERROR setting custom claims for UID ${userRecord.uid}:`, err);
-    throw new HttpsError('internal', `Falha ao definir custom claims. Detalhe: ${err.message}`);
+    throw new HttpsError('internal', `Falha ao definir custom claims. Detalhe: ${(err instanceof Error ? err.message : String(err))}`);
   }
 
   try {
@@ -225,7 +226,7 @@ exports.createOrganizationAdmin = onCall({
   } catch (firestoreError) {
     const err = firestoreError;
     console.error(`[createOrganizationAdmin] ERROR creating user profile in Firestore for UID ${userRecord.uid}:`, err);
-    throw new HttpsError('internal', `Falha ao criar perfil do usuário no Firestore. Detalhe: ${err.message}`);
+    throw new HttpsError('internal', `Falha ao criar perfil do usuário no Firestore. Detalhe: ${(err instanceof Error ? err.message : String(err))}`);
   }
 
   return { success: true, userId: userRecord.uid, message: `Administrador '${name}' criado com sucesso para a organização ${organizationId}.` };
@@ -247,9 +248,9 @@ exports.createOrganizationUser = onCall({
               if (Object.prototype.hasOwnProperty.call(auth.token, key)) {
                    try {
                       const value = auth.token[key];
-                      console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value) : value}`);
+                      console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value, {depth: 2}) : value}`);
                   } catch (e) {
-                      console.log(`  ${key}: [Could not stringify value for this claim]`);
+                      console.log(`  ${key}: [Could not stringify/inspect value for this claim]`);
                   }
               }
           }
@@ -284,17 +285,21 @@ exports.createOrganizationUser = onCall({
     if (password.length < 6) {
         throw new HttpsError('invalid-argument', 'A senha deve ter pelo menos 6 caracteres.');
     }
+    
+    const authUserData = {
+        email: email,
+        password: password,
+        displayName: name,
+        emailVerified: false,
+    };
 
-    const photoURLForAuth = (photoUrl && typeof photoUrl === 'string' && photoUrl.startsWith('http')) ? photoUrl : null;
+    if (photoUrl && typeof photoUrl === 'string' && photoUrl.trim().startsWith('http')) {
+        authUserData.photoURL = photoUrl.trim();
+    }
+
 
     try {
-        const userRecord = await admin.auth().createUser({
-            email: email,
-            password: password,
-            displayName: name,
-            photoURL: photoURLForAuth,
-            emailVerified: false, 
-        });
+        const userRecord = await admin.auth().createUser(authUserData);
         console.log(`[createOrganizationUser] Novo colaborador ${userRecord.uid} criado no Firebase Auth.`);
 
         const claimsToSet = { role: 'collaborator', organizationId: organizationId };
@@ -311,7 +316,7 @@ exports.createOrganizationUser = onCall({
             department: department,
             userRole: userRole, 
             admissionDate: admissionDate,
-            photoUrl: photoURLForAuth, // Use the sanitized URL or null
+            photoUrl: authUserData.photoURL || null, // Use the potentially set photoURL or null
             status: status, 
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
@@ -324,7 +329,7 @@ exports.createOrganizationUser = onCall({
         if (err.code === 'auth/email-already-exists') {
             throw new HttpsError('already-exists', 'Este email já está em uso.');
         }
-        throw new HttpsError('internal', `Falha ao criar colaborador. Detalhe: ${err.message}`);
+        throw new HttpsError('internal', `Falha ao criar colaborador. Detalhe: ${(err instanceof Error ? err.message : String(err))}`);
     }
 });
 
@@ -344,9 +349,9 @@ exports.deleteOrganizationUser = onCall({
             if (Object.prototype.hasOwnProperty.call(auth.token, key)) {
                  try {
                     const value = auth.token[key];
-                    console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value) : value}`);
+                    console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value, {depth: 2}) : value}`);
                 } catch (e) {
-                    console.log(`  ${key}: [Could not stringify value for this claim]`);
+                    console.log(`  ${key}: [Could not stringify/inspect value for this claim]`);
                 }
             }
         }
@@ -374,11 +379,11 @@ exports.deleteOrganizationUser = onCall({
     try {
         console.log(`[deleteOrganizationUser] Attempting to fetch user to delete (UID: ${userId}).`);
         userToDeleteRecord = await admin.auth().getUser(userId);
-        console.log(`[deleteOrganizationUser] Successfully fetched user to delete. Claims:`, userToDeleteRecord.customClaims);
+        console.log(`[deleteOrganizationUser] Successfully fetched user to delete. Claims:`, util.inspect(userToDeleteRecord.customClaims, {depth: null}));
     } catch (error) {
         const err = error;
         console.error(`[deleteOrganizationUser] ERROR fetching user to delete (UID: ${userId}):`, err);
-        throw new HttpsError('not-found', `Usuário com UID ${userId} não encontrado. Detalhe: ${err.message}`);
+        throw new HttpsError('not-found', `Usuário com UID ${userId} não encontrado. Detalhe: ${(err instanceof Error ? err.message : String(err))}`);
     }
     const userToDeleteClaims = userToDeleteRecord.customClaims || {};
 
@@ -393,24 +398,33 @@ exports.deleteOrganizationUser = onCall({
         console.error(`[deleteOrganizationUser] Permission denied. Caller role: ${callerClaims.role}, User to delete role: ${userToDeleteClaims.role}, Target Org: ${targetOrganizationId}, User Org: ${userToDeleteClaims.organizationId}`);
         throw new HttpsError('permission-denied', 'Você não tem permissão para remover este usuário.');
     }
-    console.log('[deleteOrganizationUser] Permission GRANTED.');
+    console.log('[deleteOrganizationUser] Permission GRANTED for action.');
 
     try {
         console.log(`[deleteOrganizationUser] Attempting to delete user from Firebase Auth (UID: ${userId}).`);
         await admin.auth().deleteUser(userId);
         console.log(`[deleteOrganizationUser] User ${userId} removed from Firebase Auth.`);
-
+    } catch (authError) {
+        const err = authError;
+        console.error(`[deleteOrganizationUser] ERROR deleting user from Auth (UID: ${userId}):`, err);
+        throw new HttpsError('internal', `Falha ao remover usuário da autenticação. Detalhe: ${(err instanceof Error ? err.message : String(err))}`);
+    }
+    
+    try {
         const userDocRef = admin.firestore().collection('users').doc(userId);
         console.log(`[deleteOrganizationUser] Attempting to delete user document from Firestore (UID: ${userId}).`);
         await userDocRef.delete();
         console.log(`[deleteOrganizationUser] User document ${userId} removed from Firestore.`);
-
-        return { success: true, message: `Usuário ${userId} removido com sucesso.` };
-    } catch (error) {
-        const err = error;
-        console.error(`[deleteOrganizationUser] CRITICAL ERROR deleting user ${userId}:`, err);
-        throw new HttpsError('internal', `Falha ao remover usuário. Detalhe: ${err.message}`);
+    } catch (firestoreError) {
+        const err = firestoreError;
+        // Log this error but don't necessarily throw if Auth deletion was successful,
+        // or decide if this is a critical failure. For now, log and proceed.
+        console.error(`[deleteOrganizationUser] ERROR deleting user document from Firestore (UID: ${userId}):`, err);
+        // Optionally re-throw if Firestore deletion is critical:
+        // throw new HttpsError('internal', `Falha ao remover documento do usuário do Firestore. Detalhe: ${(err instanceof Error ? err.message : String(err))}`);
     }
+
+    return { success: true, message: `Usuário ${userId} removido com sucesso (Auth e tentativa no Firestore).` };
 });
 
 
@@ -429,9 +443,9 @@ exports.toggleUserStatusFirebase = onCall({
         if (Object.prototype.hasOwnProperty.call(auth.token, key)) {
             try {
                 const value = auth.token[key];
-                console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value) : value}`);
+                console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value, {depth: 2}) : value}`);
             } catch (e) {
-                console.log(`  ${key}: [Could not stringify value for this claim]`);
+                console.log(`  ${key}: [Could not stringify/inspect value for this claim]`);
             }
         }
     }
@@ -459,11 +473,11 @@ exports.toggleUserStatusFirebase = onCall({
   try {
       console.log(`[toggleUserStatusFirebase] Attempting to fetch user to update (UID: ${userId}).`);
       userToUpdateRecord = await admin.auth().getUser(userId);
-      console.log(`[toggleUserStatusFirebase] Successfully fetched user to update. Claims:`, userToUpdateRecord.customClaims);
+      console.log(`[toggleUserStatusFirebase] Successfully fetched user to update. Claims:`, util.inspect(userToUpdateRecord.customClaims, {depth: null}));
   } catch (error) {
       const err = error;
       console.error(`[toggleUserStatusFirebase] ERROR fetching user to update (UID: ${userId}):`, err);
-      throw new HttpsError('not-found', `Usuário com UID ${userId} não encontrado. Detalhe: ${err.message}`);
+      throw new HttpsError('not-found', `Usuário com UID ${userId} não encontrado. Detalhe: ${(err instanceof Error ? err.message : String(err))}`);
   }
   const userToUpdateClaims = userToUpdateRecord.customClaims || {};
 
@@ -481,7 +495,7 @@ exports.toggleUserStatusFirebase = onCall({
 
   try {
     console.log(`[toggleUserStatusFirebase] Attempting to update Firestore status for UID ${userId} to ${status}.`);
-    await admin.firestore().collection('users').doc(userId).update({ status: status });
+    await admin.firestore().collection('users').doc(userId).update({ status: status, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
     console.log(`[toggleUserStatusFirebase] Firestore status updated. Attempting to update Firebase Auth disabled state for UID ${userId} to ${status === 'inactive'}.`);
     await admin.auth().updateUser(userId, { disabled: status === 'inactive' });
 
@@ -490,7 +504,7 @@ exports.toggleUserStatusFirebase = onCall({
   } catch (error) {
     const err = error;
     console.error("[toggleUserStatusFirebase] CRITICAL ERROR updating user status:", err);
-    throw new HttpsError("internal", `Falha ao alterar status do usuário. Detalhe: ${err.message}`);
+    throw new HttpsError("internal", `Falha ao alterar status do usuário. Detalhe: ${(err instanceof Error ? err.message : String(err))}`);
   }
 });
 
@@ -510,9 +524,9 @@ exports.removeAdminFromOrganizationFirebase = onCall({
             if (Object.prototype.hasOwnProperty.call(auth.token, key)) {
                  try {
                     const value = auth.token[key];
-                    console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value) : value}`);
+                    console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value, {depth: 2}) : value}`);
                 } catch (e) {
-                    console.log(`  ${key}: [Could not stringify value for this claim]`);
+                    console.log(`  ${key}: [Could not stringify/inspect value for this claim]`);
                 }
             }
         }
@@ -541,35 +555,51 @@ exports.removeAdminFromOrganizationFirebase = onCall({
         throw new HttpsError('invalid-argument', 'UID do usuário e ID da organização são obrigatórios.');
     }
 
+    let userRecord;
     try {
         console.log(`[removeAdminFromOrganizationFirebase] Attempting to fetch user (UID: ${userId}) to remove admin role.`);
-        const userRecord = await admin.auth().getUser(userId);
-        const currentClaims = userRecord.customClaims || {};
-        console.log(`[removeAdminFromOrganizationFirebase] Current claims for UID ${userId}:`, currentClaims);
+        userRecord = await admin.auth().getUser(userId);
+    } catch (error) {
+        const err = error;
+        console.error(`[removeAdminFromOrganizationFirebase] ERROR fetching user (UID: ${userId}):`, err);
+        throw new HttpsError('not-found', `Usuário com UID ${userId} não encontrado. Detalhe: ${(err instanceof Error ? err.message : String(err))}`);
+    }
+    
+    const currentClaims = userRecord.customClaims || {};
+    console.log(`[removeAdminFromOrganizationFirebase] Current claims for UID ${userId}:`, util.inspect(currentClaims, {depth: null}));
 
-
-        if (currentClaims.role === 'admin' && currentClaims.organizationId === organizationId) {
-            const newClaims = { role: 'collaborator', organizationId: organizationId }; 
-            
+    if (currentClaims.role === 'admin' && currentClaims.organizationId === organizationId) {
+        const newClaims = { role: 'collaborator', organizationId: organizationId }; 
+        
+        try {
             console.log(`[removeAdminFromOrganizationFirebase] Attempting to update claims for UID ${userId} to:`, newClaims);
             await admin.auth().setCustomUserClaims(userId, newClaims);
             console.log(`[removeAdminFromOrganizationFirebase] Custom claims updated successfully for UID ${userId}.`);
+        } catch (claimsError) {
+            const err = claimsError;
+            console.error(`[removeAdminFromOrganizationFirebase] ERROR setting custom claims for UID ${userId}:`, err);
+            throw new HttpsError('internal', `Falha ao atualizar claims do usuário. Detalhe: ${(err instanceof Error ? err.message : String(err))}`);
+        }
 
+        try {
             console.log(`[removeAdminFromOrganizationFirebase] Attempting to update Firestore role for UID ${userId}.`);
             await admin.firestore().collection('users').doc(userId).update({
                 role: newClaims.role,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
             console.log(`[removeAdminFromOrganizationFirebase] Firestore role updated successfully for UID ${userId}.`);
-            
-            return { success: true, message: `Admin ${userId} removido/rebaixado na organização ${organizationId}.` };
-        } else {
-            console.log(`[removeAdminFromOrganizationFirebase] User ${userId} is not an admin of organization ${organizationId} or claims are inconsistent. Current claims:`, currentClaims);
-            throw new HttpsError('not-found', 'Usuário não é administrador desta organização ou claims inconsistentes.');
+        } catch (firestoreError) {
+            const err = firestoreError;
+            console.error(`[removeAdminFromOrganizationFirebase] ERROR updating Firestore role for UID ${userId}:`, err);
+            // Log this error but don't necessarily re-throw if claims update was successful,
+            // or decide if this is critical. For now, log and proceed.
         }
-    } catch (error) {
-        const err = error;
-        console.error(`[removeAdminFromOrganizationFirebase] CRITICAL ERROR removing admin ${userId} from org ${organizationId}:`, err);
-        throw new HttpsError('internal', `Falha ao remover admin da organização. Detalhe: ${err.message}`);
+            
+        return { success: true, message: `Admin ${userId} removido/rebaixado na organização ${organizationId}.` };
+    } else {
+        console.log(`[removeAdminFromOrganizationFirebase] User ${userId} is not an admin of organization ${organizationId} or claims are inconsistent. Current claims:`, util.inspect(currentClaims, {depth: null}));
+        throw new HttpsError('not-found', 'Usuário não é administrador desta organização ou claims inconsistentes.');
     }
 });
-```
+
+    
