@@ -406,12 +406,23 @@ const ChallengeDashboard = () => {
                 const allChallenges = await getAllChallenges(organizationId);
                 const activeCh = allChallenges.filter(c => c.status === 'active');
                 setActiveChallengesCount(activeCh.length);
-                // Placeholder for submissions and completion rate
-                // const participations = await fetchAllParticipations(organizationId); // Needs a new service function
-                // setPendingSubmissionsCount(participations.filter(p => p.status === 'submitted').length);
-                // Calculate completionRate
-                setPendingSubmissionsCount(Math.floor(Math.random() * 10)); // Mock
-                setCompletionRate(`${Math.floor(Math.random() * 50 + 50)}%`); // Mock
+                
+                let totalPending = 0;
+                for (const challenge of allChallenges.filter(c => c.status === 'evaluating' || c.status === 'active')) {
+                    const participations = await fetchParticipantsForChallengeFromFirestore(organizationId, challenge.id);
+                    totalPending += participations.filter(p => p.status === 'submitted').length;
+                }
+                setPendingSubmissionsCount(totalPending);
+
+                // Calculate completionRate (example: approved / (approved + rejected))
+                let totalApproved = 0;
+                let totalEvaluated = 0;
+                for (const challenge of allChallenges.filter(c => ['completed', 'evaluating'].includes(c.status))) {
+                     const participations = await fetchParticipantsForChallengeFromFirestore(organizationId, challenge.id);
+                     totalApproved += participations.filter(p => p.status === 'approved').length;
+                     totalEvaluated += participations.filter(p => ['approved', 'rejected'].includes(p.status)).length;
+                }
+                setCompletionRate(totalEvaluated > 0 ? `${Math.round((totalApproved / totalEvaluated) * 100)}%` : 'N/A');
 
             } catch (error) {
                 toast({ title: "Erro Dashboard", description: "Falha ao carregar dados do dashboard.", variant: "destructive"});
@@ -586,7 +597,7 @@ const ChallengeEvaluation = () => {
                              : challengesToEvaluate.length === 0 ? (<SelectItem value="no-challenges" disabled>Nenhum desafio em avaliação</SelectItem>)
                              : (challengesToEvaluate.map(ch => (
                                 <SelectItem key={ch.id} value={ch.id}>
-                                    {ch.title} ({format(parseISO(ch.periodEndDate), 'dd/MM/yy')})
+                                    {ch.title} ({ch.periodEndDate ? format(parseISO(ch.periodEndDate), 'dd/MM/yy') : 'Data Inválida'})
                                 </SelectItem>
                              )))}
                         </SelectContent>
@@ -727,12 +738,11 @@ const ChallengeHistory = () => {
         const fetchHistory = async () => {
             setIsLoading(true);
             try {
-                const [challengesData, participationsData] = await Promise.all([
-                    getAllChallenges(organizationId),
-                    // TODO: Create a function to fetch ALL participations for an org, or fetch per challenge as needed
-                    // For now, using a placeholder/mock or assuming getParticipationsForChallenge handles it broadly if challengeId is null (not ideal)
-                    Promise.all( (await getAllChallenges(organizationId)).map(ch => getParticipationsForChallengeFromFirestore(organizationId, ch.id))).then(res => res.flat())
-                ]);
+                const challengesData = await getAllChallenges(organizationId);
+                const participationsData = await Promise.all(
+                    challengesData.map(ch => fetchParticipantsForChallengeFromFirestore(organizationId, ch.id))
+                ).then(res => res.flat());
+                
                 setHistoryChallenges(challengesData.filter(c => ['completed', 'archived', 'evaluating'].includes(c.status))
                                             .sort((a, b) => parseISO(b.periodEndDate).getTime() - parseISO(a.periodEndDate).getTime()));
                 setAllParticipations(participationsData);
