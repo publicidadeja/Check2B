@@ -30,7 +30,7 @@ const PARTICIPATIONS_COLLECTION = 'challengeParticipations';
 export const getAllChallenges = async (organizationId: string): Promise<Challenge[]> => {
   const db = getDb();
   if (!db || !organizationId) {
-    console.error('Firestore not initialized or organizationId missing.');
+    console.error('[ChallengeService] Firestore not initialized or organizationId missing.');
     return [];
   }
   const challengesPath = `organizations/${organizationId}/${CHALLENGES_COLLECTION}`;
@@ -45,15 +45,15 @@ export const getAllChallenges = async (organizationId: string): Promise<Challeng
         id: docSnapshot.id,
         ...data,
         organizationId,
-        // Ensure dates are JS Date objects
-        periodStartDate: data.periodStartDate, // Stored as YYYY-MM-DD string
-        periodEndDate: data.periodEndDate,   // Stored as YYYY-MM-DD string
-        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
+        periodStartDate: data.periodStartDate, 
+        periodEndDate: data.periodEndDate,   
+        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : new Date()),
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : undefined),
+        eligibility: data.eligibility || { type: 'all' }, // Ensure eligibility object exists
       } as Challenge;
     });
   } catch (error) {
-    console.error(`Error fetching challenges for org ${organizationId}:`, error);
+    console.error(`[ChallengeService] Error fetching challenges for org ${organizationId}:`, error);
     throw error;
   }
 };
@@ -67,48 +67,64 @@ export const saveChallenge = async (
 ): Promise<Challenge> => {
   const db = getDb();
   if (!db || !organizationId) {
-    throw new Error('Firestore not initialized or organizationId missing.');
+    throw new Error('[ChallengeService] Firestore not initialized or organizationId missing.');
   }
   const challengesPath = `organizations/${organizationId}/${CHALLENGES_COLLECTION}`;
   const { id, ...dataToSave } = challengeData;
 
-  // Ensure date strings are used, not Date objects, if form sends Date objects
+  const eligibilityToSave: { type: Challenge['eligibility']['type']; entityIds?: string[] } = {
+    type: dataToSave.eligibility.type,
+  };
+
+  if (dataToSave.eligibility.type !== 'all' && dataToSave.eligibility.entityIds && dataToSave.eligibility.entityIds.length > 0) {
+    eligibilityToSave.entityIds = dataToSave.eligibility.entityIds;
+  }
+
   const finalDataToSave = {
     ...dataToSave,
+    title: dataToSave.title,
+    description: dataToSave.description,
+    category: dataToSave.category || null, // Store null if empty for consistency
     periodStartDate: typeof dataToSave.periodStartDate === 'string' ? dataToSave.periodStartDate : format(dataToSave.periodStartDate, 'yyyy-MM-dd'),
     periodEndDate: typeof dataToSave.periodEndDate === 'string' ? dataToSave.periodEndDate : format(dataToSave.periodEndDate, 'yyyy-MM-dd'),
+    points: dataToSave.points,
+    difficulty: dataToSave.difficulty,
+    participationType: dataToSave.participationType,
+    eligibility: eligibilityToSave, // Use the processed eligibility object
+    evaluationMetrics: dataToSave.evaluationMetrics,
+    supportMaterialUrl: dataToSave.supportMaterialUrl || null, // Store null if empty
+    imageUrl: dataToSave.imageUrl || null, // Store null if empty
+    status: dataToSave.status, // Ensure status is passed
     updatedAt: serverTimestamp(),
   };
 
+  let docRef;
   if (id) {
-    const challengeDocRef = doc(db, challengesPath, id);
-    await updateDoc(challengeDocRef, finalDataToSave);
-    const updatedDoc = await getDoc(challengeDocRef);
-    const updatedData = updatedDoc.data();
-    return { 
-        id, 
-        ...updatedData, 
-        organizationId,
-        createdAt: updatedData?.createdAt instanceof Timestamp ? updatedData.createdAt.toDate() : new Date(),
-        updatedAt: updatedData?.updatedAt instanceof Timestamp ? updatedData.updatedAt.toDate() : new Date(),
-    } as Challenge;
+    docRef = doc(db, challengesPath, id);
+    await updateDoc(docRef, finalDataToSave);
   } else {
-    const docRef = await addDoc(collection(db, challengesPath), {
-      ...finalDataToSave,
-      organizationId,
-      createdAt: serverTimestamp(),
-    });
-    const newDoc = await getDoc(docRef);
-    const newData = newDoc.data();
-    return { 
-        id: docRef.id, 
-        ...newData, 
-        organizationId,
-        createdAt: newData?.createdAt instanceof Timestamp ? newData.createdAt.toDate() : new Date(),
-        updatedAt: newData?.updatedAt instanceof Timestamp ? newData.updatedAt.toDate() : new Date(),
-    } as Challenge;
+    // @ts-ignore
+    finalDataToSave.createdAt = serverTimestamp();
+    // @ts-ignore
+    finalDataToSave.organizationId = organizationId; // Ensure orgId is set for new docs
+    docRef = await addDoc(collection(db, challengesPath), finalDataToSave);
   }
+
+  const savedDoc = await getDoc(docRef);
+  if (!savedDoc.exists()) {
+    throw new Error('[ChallengeService] Failed to retrieve the saved challenge from Firestore.');
+  }
+  const savedData = savedDoc.data();
+  return {
+    id: savedDoc.id,
+    ...savedData,
+    organizationId,
+    createdAt: savedData?.createdAt instanceof Timestamp ? savedData.createdAt.toDate() : new Date(),
+    updatedAt: savedData?.updatedAt instanceof Timestamp ? savedData.updatedAt.toDate() : new Date(),
+    eligibility: savedData?.eligibility || { type: 'all' },
+  } as Challenge;
 };
+
 
 /**
  * Deletes a challenge and its participations from Firestore.
@@ -116,11 +132,31 @@ export const saveChallenge = async (
 export const deleteChallenge = async (organizationId: string, challengeId: string): Promise<void> => {
   const db = getDb();
   if (!db || !organizationId) {
-    throw new Error('Firestore not initialized or organizationId missing.');
+    throw new Error('[ChallengeService] Firestore not initialized or organizationId missing.');
   }
-  // TODO: Also delete associated participations (batched write or Cloud Function trigger)
+  
+  const batch = writeBatch(db);
+
+  // Delete the challenge itself
   const challengeDocRef = doc(db, `organizations/${organizationId}/${CHALLENGES_COLLECTION}`, challengeId);
-  await deleteDoc(challengeDocRef);
+  batch.delete(challengeDocRef);
+
+  // Query and delete all participations for this challenge
+  const participationsPath = `organizations/${organizationId}/${PARTICIPATIONS_COLLECTION}`;
+  const participationsQuery = query(collection(db, participationsPath), where("challengeId", "==", challengeId));
+  
+  try {
+    const participationsSnapshot = await getDocs(participationsQuery);
+    participationsSnapshot.forEach(docSnapshot => {
+      batch.delete(docSnapshot.ref);
+    });
+
+    await batch.commit();
+    console.log(`[ChallengeService] Challenge ${challengeId} and its participations deleted successfully.`);
+  } catch (error) {
+    console.error(`[ChallengeService] Error deleting challenge ${challengeId} or its participations:`, error);
+    throw error;
+  }
 };
 
 /**
@@ -129,12 +165,13 @@ export const deleteChallenge = async (organizationId: string, challengeId: strin
 export const updateChallengeStatus = async (organizationId: string, challengeId: string, status: Challenge['status']): Promise<Challenge> => {
     const db = getDb();
     if (!db || !organizationId) {
-        throw new Error('Firestore not initialized or organizationId missing.');
+        throw new Error('[ChallengeService] Firestore not initialized or organizationId missing.');
     }
     const challengeDocRef = doc(db, `organizations/${organizationId}/${CHALLENGES_COLLECTION}`, challengeId);
     await updateDoc(challengeDocRef, { status, updatedAt: serverTimestamp() });
+    
     const updatedDoc = await getDoc(challengeDocRef);
-    if (!updatedDoc.exists()) throw new Error("Challenge not found after status update.");
+    if (!updatedDoc.exists()) throw new Error("[ChallengeService] Challenge not found after status update.");
     const data = updatedDoc.data();
     return {
         id: updatedDoc.id,
@@ -142,6 +179,7 @@ export const updateChallengeStatus = async (organizationId: string, challengeId:
         organizationId,
         createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(),
+        eligibility: data.eligibility || { type: 'all' },
     } as Challenge;
 };
 
@@ -151,7 +189,7 @@ export const updateChallengeStatus = async (organizationId: string, challengeId:
 export const getParticipationsForChallenge = async (organizationId: string, challengeId: string): Promise<ChallengeParticipation[]> => {
   const db = getDb();
   if (!db || !organizationId) {
-    console.error('Firestore not initialized or organizationId missing.');
+    console.error('[ChallengeService] Firestore not initialized or organizationId missing.');
     return [];
   }
   const participationsPath = `organizations/${organizationId}/${PARTICIPATIONS_COLLECTION}`;
@@ -174,7 +212,7 @@ export const getParticipationsForChallenge = async (organizationId: string, chal
       } as ChallengeParticipation;
     });
   } catch (error) {
-    console.error(`Error fetching participations for challenge ${challengeId}:`, error);
+    console.error(`[ChallengeService] Error fetching participations for challenge ${challengeId}:`, error);
     throw error;
   }
 };
@@ -189,19 +227,22 @@ export const evaluateSubmission = async (
 ): Promise<ChallengeParticipation> => {
   const db = getDb();
   if (!db || !organizationId) {
-    throw new Error('Firestore not initialized or organizationId missing.');
+    throw new Error('[ChallengeService] Firestore not initialized or organizationId missing.');
   }
   const participationDocRef = doc(db, `organizations/${organizationId}/${PARTICIPATIONS_COLLECTION}`, participationId);
   
-  const dataToUpdate = {
-    ...evaluationData,
+  const dataToUpdate: any = {
+    status: evaluationData.status,
+    score: evaluationData.score !== undefined ? evaluationData.score : null, // Store null if score is undefined
+    feedback: evaluationData.feedback || null, // Store null if feedback is empty
+    evaluatorId: evaluationData.evaluatorId,
     evaluatedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
 
   await updateDoc(participationDocRef, dataToUpdate);
   const updatedDoc = await getDoc(participationDocRef);
-  if (!updatedDoc.exists()) throw new Error("Participation not found after evaluation.");
+  if (!updatedDoc.exists()) throw new Error("[ChallengeService] Participation not found after evaluation.");
   const data = updatedDoc.data();
   return {
       id: updatedDoc.id,
@@ -221,7 +262,7 @@ export const evaluateSubmission = async (
 export const getChallengeDetails = async (organizationId: string, challengeId: string): Promise<{ challenge: Challenge; participants: ChallengeParticipation[] } | null> => {
   const db = getDb();
   if (!db || !organizationId) {
-    console.error('Firestore not initialized or organizationId missing.');
+    console.error('[ChallengeService] Firestore not initialized or organizationId missing.');
     return null;
   }
   const challengeDocRef = doc(db, `organizations/${organizationId}/${CHALLENGES_COLLECTION}`, challengeId);
@@ -236,8 +277,50 @@ export const getChallengeDetails = async (organizationId: string, challengeId: s
     organizationId,
     createdAt: challengeData.createdAt instanceof Timestamp ? challengeData.createdAt.toDate() : new Date(challengeData.createdAt),
     updatedAt: challengeData.updatedAt instanceof Timestamp ? challengeData.updatedAt.toDate() : (challengeData.updatedAt ? new Date(challengeData.updatedAt) : undefined),
+    eligibility: challengeData.eligibility || { type: 'all' },
   } as Challenge;
 
   const participants = await getParticipationsForChallenge(organizationId, challengeId);
   return { challenge, participants };
 };
+
+// Helper to upload submission file (example)
+export const uploadChallengeSubmissionFile = async (organizationId: string, challengeId: string, employeeId: string, file: File): Promise<string> => {
+    const storage = getStorage();
+    if (!storage) throw new Error("Firebase Storage not initialized.");
+
+    const filePath = `organizations/${organizationId}/challenges/${challengeId}/submissions/${employeeId}/${file.name}`;
+    const fileRef = ref(storage, filePath);
+
+    try {
+        const snapshot = await uploadBytes(fileRef, file);
+        const downloadURL = await getDownloadURL(snapshot.ref);
+        console.log(`[ChallengeService] File uploaded for challenge ${challengeId} by ${employeeId}: ${downloadURL}`);
+        return downloadURL;
+    } catch (error) {
+        console.error(`[ChallengeService] Error uploading file for challenge ${challengeId}:`, error);
+        throw error;
+    }
+};
+
+// Helper to delete a submission file (example)
+export const deleteChallengeSubmissionFile = async (fileUrl: string): Promise<void> => {
+    const storage = getStorage();
+    if (!storage) throw new Error("Firebase Storage not initialized.");
+    
+    try {
+        const fileRef = ref(storage, fileUrl); // Get ref from full URL
+        await deleteObject(fileRef);
+        console.log(`[ChallengeService] File deleted: ${fileUrl}`);
+    } catch (error) {
+        // If file not found, it might have been already deleted or URL is incorrect, often not a critical error to stop flow.
+        if ((error as any).code === 'storage/object-not-found') {
+            console.warn(`[ChallengeService] File not found for deletion (might be already deleted): ${fileUrl}`);
+        } else {
+            console.error(`[ChallengeService] Error deleting file ${fileUrl}:`, error);
+            throw error; // Re-throw for other errors
+        }
+    }
+};
+
+    
