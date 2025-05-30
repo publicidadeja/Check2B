@@ -285,12 +285,14 @@ exports.createOrganizationUser = onCall({
         throw new HttpsError('invalid-argument', 'A senha deve ter pelo menos 6 caracteres.');
     }
 
+    const photoURLForAuth = (photoUrl && typeof photoUrl === 'string' && photoUrl.startsWith('http')) ? photoUrl : null;
+
     try {
         const userRecord = await admin.auth().createUser({
             email: email,
             password: password,
             displayName: name,
-            photoURL: photoUrl || null,
+            photoURL: photoURLForAuth,
             emailVerified: false, 
         });
         console.log(`[createOrganizationUser] Novo colaborador ${userRecord.uid} criado no Firebase Auth.`);
@@ -309,7 +311,7 @@ exports.createOrganizationUser = onCall({
             department: department,
             userRole: userRole, 
             admissionDate: admissionDate,
-            photoUrl: photoUrl || null,
+            photoUrl: photoURLForAuth, // Use the sanitized URL or null
             status: status, 
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
@@ -570,3 +572,4 @@ exports.removeAdminFromOrganizationFirebase = onCall({
         throw new HttpsError('internal', `Falha ao remover admin da organização. Detalhe: ${err.message}`);
     }
 });
+```
