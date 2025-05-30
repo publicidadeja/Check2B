@@ -253,7 +253,13 @@ const ManageChallenges = () => {
      const columns: ColumnDef<Challenge>[] = [
         { accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
         { accessorKey: "period", header: "Período", cell: ({ row }) => formatPeriod(row.original.periodStartDate, row.original.periodEndDate) },
-        { accessorKey: "points", header: () => <div className="text-center"><Award className="inline-block mr-1 h-4 w-4"/>Pontos</div>, cell: ({ row }) => <div className="text-center">{row.original.points}</div>, size: 80, },
+        { 
+            id: 'points', // Explicit ID
+            accessorKey: "points", 
+            header: () => <div className="text-center"><Award className="inline-block mr-1 h-4 w-4"/>Pontos</div>, 
+            cell: ({ row }) => <div className="text-center">{row.original.points}</div>, 
+            size: 80, 
+        },
         { accessorKey: "difficulty", header: "Dificuldade" },
         { accessorKey: "participationType", header: "Participação" },
         { accessorKey: "status", header: "Status", cell: ({ row }) => <Badge variant={getStatusBadgeVariant(row.original.status)}>{getStatusText(row.original.status)}</Badge> },
@@ -768,10 +774,25 @@ const ChallengeHistory = () => {
     const historyColumns: ColumnDef<Challenge>[] = [
         { accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
         { accessorKey: "period", header: "Período", cell: ({ row }) => formatPeriod(row.original.periodStartDate, row.original.periodEndDate) },
-        { accessorKey: "points", header: () => <div className="text-center">Pontos</div>, cell: ({ row }) => <div className="text-center">{row.original.points}</div>, size: 80 },
+        { 
+            id: 'historyPoints', // Explicit ID
+            accessorKey: "points", 
+            header: () => <div className="text-center">Pontos</div>, 
+            cell: ({ row }) => <div className="text-center">{row.original.points}</div>, 
+            size: 80 
+        },
         { accessorKey: "status", header: "Status", cell: ({ row }) => <Badge variant={getStatusBadgeVariant(row.original.status)}>{getStatusText(row.original.status)}</Badge> },
-        { header: () => <div className="text-center"><Users className="inline-block mr-1 h-4 w-4"/>Resultados</div>, cell: ({ row }) => <div className="text-center text-xs">{getParticipantSummary(row.original.id)}</div> },
-        { id: "details", header: () => <div className="text-right">Detalhes</div>, cell: ({ row }) => (<div className="text-right"><Button variant="outline" size="sm" onClick={() => openDetails(row.original.id)}><Eye className="mr-1 h-3 w-3" /> Ver</Button></div>), size: 120 },
+        { 
+            id: 'historyResults', // Explicit ID
+            header: () => <div className="text-center"><Users className="inline-block mr-1 h-4 w-4"/>Resultados</div>, 
+            cell: ({ row }) => <div className="text-center text-xs">{getParticipantSummary(row.original.id)}</div> 
+        },
+        { 
+            id: "historyDetails", // Explicit ID
+            header: () => <div className="text-right">Detalhes</div>, 
+            cell: ({ row }) => (<div className="text-right"><Button variant="outline" size="sm" onClick={() => openDetails(row.original.id)}><Eye className="mr-1 h-3 w-3" /> Ver</Button></div>), 
+            size: 120 
+        },
     ];
 
     if (authLoading) return <LoadingSpinner text="Autenticando..."/>;
@@ -836,3 +857,4 @@ export default function ChallengesPage() {
     </div>
   );
 }
+

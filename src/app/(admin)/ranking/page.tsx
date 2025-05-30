@@ -167,8 +167,9 @@ const getTrendIcon = (trend?: 'up' | 'down' | 'stable') => {
 // --- Ranking Table Columns ---
 const rankingColumns: ColumnDef<RankingEntry>[] = [
      {
+        id: 'rank', // Explicit ID
         accessorKey: "rank",
-        header: "#",
+        header: () => <div className="text-center w-8">#</div>,
         cell: ({ row }) => (
             <div className="font-medium text-center w-8">
                 {row.original.rank <= 3 && row.original.rank === 1 && <Crown className="h-5 w-5 text-yellow-500 mx-auto" />}
@@ -195,22 +196,25 @@ const rankingColumns: ColumnDef<RankingEntry>[] = [
     { accessorKey: "department", header: "Departamento" },
     { accessorKey: "role", header: "Função" },
     {
+        id: 'score', // Explicit ID
         accessorKey: "score",
-        header: "Pontuação",
+        header: () => <div className="text-right">Pontuação</div>,
         cell: ({ row }) => <div className="text-right font-semibold">{row.getValue("score")}</div>,
         size: 100,
     },
      {
+        id: 'zeros', // Explicit ID
         accessorKey: "zeros",
-        header: "Zeros",
+        header: () => <div className="text-right">Zeros</div>,
         cell: ({ row }) => <div className={`text-right ${Number(row.getValue("zeros")) > 0 ? 'text-destructive font-semibold' : ''}`}>{row.getValue("zeros")}</div>,
         size: 80,
     },
       {
+         id: 'trend', // Explicit ID
          accessorKey: "trend",
-         header: "Tendência",
+         header: () => <div className="text-center">Tendência</div>,
          cell: ({ row }) => <div className="flex justify-center">{getTrendIcon(row.original.trend)}</div>,
-         size: 80, // Added size for trend column
+         size: 80,
      },
 ];
 
@@ -384,18 +388,22 @@ const AwardConfiguration = () => {
             ),
         },
         {
+            id: 'winnerCount', // Explicit ID
             accessorKey: "winnerCount",
-            header: "Ganhadores",
+            header: () => <div className="text-center">Ganhadores</div>,
             cell: ({ row }) => <div className="text-center">{row.original.winnerCount}</div>,
             size: 100,
         },
         {
+            id: 'eligibleDepartments', // Explicit ID
             accessorKey: "eligibleDepartments",
-            header: "Elegíveis",
+            header: () => <div className="text-center">Elegíveis</div>,
             cell: ({ row }) => (
-                <Badge variant="outline">
-                    {row.original.eligibleDepartments.includes('all') ? 'Todos Deptos' : `${row.original.eligibleDepartments.length} Depto(s)`}
-                </Badge>
+                <div className="text-center">
+                    <Badge variant="outline">
+                        {row.original.eligibleDepartments.includes('all') ? 'Todos Deptos' : `${row.original.eligibleDepartments.length} Depto(s)`}
+                    </Badge>
+                </div>
             ),
             size: 120,
         },
@@ -771,7 +779,7 @@ const AwardHistory = () => {
                                             {entry.deliveryPhotoUrl && (
                                                 <div className="mt-2">
                                                     <strong>Foto da Entrega:</strong><br/>
-                                                    <img src={entry.deliveryPhotoUrl} alt={`Entrega ${entry.awardTitle} ${entry.period}`} className="mt-1 rounded-md max-h-32 border" />
+                                                    <img src={entry.deliveryPhotoUrl} alt={`Entrega ${entry.awardTitle} ${entry.period}`} className="mt-1 rounded-md max-h-32 border" data-ai-hint="award ceremony" />
                                                 </div>
                                             )}
                                             {entry.notes && <p className="text-xs text-muted-foreground pt-1"><strong>Observações:</strong> {entry.notes}</p>}

@@ -1,3 +1,4 @@
+
 // src/app/(superadmin)/superadmin/organizations/page.tsx
 'use client';
 
@@ -75,8 +76,15 @@ export default function OrganizationsPage() {
         cell: ({ row }) => <Badge variant={getStatusBadgeVariant(row.original.status)} className={row.original.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200' : 'text-xs'}>{getStatusText(row.original.status)}</Badge>,
         size: 100
     },
-    { accessorKey: "userCount", header: () => <div className="text-center flex items-center gap-1"><UsersIcon className="h-3 w-3"/>Usuários</div>, cell: ({ row }) => <div className="text-center text-xs">{row.original.userCount ?? '-'}</div>, size: 100 },
     { 
+        id: 'userCount', // Explicit ID
+        accessorKey: "userCount", 
+        header: () => <div className="text-center flex items-center gap-1"><UsersIcon className="h-3 w-3"/>Usuários</div>, 
+        cell: ({ row }) => <div className="text-center text-xs">{row.original.userCount ?? '-'}</div>, 
+        size: 100 
+    },
+    { 
+      id: 'createdAt', // Explicit ID
       accessorKey: "createdAt", 
       header: () => <div className="flex items-center gap-1"><CalendarDays className="h-3 w-3"/>Criada em</div>, 
       cell: ({ row }) => {
@@ -296,3 +304,4 @@ export default function OrganizationsPage() {
     </div>
   );
 }
+
