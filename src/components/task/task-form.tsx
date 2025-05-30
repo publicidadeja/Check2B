@@ -37,8 +37,6 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import type { Task } from '@/types/task';
-// DatePicker import is not used here, can be removed if not planned for specific_days/dates
-// import { DatePicker } from '@/components/ui/date-picker';
 
 const taskSchema = z.object({
   title: z.string().min(3, { message: 'Título deve ter pelo menos 3 caracteres.' }),
@@ -47,16 +45,16 @@ const taskSchema = z.object({
   category: z.string().optional().or(z.literal('')),
   priority: z.enum(['low', 'medium', 'high']).optional(),
   periodicity: z.enum(['daily', 'specific_days', 'specific_dates'], { required_error: "Periodicidade é obrigatória." }),
-  assignedTo: z.enum(['role', 'department', 'individual']).optional(),
+  assignedTo: z.enum(['role', 'department', 'individual']).optional().nullable(), // Allow null to represent "Global" or unselected
   assignedEntityId: z.string().optional().or(z.literal('')),
-  // organizationId is handled by the service, not part of the form data directly
 }).refine(data => {
-     if (data.assignedTo && !data.assignedEntityId?.trim()) {
+     // If assignedTo is set (not null/undefined), then assignedEntityId must be provided
+     if (data.assignedTo && (data.assignedTo === 'role' || data.assignedTo === 'department' || data.assignedTo === 'individual') && !data.assignedEntityId?.trim()) {
        return false;
      }
      return true;
    }, {
-    message: "Se 'Atribuído a' for selecionado, o ID/Nome correspondente é obrigatório.",
+    message: "Se 'Atribuído a' for selecionado (diferente de Global), o ID/Nome correspondente é obrigatório.",
     path: ["assignedEntityId"],
    });
 
@@ -65,10 +63,12 @@ type TaskFormData = z.infer<typeof taskSchema>;
 
 interface TaskFormProps {
   task?: Task | null;
-  onSave: (data: TaskFormData) => Promise<void>; // onSave expects TaskFormData
+  onSave: (data: Partial<TaskFormData>) => Promise<void>; // Partial for updates
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
+
+const GLOBAL_ASSIGNMENT_VALUE = "GLOBAL_PLACEHOLDER_VALUE_FOR_UNASSIGNED"; // Special value for select
 
 export function TaskForm({
     task,
@@ -92,7 +92,7 @@ export function TaskForm({
       category: '',
       priority: undefined,
       periodicity: 'daily',
-      assignedTo: undefined,
+      assignedTo: null, // Default to null (Global)
       assignedEntityId: '',
     },
   });
@@ -107,7 +107,7 @@ export function TaskForm({
             category: task.category || '',
             priority: task.priority || undefined,
             periodicity: task.periodicity || 'daily',
-            assignedTo: task.assignedTo || undefined,
+            assignedTo: task.assignedTo || null, // If task.assignedTo is undefined, set to null
             assignedEntityId: task.assignedEntityId || '',
           });
         } else {
@@ -118,7 +118,7 @@ export function TaskForm({
              category: '',
              priority: undefined,
              periodicity: 'daily',
-             assignedTo: undefined,
+             assignedTo: null, // Default to null (Global) for new tasks
              assignedEntityId: '',
            });
         }
@@ -127,8 +127,23 @@ export function TaskForm({
 
   const onSubmit = async (data: TaskFormData) => {
     setIsSaving(true);
+    // Prepare data for saving: if assignedTo is our placeholder or null, send undefined
+    const dataToSave = {
+        ...data,
+        assignedTo: data.assignedTo === GLOBAL_ASSIGNMENT_VALUE ? undefined : data.assignedTo,
+        assignedEntityId: data.assignedTo && data.assignedTo !== GLOBAL_ASSIGNMENT_VALUE ? data.assignedEntityId : undefined,
+    };
+
+    // Remove keys with undefined values before saving to Firestore
+    Object.keys(dataToSave).forEach(keyStr => {
+        const key = keyStr as keyof typeof dataToSave;
+        if (dataToSave[key] === undefined) {
+            delete dataToSave[key];
+        }
+    });
+
     try {
-      await onSave(data); // Pass validated form data to parent
+      await onSave(dataToSave); 
       setIsOpen(false);
     } catch (error) {
        console.error("Falha ao salvar tarefa:", error);
@@ -261,30 +276,38 @@ export function TaskForm({
                   name="assignedTo"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Atribuído a (Opcional)</FormLabel>
-                       <Select onValueChange={(value) => {
-                           field.onChange(value);
-                           form.setValue('assignedEntityId', '');
-                       }} value={field.value ?? ''}>
+                      <FormLabel>Atribuído a</FormLabel>
+                       <Select 
+                        onValueChange={(value) => {
+                           // If "Global" is selected, set field value to our placeholder, which then becomes undefined on submit
+                           // Otherwise, set to the selected value
+                           field.onChange(value === GLOBAL_ASSIGNMENT_VALUE ? null : value);
+                           form.setValue('assignedEntityId', ''); // Reset entity ID when assignment type changes
+                       }} 
+                       value={field.value ?? GLOBAL_ASSIGNMENT_VALUE} // Use placeholder if null or undefined
+                      >
                         <FormControl>
                           <SelectTrigger>
+                            {/* Display "Global (Todos Colaboradores)" if value is null or placeholder */}
                             <SelectValue placeholder="Global (Todos Colaboradores)" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
+                           {/* Explicit "Global" option that maps to null/undefined for assignedTo */}
+                           <SelectItem value={GLOBAL_ASSIGNMENT_VALUE}>Global (Todos Colaboradores)</SelectItem>
                            <SelectItem value="role">Função Específica</SelectItem>
                            <SelectItem value="department">Departamento Específico</SelectItem>
                            <SelectItem value="individual">Colaborador Específico</SelectItem>
                         </SelectContent>
                       </Select>
                        <FormDescription>
-                         Se não selecionado, a tarefa aplica-se a todos.
+                         "Global" aplica a tarefa a todos os colaboradores.
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                 {form.watch('assignedTo') && (
+                 {form.watch('assignedTo') && form.watch('assignedTo') !== GLOBAL_ASSIGNMENT_VALUE && ( // Show only if a specific type is selected
                    <FormField
                      control={form.control}
                      name="assignedEntityId"
