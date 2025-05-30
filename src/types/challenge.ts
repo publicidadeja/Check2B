@@ -6,35 +6,37 @@ export interface Challenge {
   category?: string;
   periodStartDate: string; // YYYY-MM-DD
   periodEndDate: string; // YYYY-MM-DD
-  points: number; // Can be more complex later (variable, per level)
+  points: number;
   difficulty: 'Fácil' | 'Médio' | 'Difícil';
   participationType: 'Obrigatório' | 'Opcional';
-  eligibility: { // Defines who is eligible
+  eligibility: {
     type: 'all' | 'department' | 'role' | 'individual';
-    entityIds?: string[]; // Array of department/role/individual IDs if not 'all'
+    entityIds?: string[];
   };
-  evaluationMetrics: string; // How success is measured
-  supportMaterialUrl?: string; // Link to guides, etc.
-  imageUrl?: string; // URL for an illustrative image/icon
-  status: 'draft' | 'active' | 'scheduled' | 'evaluating' | 'completed' | 'archived'; // Lifecycle status
-  organizationId: string; // ID da organização
+  evaluationMetrics: string;
+  supportMaterialUrl?: string;
+  imageUrl?: string;
+  status: 'draft' | 'active' | 'scheduled' | 'evaluating' | 'completed' | 'archived';
+  organizationId: string;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
-
-// Added definition for ChallengeParticipation used in admin/challenges page
 export interface ChallengeParticipation {
-    id?: string; // Optional for creation
-    challengeId: string;
-    employeeId: string;
-    employeeName?: string; // Optional, can be fetched if needed
-    submission?: string; // Link or text description
-    submittedAt?: Date;
-    status: 'pending' | 'submitted' | 'approved' | 'rejected' | 'accepted'; // Added accepted status
-    score?: number; // Score given if approved
-    feedback?: string;
-    acceptedAt?: Date; // Added acceptedAt
-    submissionText?: string; // Explicit text submission field
-    submissionFileUrl?: string; // Explicit file submission field
-    organizationId: string; // ID da organização
+  id: string; // Firestore document ID
+  challengeId: string;
+  employeeId: string;
+  employeeName?: string; // Denormalized for easier display
+  status: 'pending' | 'accepted' | 'submitted' | 'approved' | 'rejected';
+  acceptedAt?: Date;
+  submittedAt?: Date;
+  submissionText?: string;
+  submissionFileUrl?: string; // URL to file in Firebase Storage
+  score?: number;
+  feedback?: string; // Feedback from admin
+  evaluatedAt?: Date;
+  evaluatorId?: string;
+  organizationId: string;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
-
