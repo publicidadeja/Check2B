@@ -1,3 +1,4 @@
+
 export interface Evaluation {
   id: string; // ID único da avaliação (ex: employeeId-taskId-date)
   employeeId: string; // ID do colaborador avaliado
@@ -10,4 +11,6 @@ export interface Evaluation {
   isDraft: boolean; // Indica se é um rascunho (não implementado ainda)
   lastEdited?: string; // Timestamp da última edição (ISO string, opcional)
   organizationId: string; // ID da organização
+  createdAt?: Date; // Adicionado para rastreamento
+  updatedAt?: Date; // Adicionado para rastreamento
 }

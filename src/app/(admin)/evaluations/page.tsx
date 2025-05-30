@@ -12,9 +12,9 @@ import {
   Save,
   ListFilter,
   Info,
-  Frown, // Import Frown for empty state
+  Frown,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 import { Button } from '@/components/ui/button';
@@ -54,68 +54,16 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-import type { Employee } from '@/types/employee';
+import type { UserProfile } from '@/types/user';
 import type { Task } from '@/types/task';
 import type { Evaluation } from '@/types/evaluation';
-import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import LoadingSpinner
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { useAuth } from '@/hooks/use-auth';
+import { getUsersByRoleAndOrganization } from '@/lib/user-service';
+import { getAllTasksForOrganization } from '@/lib/task-service';
+import { getTasksForEmployeeOnDate, getEvaluationsForDay, saveEmployeeEvaluations } from '@/lib/evaluation-service';
 
-const mockEmployees: Employee[] = [
-   { id: '1', name: 'Alice Silva', email: 'alice.silva@check2b.com', phone: '11987654321', department: 'RH', role: 'Recrutadora', admissionDate: '2023-01-15', isActive: true, photoUrl: 'https://picsum.photos/id/1027/40/40' },
-   { id: '2', name: 'Beto Santos', email: 'beto.santos@check2b.com', phone: '21912345678', department: 'Engenharia', role: 'Desenvolvedor Backend', admissionDate: '2022-08-20', isActive: true, photoUrl: 'https://picsum.photos/id/1005/40/40' },
-   { id: '4', name: 'Davi Costa', email: 'davi.costa@check2b.com', phone: '41988887777', department: 'Vendas', role: 'Executivo de Contas', admissionDate: '2021-11-01', isActive: true, photoUrl: 'https://picsum.photos/id/338/40/40' },
-   { id: '5', name: 'Eva Pereira', email: 'eva.pereira@check2b.com', phone: '51977776666', department: 'Engenharia', role: 'Desenvolvedora Frontend', admissionDate: '2023-03-22', isActive: true },
- ];
-
-const mockTasks: Task[] = [
-   { id: 't1', title: 'Verificar Emails', description: 'Responder a todos os emails pendentes.', criteria: 'Caixa de entrada zerada ou emails urgentes respondidos.', category: 'Comunicação', periodicity: 'daily', assignedTo: 'role', assignedEntityId: 'Recrutadora' },
-   { id: 't2', title: 'Reunião Diária', description: 'Participar da reunião da equipe.', criteria: 'Presença e participação ativa.', category: 'Engenharia', periodicity: 'daily', assignedTo: 'department', assignedEntityId: 'Engenharia' },
-   { id: 't3', title: 'Atualizar CRM', description: 'Registrar novas interações no CRM.', criteria: 'CRM atualizado com atividades do dia.', category: 'Vendas', periodicity: 'daily', assignedTo: 'role', assignedEntityId: 'Executivo de Contas' },
-   { id: 't5', title: 'Revisar Código', description: 'Revisar pull requests designados.', criteria: 'PRs revisados com feedback.', category: 'Engenharia', periodicity: 'daily', assignedTo: 'individual', assignedEntityId: '2' /* Beto Santos ID */ },
-   { id: 't6', title: 'Relatório Semanal', description: 'Compilar dados e criar relatório.', criteria: 'Relatório completo e enviado.', category: 'Geral', periodicity: 'specific_days' /* e.g., Sextas */ },
- ];
-
-const getTasksForEmployee = (employeeId: string, date: Date): Task[] => {
-     const employee = mockEmployees.find(e => e.id === employeeId);
-     if (!employee || !employee.isActive) return [];
-
-     return mockTasks.filter(task => {
-       let applies = false;
-       const dayOfWeek = date.getDay();
-
-       if (task.periodicity === 'daily') {
-           applies = true;
-       } else if (task.periodicity === 'specific_days') {
-           // Example: T6 (Relatório Semanal) applies only on Fridays (day 5)
-           if (task.id === 't6' && dayOfWeek === 5) {
-               applies = true;
-           }
-           // Example: T4 (Postar Redes Sociais) applies only on Tue/Thu (days 2/4)
-           if (task.id === 't4' && (dayOfWeek === 2 || dayOfWeek === 4)) {
-               applies = true;
-           }
-       }
-
-       if (!applies) return false;
-
-       // Check assignment only if periodicity matches
-       if (!task.assignedTo) return true; // Global tasks apply
-       if (task.assignedTo === 'role' && task.assignedEntityId === employee.role) return true;
-       if (task.assignedTo === 'department' && task.assignedEntityId === employee.department) return true;
-       if (task.assignedTo === 'individual' && task.assignedEntityId === employee.id) return true;
-
-       return false; // Does not apply if specific assignment doesn't match
-     });
- };
-
-
-const saveEvaluations = async (evaluations: Evaluation[]): Promise<void> => {
-    await new Promise(resolve => setTimeout(resolve, 700));
-    console.log("Salvando avaliações:", evaluations);
-    // Here you would typically send the data to your backend API
-    // For demo, we just log it.
-};
-
-const getInitials = (name: string) => {
+const getInitials = (name: string = '') => {
     return name
         ?.split(' ')
         .map((n) => n[0])
@@ -124,101 +72,112 @@ const getInitials = (name: string) => {
         .toUpperCase() || '??';
 };
 
-// Interface to hold the state for each task being evaluated for an employee
 interface TaskEvaluationState extends Task {
     score?: 0 | 10;
     justification?: string;
     evidenceFile?: File | null;
-    evidenceUrl?: string; // URL if already uploaded/stored
+    evidenceUrl?: string; 
+    evaluationId?: string; // To track existing evaluations
 }
 
-// Interface to hold the evaluation state for an employee on the selected date
-interface EmployeeEvaluationState extends Employee {
+interface EmployeeEvaluationState extends UserProfile {
     tasks: TaskEvaluationState[];
-    allEvaluated: boolean; // True if all applicable tasks for the day have a score
-    isSaving: boolean; // To show loading state on the save button
+    allEvaluated: boolean;
+    isSaving: boolean;
 }
 
 export default function EvaluationsPage() {
+  const { organizationId, user: currentUser, isLoading: authLoading } = useAuth();
   const [selectedDate, setSelectedDate] = React.useState<Date>(new Date());
   const [employeesToEvaluate, setEmployeesToEvaluate] = React.useState<EmployeeEvaluationState[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true); // Changed initial state to true
+  const [isLoadingData, setIsLoadingData] = React.useState(true);
+  
+  const [allOrganizationTasks, setAllOrganizationTasks] = React.useState<Task[]>([]);
+  const [dailyEvaluations, setDailyEvaluations] = React.useState<Map<string, Evaluation>>(new Map());
+
   const [departments, setDepartments] = React.useState<string[]>([]);
-  const [roles, setRoles] = React.useState<string[]>([]);
+  const [roles, setRoles] = React.useState<string[]>([]); // userRole/cargo
   const [selectedDepartments, setSelectedDepartments] = React.useState<Set<string>>(new Set());
   const [selectedRoles, setSelectedRoles] = React.useState<Set<string>>(new Set());
 
   const { toast } = useToast();
 
-  // Extract unique departments and roles for filters
-  React.useEffect(() => {
-    const uniqueDepartments = [...new Set(mockEmployees.map(e => e.department))].sort();
-    const uniqueRoles = [...new Set(mockEmployees.map(e => e.role))].sort();
-    setDepartments(uniqueDepartments);
-    setRoles(uniqueRoles);
-  }, []);
-
-  // Function to load employee data based on filters and date
-  const loadEvaluationData = React.useCallback(async () => { // Made async
-    setIsLoading(true);
-    console.log("Carregando dados para:", selectedDate, "Deptos:", selectedDepartments, "Funções:", selectedRoles);
-    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate loading
-
-    // Filter employees based on selected departments and roles
-     let filteredEmployees = mockEmployees.filter(emp => emp.isActive); // Start with active employees
-
-    if (selectedDepartments.size > 0) {
-      filteredEmployees = filteredEmployees.filter(emp => selectedDepartments.has(emp.department));
+  const loadEvaluationData = React.useCallback(async () => {
+    if (!organizationId || authLoading) {
+        if(!authLoading) setIsLoadingData(false); // If not authLoading but no orgId, stop loading
+        return;
     }
-    if (selectedRoles.size > 0) {
-       filteredEmployees = filteredEmployees.filter(emp => selectedRoles.has(emp.role));
+    setIsLoadingData(true);
+    console.log("[EvaluationsPage] Loading data for org:", organizationId, "Date:", selectedDate);
+
+    try {
+        const [employeesData, tasksData, evaluationsData] = await Promise.all([
+            getUsersByRoleAndOrganization('collaborator', organizationId),
+            getAllTasksForOrganization(organizationId),
+            getEvaluationsForDay(organizationId, format(selectedDate, 'yyyy-MM-dd'))
+        ]);
+
+        setAllOrganizationTasks(tasksData);
+        const evalsMap = new Map(evaluationsData.map(ev => [`${ev.employeeId}-${ev.taskId}-${ev.evaluationDate}`, ev]));
+        setDailyEvaluations(evalsMap);
+        
+        const uniqueDepts = new Set<string>();
+        const uniqueRoles = new Set<string>();
+
+        const employeesWithTasks = employeesData
+          .filter(emp => emp.status === 'active') // Consider only active employees
+          .map(emp => {
+            if (emp.department) uniqueDepts.add(emp.department);
+            if (emp.userRole) uniqueRoles.add(emp.userRole);
+
+            const tasksForEmp = getTasksForEmployeeOnDate(emp, selectedDate, tasksData);
+            const taskStates: TaskEvaluationState[] = tasksForEmp.map(task => {
+                const evalIdKey = `${emp.uid}-${task.id}-${format(selectedDate, 'yyyy-MM-dd')}`;
+                const existingEval = evalsMap.get(evalIdKey);
+                return {
+                    ...task,
+                    score: existingEval?.score,
+                    justification: existingEval?.justification || '',
+                    evidenceUrl: existingEval?.evidenceUrl || undefined,
+                    evaluationId: existingEval?.id,
+                };
+            });
+            return {
+                ...emp,
+                tasks: taskStates,
+                allEvaluated: tasksForEmp.length > 0 ? taskStates.every(t => t.score !== undefined) : true, // True if no tasks
+                isSaving: false,
+            };
+        }).sort((a,b) => a.name.localeCompare(b.name));
+
+        setDepartments(Array.from(uniqueDepts).sort());
+        setRoles(Array.from(uniqueRoles).sort());
+        setEmployeesToEvaluate(employeesWithTasks);
+
+    } catch (error) {
+        console.error("Falha ao carregar dados de avaliação:", error);
+        toast({ title: "Erro", description: "Falha ao carregar dados para avaliação.", variant: "destructive" });
+    } finally {
+        setIsLoadingData(false);
     }
+  }, [organizationId, selectedDate, authLoading, toast]);
 
-    // Map filtered employees to the state structure, fetching tasks for the selected date
-    const employeesWithTasks = filteredEmployees.map(emp => {
-      const tasksForEmp = getTasksForEmployee(emp.id, selectedDate);
-      const taskStates: TaskEvaluationState[] = tasksForEmp.map(task => ({
-          ...task,
-          score: undefined, // Start with no score
-          justification: '',
-          evidenceFile: null,
-          // evidenceUrl: fetch existing evidence URL if applicable
-      }));
-      return {
-        ...emp,
-        tasks: taskStates,
-        // Determine if all tasks are evaluated (initially true only if no tasks)
-        allEvaluated: tasksForEmp.length === 0,
-        isSaving: false,
-      };
-    }).sort((a,b) => a.name.localeCompare(b.name)); // Sort alphabetically
-
-    setEmployeesToEvaluate(employeesWithTasks);
-    setIsLoading(false);
-  }, [selectedDate, selectedDepartments, selectedRoles]);
-
-  // Load data when date or filters change
   React.useEffect(() => {
     loadEvaluationData();
   }, [loadEvaluationData]);
 
-
-  // Handle score button clicks (10 or 0)
   const handleScoreChange = (employeeId: string, taskId: string, score: 0 | 10) => {
     setEmployeesToEvaluate(prev =>
       prev.map(emp => {
-        if (emp.id === employeeId) {
-          // Update the specific task's score and clear justification if score is 10
+        if (emp.uid === employeeId) {
           const updatedTasks = emp.tasks.map(task => {
             if (task.id === taskId) {
-               // Keep justification only if score is 0
                const justification = score === 10 ? '' : task.justification;
               return { ...task, score, justification };
             }
             return task;
           });
-           // Check if all tasks for this employee now have a score
-           const allEvaluated = updatedTasks.every(t => t.score !== undefined);
+           const allEvaluated = updatedTasks.length > 0 ? updatedTasks.every(t => t.score !== undefined) : true;
           return { ...emp, tasks: updatedTasks, allEvaluated };
         }
         return emp;
@@ -226,11 +185,10 @@ export default function EvaluationsPage() {
     );
   };
 
-  // Handle changes in the justification textarea
   const handleJustificationChange = (employeeId: string, taskId: string, justification: string) => {
     setEmployeesToEvaluate(prev =>
       prev.map(emp =>
-        emp.id === employeeId
+        emp.uid === employeeId
           ? {
               ...emp,
               tasks: emp.tasks.map(task =>
@@ -242,15 +200,14 @@ export default function EvaluationsPage() {
     );
   };
 
- // Handle file selection for evidence
  const handleEvidenceChange = (employeeId: string, taskId: string, file: File | null) => {
      setEmployeesToEvaluate(prev =>
        prev.map(emp =>
-         emp.id === employeeId
+         emp.uid === employeeId
            ? {
                ...emp,
                tasks: emp.tasks.map(task =>
-                 task.id === taskId ? { ...task, evidenceFile: file } : task
+                 task.id === taskId ? { ...task, evidenceFile: file, evidenceUrl: file ? URL.createObjectURL(file) : task.evidenceUrl } : task
                ),
              }
            : emp
@@ -258,19 +215,19 @@ export default function EvaluationsPage() {
      );
  };
 
-
- // Handle saving evaluations for a specific employee
  const handleSaveEmployeeEvaluations = async (employeeId: string) => {
-     const employeeState = employeesToEvaluate.find(emp => emp.id === employeeId);
+     if (!organizationId || !currentUser?.uid) {
+         toast({ title: "Erro", description: "Informações de organização ou avaliador ausentes.", variant: "destructive" });
+         return;
+     }
+     const employeeState = employeesToEvaluate.find(emp => emp.uid === employeeId);
      if (!employeeState) return;
 
-      // Ensure all tasks are evaluated
       if (employeeState.tasks.length > 0 && !employeeState.allEvaluated) {
          toast({ title: "Atenção", description: "Avalie todas as tarefas antes de salvar.", variant: "destructive" });
          return;
      }
 
-     // Ensure justification is provided for all tasks with score 0
      const tasksWithZeroScore = employeeState.tasks.filter(t => t.score === 0);
      const missingJustification = tasksWithZeroScore.some(t => !t.justification?.trim());
 
@@ -279,41 +236,29 @@ export default function EvaluationsPage() {
          return;
      }
 
-     // TODO: Add evidence upload logic here if required before saving
+    setEmployeesToEvaluate(prev => prev.map(e => e.uid === employeeId ? {...e, isSaving: true} : e));
 
-    // Set saving state
-    setEmployeesToEvaluate(prev => prev.map(e => e.id === employeeId ? {...e, isSaving: true} : e));
-
-     // Prepare data payload for the backend/API
-     const evaluationsToSave: Evaluation[] = employeeState.tasks
-       .filter(task => task.score !== undefined) // Only save evaluated tasks
+     const taskEvaluationsForSave = employeeState.tasks
+       .filter(task => task.score !== undefined)
        .map(task => ({
-         id: `${employeeId}-${task.id}-${selectedDate.toISOString().split('T')[0]}`, // Example ID
-         employeeId: employeeId,
          taskId: task.id,
-         evaluationDate: selectedDate.toISOString().split('T')[0], // Format date as YYYY-MM-DD
-         score: task.score!, // Score is guaranteed to be defined here
+         score: task.score!,
          justification: task.justification,
-         evidenceUrl: task.evidenceFile ? `uploads/mock_${task.evidenceFile.name}` : undefined, // Simulate URL
-         evaluatorId: 'admin123', // Replace with actual admin ID from context/session
-         isDraft: false, // Mark as final
+         evidenceUrl: task.evidenceUrl, // TODO: Implement actual file upload and get URL
        }));
 
      try {
-       await saveEvaluations(evaluationsToSave);
+       await saveEmployeeEvaluations(organizationId, currentUser.uid, employeeId, format(selectedDate, 'yyyy-MM-dd'), taskEvaluationsForSave);
        toast({ title: "Sucesso!", description: `Avaliações para ${employeeState.name} salvas.` });
-       // Optionally: Mark employee as 'saved' for the day, disable card, etc.
-       // setEmployeesToEvaluate(prev => prev.filter(e => e.id !== employeeId)); // Or update status
+       await loadEvaluationData(); // Recarregar dados para refletir o salvamento
      } catch (error) {
        console.error("Falha ao salvar avaliações:", error);
        toast({ title: "Erro", description: `Falha ao salvar avaliações para ${employeeState.name}.`, variant: "destructive" });
      } finally {
-        // Reset saving state regardless of success/failure
-        setEmployeesToEvaluate(prev => prev.map(e => e.id === employeeId ? {...e, isSaving: false} : e));
+        setEmployeesToEvaluate(prev => prev.map(e => e.uid === employeeId ? {...e, isSaving: false} : e));
      }
  };
 
-  // Filter handlers
   const toggleDepartmentFilter = (dept: string) => {
     setSelectedDepartments(prev => {
         const newSet = new Set(prev);
@@ -323,7 +268,7 @@ export default function EvaluationsPage() {
     });
   };
 
-  const toggleRoleFilter = (role: string) => {
+  const toggleRoleFilter = (role: string) => { // userRole / cargo
      setSelectedRoles(prev => {
          const newSet = new Set(prev);
          if (newSet.has(role)) newSet.delete(role);
@@ -332,12 +277,34 @@ export default function EvaluationsPage() {
      });
    };
 
+   const filteredEmployees = React.useMemo(() => {
+    return employeesToEvaluate.filter(emp => {
+        const matchesDept = selectedDepartments.size === 0 || (emp.department && selectedDepartments.has(emp.department));
+        const matchesRole = selectedRoles.size === 0 || (emp.userRole && selectedRoles.has(emp.userRole));
+        return matchesDept && matchesRole;
+    });
+   }, [employeesToEvaluate, selectedDepartments, selectedRoles]);
+
+
+  if (authLoading) {
+    return <div className="flex justify-center items-center h-full py-10"><LoadingSpinner text="Autenticando..." /></div>;
+  }
+  if (!organizationId && !authLoading) {
+    return (
+        <div className="flex flex-col items-center justify-center h-full text-center p-4">
+            <Frown className="h-16 w-16 text-muted-foreground mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Organização Não Encontrada</h2>
+            <p className="text-muted-foreground">
+                O administrador não está associado a uma organização ou a organização não foi carregada.
+            </p>
+        </div>
+    );
+  }
 
   return (
-    <div className="space-y-6"> {/* Main container */}
+    <div className="space-y-6">
         <TooltipProvider>
             <div className="flex flex-col h-full">
-            {/* Cabeçalho: Seletor de Data e Filtros */}
             <div className="flex flex-col md:flex-row items-center justify-between mb-6 gap-4">
                 <h1 className="text-2xl font-semibold">Avaliações Diárias</h1>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -348,7 +315,7 @@ export default function EvaluationsPage() {
                         className="w-[240px] justify-start text-left font-normal"
                     >
                         <CalendarIcon className="mr-2 h-4 w-4" />
-                        {format(selectedDate, 'PPP', { locale: ptBR })}
+                        {selectedDate ? format(selectedDate, 'PPP', { locale: ptBR }) : <span>Escolha uma data</span>}
                     </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="end">
@@ -381,7 +348,7 @@ export default function EvaluationsPage() {
                                 </DropdownMenuCheckboxItem>
                             ))}
                             <DropdownMenuSeparator />
-                            <DropdownMenuLabel>Filtrar por Função</DropdownMenuLabel>
+                            <DropdownMenuLabel>Filtrar por Função (Cargo)</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             {roles.map(role => (
                                 <DropdownMenuCheckboxItem
@@ -394,26 +361,23 @@ export default function EvaluationsPage() {
                             ))}
                         </DropdownMenuContent>
                     </DropdownMenu>
-
                 </div>
             </div>
 
-            {/* Área dos Cards de Avaliação */}
-            <ScrollArea className="flex-grow"> {/* Use ScrollArea if content might exceed viewport height */}
+            <ScrollArea className="flex-grow">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
-                {isLoading ? (
+                {isLoadingData ? (
                     <div className="col-span-full flex justify-center items-center py-10">
-                         {/* Use LoadingSpinner */}
                          <LoadingSpinner text="Carregando avaliações..." />
                      </div>
-                ) : employeesToEvaluate.length === 0 ? (
+                ) : filteredEmployees.length === 0 ? (
                      <div className="col-span-full text-center text-muted-foreground py-10">
                          <Frown className="mx-auto h-10 w-10 mb-2" />
                          <p>Nenhum colaborador encontrado para os filtros e data selecionados.</p>
                      </div>
                 ) : (
-                    employeesToEvaluate.map(employee => (
-                    <Card key={employee.id} className="flex flex-col"> {/* Make card a flex column */}
+                    filteredEmployees.map(employee => (
+                    <Card key={employee.uid} className="flex flex-col">
                         <CardHeader className="flex flex-row items-center gap-4 space-y-0 pb-2">
                         <Avatar className="h-10 w-10">
                             <AvatarImage src={employee.photoUrl} alt={employee.name} />
@@ -421,10 +385,10 @@ export default function EvaluationsPage() {
                         </Avatar>
                         <div className='flex-1'>
                             <CardTitle className="text-lg">{employee.name}</CardTitle>
-                            <CardDescription>{employee.role} - {employee.department}</CardDescription>
+                            <CardDescription>{employee.userRole} - {employee.department}</CardDescription>
                         </div>
                         </CardHeader>
-                        <CardContent className="flex-grow pt-2 pb-4 px-4 space-y-3"> {/* Content takes remaining space */}
+                        <CardContent className="flex-grow pt-2 pb-4 px-4 space-y-3">
                         {employee.tasks.length === 0 ? (
                             <p className="text-sm text-muted-foreground text-center py-4">Nenhuma tarefa agendada para este colaborador hoje.</p>
                         ) : (
@@ -445,13 +409,12 @@ export default function EvaluationsPage() {
                                     </Tooltip>
                                 </div>
                                 <div className="flex items-center justify-between gap-2 mt-2">
-                                    {/* Score Buttons */}
                                     <div className="flex gap-2">
                                         <Button
                                             variant={task.score === 10 ? 'default' : 'outline'}
                                             size="sm"
                                             className={`px-3 ${task.score === 10 ? 'bg-green-600 hover:bg-green-700 text-white dark:bg-green-700 dark:hover:bg-green-800' : ''}`}
-                                            onClick={() => handleScoreChange(employee.id, task.id, 10)}
+                                            onClick={() => handleScoreChange(employee.uid, task.id, 10)}
                                         >
                                         <Check className="h-4 w-4 mr-1" /> 10
                                         </Button>
@@ -459,34 +422,36 @@ export default function EvaluationsPage() {
                                             variant={task.score === 0 ? 'destructive' : 'outline'}
                                             size="sm"
                                             className="px-3"
-                                            onClick={() => handleScoreChange(employee.id, task.id, 0)}
+                                            onClick={() => handleScoreChange(employee.uid, task.id, 0)}
                                         >
                                         <X className="h-4 w-4 mr-1" /> 0
                                         </Button>
                                     </div>
-                                    {/* Evidence Input */}
                                     <div className="flex-1 max-w-[120px] relative">
-                                        <Label htmlFor={`evidence-${employee.id}-${task.id}`} className="sr-only">Evidência</Label>
+                                        <Label htmlFor={`evidence-${employee.uid}-${task.id}`} className="sr-only">Evidência</Label>
                                         <Input
-                                            id={`evidence-${employee.id}-${task.id}`}
+                                            id={`evidence-${employee.uid}-${task.id}`}
                                             type="file"
                                             className="h-9 text-xs file:mr-2 file:text-xs file:font-medium file:border-0 file:bg-muted file:text-muted-foreground hover:file:bg-muted/80"
-                                            onChange={(e) => handleEvidenceChange(employee.id, task.id, e.target.files ? e.target.files[0] : null)}
+                                            onChange={(e) => handleEvidenceChange(employee.uid, task.id, e.target.files ? e.target.files[0] : null)}
                                             aria-label={`Anexar evidência para ${task.title}`}
                                             />
-                                        {/* Display filename if selected */}
                                         {task.evidenceFile && <p className='text-[10px] truncate mt-1 text-muted-foreground' title={task.evidenceFile.name}>{task.evidenceFile.name}</p>}
+                                        {!task.evidenceFile && task.evidenceUrl && 
+                                            <a href={task.evidenceUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline mt-1 block truncate" title="Ver evidência">
+                                                Ver evidência
+                                            </a>
+                                        }
                                     </div>
                                 </div>
-                                {/* Justification Textarea (Conditional) */}
                                 {task.score === 0 && (
                                     <div className="mt-3">
-                                    <Label htmlFor={`justification-${employee.id}-${task.id}`} className="text-xs font-medium text-destructive">Justificativa (Obrigatório para nota 0)</Label>
+                                    <Label htmlFor={`justification-${employee.uid}-${task.id}`} className="text-xs font-medium text-destructive">Justificativa (Obrigatório para nota 0)</Label>
                                     <Textarea
-                                        id={`justification-${employee.id}-${task.id}`}
+                                        id={`justification-${employee.uid}-${task.id}`}
                                         placeholder="Explique o motivo da nota 0..."
                                         value={task.justification}
-                                        onChange={(e) => handleJustificationChange(employee.id, task.id, e.target.value)}
+                                        onChange={(e) => handleJustificationChange(employee.uid, task.id, e.target.value)}
                                         className="mt-1 text-sm min-h-[60px]"
                                         required={task.score === 0}
                                     />
@@ -496,14 +461,13 @@ export default function EvaluationsPage() {
                             ))
                         )}
                         </CardContent>
-                        {/* Footer with Save Button (show only if tasks exist) */}
                         {employee.tasks.length > 0 && (
-                            <CardFooter className="border-t px-4 py-3 mt-auto"> {/* Push footer to bottom */}
+                            <CardFooter className="border-t px-4 py-3 mt-auto">
                             <Button
                                 className="w-full"
-                                onClick={() => handleSaveEmployeeEvaluations(employee.id)}
-                                disabled={!employee.allEvaluated || employee.isSaving} // Disable if not all evaluated or saving
-                                aria-live="polite" // Announce changes for accessibility
+                                onClick={() => handleSaveEmployeeEvaluations(employee.uid)}
+                                disabled={!employee.allEvaluated || employee.isSaving}
+                                aria-live="polite"
                             >
                                 {employee.isSaving ? (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -514,8 +478,7 @@ export default function EvaluationsPage() {
                             </Button>
                             </CardFooter>
                         )}
-                        {/* Footer placeholder if no tasks */}
-                        {employee.tasks.length === 0 && !isLoading && (
+                        {employee.tasks.length === 0 && !isLoadingData && (
                             <CardFooter className="border-t px-4 py-3 mt-auto justify-center">
                             <p className="text-sm text-muted-foreground">Sem tarefas para avaliar.</p>
                             </CardFooter>

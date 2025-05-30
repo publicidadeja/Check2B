@@ -1,8 +1,8 @@
+
 // src/lib/user-service.ts
 import { getDb } from './firebase';
 import type { UserProfile } from '@/types/user';
-import { collection, getDocs, query, where, doc, setDoc, deleteDoc, getDoc, updateDoc } from 'firebase/firestore';
-import type { Firestore } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, setDoc, deleteDoc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 
 /**
  * Fetches all users from the 'users' collection in Firestore.
@@ -18,10 +18,15 @@ export const getAllUsers = async (): Promise<UserProfile[]> => {
   const usersCollection = collection(db, 'users');
   const usersSnapshot = await getDocs(usersCollection);
 
-  return usersSnapshot.docs.map(doc => ({
-    uid: doc.id,
-    ...(doc.data() as Omit<UserProfile, 'uid'>)
-  })) as UserProfile[];
+  return usersSnapshot.docs.map(docSnapshot => {
+    const data = docSnapshot.data();
+    return {
+      uid: docSnapshot.id,
+      ...data,
+      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt,
+      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt,
+    } as UserProfile;
+  });
 };
 
 /**
@@ -38,7 +43,17 @@ export const getUsersByRole = async (role: 'admin' | 'collaborator' | 'super_adm
   const usersCollectionRef = collection(db, 'users');
   const q = query(usersCollectionRef, where('role', '==', role));
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+  return querySnapshot.docs.map(docSnapshot => {
+    const data = docSnapshot.data();
+    return {
+      uid: docSnapshot.id,
+      ...data,
+      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt,
+      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt,
+      department: data.department || undefined,
+      userRole: data.userRole || undefined,
+    } as UserProfile
+  });
 };
 
 /**
@@ -56,7 +71,20 @@ export const getUsersByRoleAndOrganization = async (role: 'admin' | 'collaborato
   const usersCollectionRef = collection(db, 'users');
   const q = query(usersCollectionRef, where('role', '==', role), where('organizationId', '==', organizationId));
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+  return querySnapshot.docs.map(docSnapshot => {
+    const data = docSnapshot.data();
+    return {
+      uid: docSnapshot.id,
+      ...data,
+      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt,
+      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt,
+      department: data.department || undefined, // Garante que o campo exista mesmo que undefined
+      userRole: data.userRole || undefined,   // Garante que o campo exista mesmo que undefined
+      photoUrl: data.photoUrl || undefined,
+      phone: data.phone || undefined,
+      admissionDate: data.admissionDate || undefined,
+    } as UserProfile;
+  });
 };
 
 
@@ -71,13 +99,25 @@ export const saveUser = async (userData: UserProfile): Promise<UserProfile> => {
   if (!db) {
     throw new Error('Firestore not initialized. Cannot save user.');
   }
-  // Ensure UID is present, as it's the document ID
   if (!userData.uid) {
       throw new Error('User UID is required to save user data.');
   }
   const userDocRef = doc(db, 'users', userData.uid);
-  // Use setDoc with merge:true to update or create if not exists, without overwriting unspecified fields
-  await setDoc(userDocRef, userData, { merge: true });
+  // Convert Date objects back to Timestamps if they exist, or use serverTimestamp
+  const dataToSave: any = { ...userData };
+  if (dataToSave.createdAt && dataToSave.createdAt instanceof Date) {
+    dataToSave.createdAt = Timestamp.fromDate(dataToSave.createdAt);
+  } else if (!dataToSave.createdAt) {
+    dataToSave.createdAt = Timestamp.now(); // Use Timestamp.now() for new docs
+  }
+  if (dataToSave.updatedAt && dataToSave.updatedAt instanceof Date) {
+    dataToSave.updatedAt = Timestamp.fromDate(dataToSave.updatedAt);
+  } else {
+    dataToSave.updatedAt = Timestamp.now();
+  }
+
+
+  await setDoc(userDocRef, dataToSave, { merge: true });
   return userData;
 };
 
@@ -108,9 +148,15 @@ export const updateUserStatusInFirestore = async (userId: string, status: 'activ
     throw new Error('Firestore not initialized. Cannot update user status.');
   }
   const userDocRef = doc(db, 'users', userId);
-  await updateDoc(userDocRef, { status });
+  await updateDoc(userDocRef, { status, updatedAt: Timestamp.now() });
 
   const updatedDoc = await getDoc(userDocRef);
   if (!updatedDoc.exists()) throw new Error('User not found after status update.');
-  return { uid: userId, ...updatedDoc.data() } as UserProfile;
+  const data = updatedDoc.data();
+  return {
+      uid: userId,
+      ...data,
+      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt,
+      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt,
+    } as UserProfile;
 };

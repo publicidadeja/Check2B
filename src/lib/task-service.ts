@@ -1,8 +1,42 @@
+
 // src/lib/task-service.ts
 import { getDb } from './firebase';
 import type { Task } from '@/types/task';
-import { collection, getDocs, query, where, doc, setDoc, deleteDoc, addDoc, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, setDoc, deleteDoc, addDoc, orderBy, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { Firestore, DocumentData, QuerySnapshot, Query } from 'firebase/firestore';
+
+/**
+ * Fetches all tasks for a specific organization from Firestore.
+ * @param organizationId The ID of the organization.
+ * @returns Promise resolving to an array of Task objects.
+ */
+export const getAllTasksForOrganization = async (organizationId: string): Promise<Task[]> => {
+  const db = getDb();
+  if (!db) {
+    console.error('Firestore not initialized. Cannot fetch all tasks for organization.');
+    return [];
+  }
+  console.log(`[TaskService] Fetching all tasks for org ID: ${organizationId}`);
+  const tasksCollectionRef = collection(db, `organizations/${organizationId}/tasks`);
+  const q = query(tasksCollectionRef, orderBy("title")); // Example: order by title
+
+  try {
+    const tasksSnapshot = await getDocs(q);
+    console.log(`[TaskService] Found ${tasksSnapshot.docs.length} tasks for org ${organizationId}`);
+    return tasksSnapshot.docs.map(docSnapshot => {
+      const data = docSnapshot.data();
+      return {
+        id: docSnapshot.id,
+        ...data,
+        organizationId, // Ensure organizationId is part of the returned object
+      } as Task;
+    });
+  } catch (error) {
+    console.error(`[TaskService] Error fetching all tasks for org ${organizationId}:`, error);
+    throw error;
+  }
+};
+
 
 /**
  * Fetches tasks for a specific organization from Firestore.
@@ -17,14 +51,13 @@ export const getTasksByOrganization = async (organizationId: string): Promise<Ta
   }
 
   const tasksCollectionRef = collection(db, `organizations/${organizationId}/tasks`);
-  // Optional: Add ordering, e.g., by title or creation date
-  // const q = query(tasksCollectionRef, orderBy("title"));
-  const tasksSnapshot = await getDocs(tasksCollectionRef);
+  const q = query(tasksCollectionRef, orderBy("title"));
+  const tasksSnapshot = await getDocs(q);
 
-  return tasksSnapshot.docs.map(doc => ({
-    id: doc.id,
-    ...(doc.data() as Omit<Task, 'id' | 'organizationId'>), // organizationId is part of the path
-    organizationId: organizationId // Add organizationId back for consistency if needed in Task type
+  return tasksSnapshot.docs.map(docSnapshot => ({ // Renamed doc to docSnapshot
+    id: docSnapshot.id,
+    ...(docSnapshot.data() as Omit<Task, 'id' | 'organizationId'>),
+    organizationId: organizationId
   })) as Task[];
 };
 
@@ -39,20 +72,17 @@ export const saveTask = async (organizationId: string, taskData: Omit<Task, 'id'
   if (!db) {
     throw new Error('Firestore not initialized. Cannot save task.');
   }
-
-  const tasksCollectionRef = collection(db, `organizations/${organizationId}/tasks`);
   
-  // Remove organizationId from data to save as it's part of the path
-  const { organizationId: _, ...dataToSaveInDoc } = taskData;
+  const { organizationId: _orgId, ...dataToSaveInDoc } = taskData as Task; // Type assertion and destructure
 
-
-  if ('id' in taskData && taskData.id) {
+  if (taskData.id) {
     // Update existing task
     const taskDocRef = doc(db, `organizations/${organizationId}/tasks`, taskData.id);
     await setDoc(taskDocRef, dataToSaveInDoc, { merge: true });
-    return { ...taskData, organizationId } as Task; // Return with orgId
+    return { ...taskData, organizationId } as Task;
   } else {
     // Create new task
+    const tasksCollectionRef = collection(db, `organizations/${organizationId}/tasks`);
     const docRef = await addDoc(tasksCollectionRef, dataToSaveInDoc);
     return { id: docRef.id, ...dataToSaveInDoc, organizationId } as Task;
   }

@@ -1,15 +1,17 @@
+
 // src/types/user.ts
 export interface UserProfile {
-  uid: string;
+  uid: string; // Firebase Auth UID
   name: string;
   email: string;
   role: 'super_admin' | 'admin' | 'collaborator';
   organizationId: string | null; // Null for super_admin
-  // Minimal fields before user management expansion
-  // createdAt?: Date | any; // Example of a field that might have existed
-  // status?: 'active' | 'inactive' | 'pending';
-  // photoUrl?: string;
-  // department?: string;
-  // phone?: string;
-  // isActive?: boolean; // This might be redundant if 'status' exists
+  status: 'active' | 'inactive' | 'pending';
+  createdAt?: Date | any; // Firestore Timestamp or Date
+  updatedAt?: Date | any; // Firestore Timestamp or Date
+  photoUrl?: string;
+  department?: string;
+  userRole?: string; // Cargo/Função específica do usuário, ex: "Desenvolvedor Backend"
+  phone?: string;
+  admissionDate?: string; // YYYY-MM-DD, usado no EmployeeForm
 }
