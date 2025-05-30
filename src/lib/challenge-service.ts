@@ -19,7 +19,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns'; // Removed parseISO as it's not used here directly
 
 const CHALLENGES_COLLECTION = 'challenges';
 const PARTICIPATIONS_COLLECTION = 'challengeParticipations';
@@ -45,11 +45,11 @@ export const getAllChallenges = async (organizationId: string): Promise<Challeng
         id: docSnapshot.id,
         ...data,
         organizationId,
-        periodStartDate: data.periodStartDate, 
-        periodEndDate: data.periodEndDate,   
+        periodStartDate: data.periodStartDate,
+        periodEndDate: data.periodEndDate,
         createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : new Date()),
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : undefined),
-        eligibility: data.eligibility || { type: 'all' }, // Ensure eligibility object exists
+        eligibility: data.eligibility || { type: 'all' },
       } as Challenge;
     });
   } catch (error) {
@@ -81,20 +81,19 @@ export const saveChallenge = async (
   }
 
   const finalDataToSave = {
-    ...dataToSave,
     title: dataToSave.title,
     description: dataToSave.description,
-    category: dataToSave.category || null, // Store null if empty for consistency
+    category: dataToSave.category || null,
     periodStartDate: typeof dataToSave.periodStartDate === 'string' ? dataToSave.periodStartDate : format(dataToSave.periodStartDate, 'yyyy-MM-dd'),
     periodEndDate: typeof dataToSave.periodEndDate === 'string' ? dataToSave.periodEndDate : format(dataToSave.periodEndDate, 'yyyy-MM-dd'),
     points: dataToSave.points,
     difficulty: dataToSave.difficulty,
     participationType: dataToSave.participationType,
-    eligibility: eligibilityToSave, // Use the processed eligibility object
+    eligibility: eligibilityToSave,
     evaluationMetrics: dataToSave.evaluationMetrics,
-    supportMaterialUrl: dataToSave.supportMaterialUrl || null, // Store null if empty
-    imageUrl: dataToSave.imageUrl || null, // Store null if empty
-    status: dataToSave.status, // Ensure status is passed
+    supportMaterialUrl: dataToSave.supportMaterialUrl || null,
+    imageUrl: dataToSave.imageUrl || null,
+    status: id ? dataToSave.status : (dataToSave.status || 'draft'), // Set default 'draft' for new challenges
     updatedAt: serverTimestamp(),
   };
 
@@ -105,8 +104,9 @@ export const saveChallenge = async (
   } else {
     // @ts-ignore
     finalDataToSave.createdAt = serverTimestamp();
-    // @ts-ignore
-    finalDataToSave.organizationId = organizationId; // Ensure orgId is set for new docs
+    // @ts-ignore 
+    // organizationId is implicitly part of the path, not stored in the doc itself here
+    // finalDataToSave.organizationId = organizationId; 
     docRef = await addDoc(collection(db, challengesPath), finalDataToSave);
   }
 
@@ -118,7 +118,7 @@ export const saveChallenge = async (
   return {
     id: savedDoc.id,
     ...savedData,
-    organizationId,
+    organizationId, // Add organizationId to the returned object for consistency
     createdAt: savedData?.createdAt instanceof Timestamp ? savedData.createdAt.toDate() : new Date(),
     updatedAt: savedData?.updatedAt instanceof Timestamp ? savedData.updatedAt.toDate() : new Date(),
     eligibility: savedData?.eligibility || { type: 'all' },
@@ -137,11 +137,9 @@ export const deleteChallenge = async (organizationId: string, challengeId: strin
   
   const batch = writeBatch(db);
 
-  // Delete the challenge itself
   const challengeDocRef = doc(db, `organizations/${organizationId}/${CHALLENGES_COLLECTION}`, challengeId);
   batch.delete(challengeDocRef);
 
-  // Query and delete all participations for this challenge
   const participationsPath = `organizations/${organizationId}/${PARTICIPATIONS_COLLECTION}`;
   const participationsQuery = query(collection(db, participationsPath), where("challengeId", "==", challengeId));
   
@@ -233,8 +231,8 @@ export const evaluateSubmission = async (
   
   const dataToUpdate: any = {
     status: evaluationData.status,
-    score: evaluationData.score !== undefined ? evaluationData.score : null, // Store null if score is undefined
-    feedback: evaluationData.feedback || null, // Store null if feedback is empty
+    score: evaluationData.score !== undefined ? evaluationData.score : null,
+    feedback: evaluationData.feedback || null,
     evaluatorId: evaluationData.evaluatorId,
     evaluatedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -287,7 +285,7 @@ export const getChallengeDetails = async (organizationId: string, challengeId: s
 // Helper to upload submission file (example)
 export const uploadChallengeSubmissionFile = async (organizationId: string, challengeId: string, employeeId: string, file: File): Promise<string> => {
     const storage = getStorage();
-    if (!storage) throw new Error("Firebase Storage not initialized.");
+    if (!storage) throw new Error("[ChallengeService] Firebase Storage not initialized.");
 
     const filePath = `organizations/${organizationId}/challenges/${challengeId}/submissions/${employeeId}/${file.name}`;
     const fileRef = ref(storage, filePath);
@@ -306,21 +304,18 @@ export const uploadChallengeSubmissionFile = async (organizationId: string, chal
 // Helper to delete a submission file (example)
 export const deleteChallengeSubmissionFile = async (fileUrl: string): Promise<void> => {
     const storage = getStorage();
-    if (!storage) throw new Error("Firebase Storage not initialized.");
+    if (!storage) throw new Error("[ChallengeService] Firebase Storage not initialized.");
     
     try {
-        const fileRef = ref(storage, fileUrl); // Get ref from full URL
+        const fileRef = ref(storage, fileUrl); 
         await deleteObject(fileRef);
         console.log(`[ChallengeService] File deleted: ${fileUrl}`);
     } catch (error) {
-        // If file not found, it might have been already deleted or URL is incorrect, often not a critical error to stop flow.
         if ((error as any).code === 'storage/object-not-found') {
             console.warn(`[ChallengeService] File not found for deletion (might be already deleted): ${fileUrl}`);
         } else {
             console.error(`[ChallengeService] Error deleting file ${fileUrl}:`, error);
-            throw error; // Re-throw for other errors
+            throw error; 
         }
     }
 };
-
-    
