@@ -1,11 +1,10 @@
 
+// src/lib/mockData/challenges.ts
+
 import type { Challenge, ChallengeParticipation } from '@/types/challenge';
+import { format, addDays, subDays } from 'date-fns';
 
 const DEFAULT_ORG_ID = 'org_default';
-
-// mockChallenges and mockParticipants are removed as data will come from Firestore.
-// We keep mockEmployeesSimple as it's still used by ChallengeForm for populating eligibility selects.
-// In a full Firestore integration, these would also be fetched.
 
 export const mockEmployeesSimple = [
     { id: '1', name: 'Alice Silva', role: 'Recrutadora', department: 'RH' },
@@ -14,13 +13,135 @@ export const mockEmployeesSimple = [
     { id: '5', name: 'Eva Pereira', role: 'Desenvolvedora Frontend', department: 'Engenharia' },
 ];
 
-// Mock participation data for CURRENT_EMPLOYEE_ID = '1' (used by collaborator challenges page)
-// This will also need to be replaced with Firestore data in the collaborator section.
-export let mockCurrentParticipations: ChallengeParticipation[] = [
-    { id: 'cp1', challengeId: 'c1', employeeId: '1', status: 'approved', acceptedAt: new Date(2024, 7, 5), submittedAt: new Date(2024, 7, 9), submissionText: 'Resumos enviados.', score: 50, feedback: 'Ótimo trabalho!', organizationId: DEFAULT_ORG_ID, createdAt: new Date(), updatedAt: new Date() },
-    { id: 'cp2', challengeId: 'c2', employeeId: '1', status: 'pending', organizationId: DEFAULT_ORG_ID, createdAt: new Date() },
-    { id: 'cp3', challengeId: 'c3', employeeId: '1', status: 'pending', organizationId: DEFAULT_ORG_ID, createdAt: new Date() },
-    { id: 'cp4', challengeId: 'c4', employeeId: '1', status: 'submitted', acceptedAt: new Date(2024, 7, 29), submittedAt: new Date(2024, 7, 31), submissionText: 'Feedbacks enviados via RH.', feedback: 'Recebido para avaliação.', organizationId: DEFAULT_ORG_ID, createdAt: new Date(), updatedAt: new Date() },
-    { id: 'cp5', challengeId: 'c5', employeeId: '1', status: 'accepted', acceptedAt: new Date(Date.now() - 86400000 * 2), organizationId: DEFAULT_ORG_ID, createdAt: new Date() },
-    { id: 'cp6', challengeId: 'c6', employeeId: '1', status: 'pending', organizationId: DEFAULT_ORG_ID, createdAt: new Date() },
+// Re-defining mockChallenges to ensure it's exported
+export let mockChallenges: Challenge[] = [
+  {
+    id: 'c1',
+    title: 'Feedback Construtivo Semanal',
+    description: 'Forneça feedback detalhado para 3 colegas sobre projetos recentes nesta semana.',
+    category: 'Colaboração',
+    periodStartDate: format(subDays(new Date(), 2), 'yyyy-MM-dd'), // Starts 2 days ago
+    periodEndDate: format(addDays(new Date(), 5), 'yyyy-MM-dd'),   // Ends in 5 days
+    points: 50,
+    difficulty: 'Médio',
+    participationType: 'Opcional',
+    eligibility: { type: 'all' },
+    evaluationMetrics: 'Qualidade e especificidade do feedback fornecido, conforme avaliação dos gestores. Pelo menos 50 palavras por feedback.',
+    status: 'active',
+    organizationId: DEFAULT_ORG_ID,
+    createdAt: subDays(new Date(), 7),
+  },
+  {
+    id: 'c2',
+    title: 'Organização da Área de Trabalho Digital',
+    description: 'Mantenha sua área de trabalho e arquivos digitais (principais pastas de projeto) impecavelmente organizados e nomeados conforme padrão.',
+    category: 'Organização',
+    periodStartDate: format(new Date(), 'yyyy-MM-dd'), // Starts today
+    periodEndDate: format(addDays(new Date(), 7), 'yyyy-MM-dd'), // Ends in 7 days
+    points: 30,
+    difficulty: 'Fácil',
+    participationType: 'Obrigatório',
+    eligibility: { type: 'department', entityIds: ['Engenharia', 'Marketing'] },
+    evaluationMetrics: 'Verificação da organização pelo gestor e auto-declaração com print (opcional).',
+    status: 'active',
+    organizationId: DEFAULT_ORG_ID,
+    createdAt: new Date(),
+  },
+  {
+    id: 'c3',
+    title: 'Ideia Inovadora do Mês (Ativa)',
+    description: 'Apresente uma ideia inovadora para melhorar um processo interno, produto ou serviço ao cliente.',
+    category: 'Inovação',
+    periodStartDate: format(subDays(new Date(), 10), 'yyyy-MM-dd'),
+    periodEndDate: format(addDays(new Date(), 20), 'yyyy-MM-dd'),
+    points: 100,
+    difficulty: 'Difícil',
+    participationType: 'Opcional',
+    eligibility: { type: 'all' },
+    evaluationMetrics: 'Originalidade, viabilidade, impacto potencial e clareza da apresentação da ideia.',
+    status: 'active',
+    organizationId: DEFAULT_ORG_ID,
+    imageUrl: 'https://placehold.co/600x400.png',
+    supportMaterialUrl: 'https://example.com/innovation_guide_v2',
+    createdAt: subDays(new Date(), 12),
+  },
+  {
+    id: 'c4',
+    title: 'Maratona de Documentação (Concluído)',
+    description: 'Documente 5 funcionalidades críticas do sistema Check2B que ainda não possuem documentação completa.',
+    category: 'Qualidade',
+    periodStartDate: format(subDays(new Date(), 15), 'yyyy-MM-dd'),
+    periodEndDate: format(subDays(new Date(), 8), 'yyyy-MM-dd'), // Desafio passado
+    points: 75,
+    difficulty: 'Médio',
+    participationType: 'Opcional',
+    eligibility: { type: 'role', entityIds: ['Desenvolvedor Backend', 'Desenvolvedora Frontend'] },
+    evaluationMetrics: 'Clareza, completude e precisão da documentação produzida. Deve seguir o template padrão.',
+    status: 'completed',
+    organizationId: DEFAULT_ORG_ID,
+    createdAt: subDays(new Date(), 20),
+  },
 ];
+
+// Re-defining mockParticipants to ensure it's exported
+export let mockParticipants: ChallengeParticipation[] = [
+    {
+        id: 'cp-admin-example-1',
+        challengeId: 'c1', // Feedback Construtivo
+        employeeId: '2', // Beto Santos
+        employeeName: 'Beto Santos',
+        status: 'submitted',
+        acceptedAt: subDays(new Date(), 1), // Aceitou ontem
+        submittedAt: new Date(),      // Submeteu hoje
+        submissionText: 'Feedback enviado para Alice, Davi e Eva sobre os últimos relatórios.',
+        organizationId: DEFAULT_ORG_ID,
+        createdAt: subDays(new Date(), 1),
+    },
+    {
+        id: 'cp-admin-example-2',
+        challengeId: 'c3', // Ideia Inovadora
+        employeeId: '5', // Eva Pereira
+        employeeName: 'Eva Pereira',
+        status: 'accepted',
+        acceptedAt: subDays(new Date(), 3),
+        organizationId: DEFAULT_ORG_ID,
+        createdAt: subDays(new Date(), 3),
+    }
+];
+
+// Re-defining mockCurrentParticipations to ensure it's exported
+export let mockCurrentParticipations: ChallengeParticipation[] = [
+    { 
+        id: 'cp1-alice-c1', 
+        challengeId: 'c1', 
+        employeeId: '1', // Alice Silva
+        employeeName: 'Alice Silva', 
+        status: 'approved', 
+        acceptedAt: subDays(new Date(), 2), 
+        submittedAt: subDays(new Date(), 1), 
+        submissionText: 'Feedback construtivo detalhado enviado para Carlos, Bia e Davi.', 
+        score: 50, 
+        feedback: 'Excelente qualidade de feedback, Alice! Muito útil.', 
+        organizationId: DEFAULT_ORG_ID, 
+        createdAt: subDays(new Date(),2), 
+        updatedAt: subDays(new Date(),0) 
+    },
+    { 
+        id: 'cp2-alice-c3', 
+        challengeId: 'c3', // Ideia Inovadora
+        employeeId: '1', // Alice Silva
+        employeeName: 'Alice Silva', 
+        status: 'accepted', // Alice aceitou, mas ainda não submeteu
+        acceptedAt: subDays(new Date(), 1), 
+        organizationId: DEFAULT_ORG_ID, 
+        createdAt: subDays(new Date(),1) 
+    },
+    // Para o desafio 'c2' (Organização), se Alice for da Engenharia ou Marketing (conforme eligibility)
+    // Se Alice NÃO é de Engenharia/Marketing, ela não deveria ter uma participação 'pending' ou 'accepted'
+    // a menos que a lógica de elegibilidade não esteja sendo aplicada para criar esta lista mock.
+    // Assumindo que ela NÃO é para testar o filtro de 'Disponíveis' vs 'Em Andamento'.
+    // Se ela fosse, a linha abaixo poderia ser:
+    // { id: 'cp3-alice-c2', challengeId: 'c2', employeeId: '1', status: 'pending', organizationId: DEFAULT_ORG_ID, createdAt: new Date() },
+];
+
+    
