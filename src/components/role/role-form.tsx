@@ -1,3 +1,4 @@
+// src/components/role/role-form.tsx
 'use client';
 
 import * as React from 'react';
@@ -8,7 +9,7 @@ import { Briefcase, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea'; // Import Textarea
+import { Textarea } from '@/components/ui/textarea'; 
 import {
   Form,
   FormControl,
@@ -27,16 +28,18 @@ import {
     DialogClose,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import type { Role } from '@/app/roles/page'; // Assuming type is exported from page
+import type { Role } from '@/types/role'; // Updated import path
 
 // Schema for Role Form Validation
 const roleSchema = z.object({
-  name: z.string().min(3, { message: 'Nome da função deve ter pelo menos 3 caracteres.' }),
+  name: z.string().min(2, { message: 'Nome da função deve ter pelo menos 2 caracteres.' }),
   description: z.string().optional().or(z.literal('')),
   // permissions: z.array(z.string()).optional(), // For future use
 });
 
-type RoleFormData = z.infer<typeof roleSchema>;
+// Use Omit to exclude fields managed by the service or parent
+type RoleFormData = Omit<Role, 'id' | 'organizationId' | 'createdAt' | 'updatedAt'>;
+
 
 interface RoleFormProps {
   role?: Role | null;
@@ -53,7 +56,7 @@ export function RoleForm({
 }: RoleFormProps) {
   const [internalOpen, setInternalOpen] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
-  const { toast } = useToast();
+  const { toast } = useToast(); 
 
   const isOpen = controlledOpen ?? internalOpen;
   const setIsOpen = controlledOnOpenChange ?? setInternalOpen;
@@ -63,7 +66,6 @@ export function RoleForm({
     defaultValues: {
       name: '',
       description: '',
-      // permissions: [],
     },
   });
 
@@ -73,13 +75,11 @@ export function RoleForm({
         form.reset({
           name: role.name || '',
           description: role.description || '',
-          // permissions: role.permissions || [],
         });
       } else {
-        form.reset({ // Reset to default empty values for new role
+        form.reset({
           name: '',
           description: '',
-          // permissions: [],
         });
       }
     }
@@ -88,14 +88,13 @@ export function RoleForm({
   const onSubmit = async (data: RoleFormData) => {
     setIsSaving(true);
     try {
-      await onSave(data);
-      // Toast is handled in parent component
+      await onSave(data); 
       setIsOpen(false);
-    } catch (error) {
-      console.error("Falha ao salvar função:", error);
+    } catch (error) { 
+      console.error("Falha ao salvar função (no formulário):", error);
       toast({
-        title: 'Erro!',
-        description: `Falha ao ${role ? 'atualizar' : 'criar'} função. Tente novamente.`,
+        title: 'Erro no Formulário!',
+        description: `Não foi possível processar o salvamento. Verifique os logs.`,
         variant: 'destructive',
       });
     } finally {
@@ -107,9 +106,12 @@ export function RoleForm({
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>{role ? 'Editar Função' : 'Adicionar Nova Função'}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Briefcase className="h-5 w-5" />
+            {role ? 'Editar Função' : 'Adicionar Nova Função'}
+          </DialogTitle>
           <DialogDescription>
-            {role ? 'Atualize os detalhes da função.' : 'Preencha os detalhes da nova função (cargo).'}
+            {role ? 'Atualize os detalhes da função (cargo).' : 'Preencha os detalhes da nova função (cargo).'}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -140,22 +142,6 @@ export function RoleForm({
                   </FormItem>
                 )}
              />
-            {/* Optional: Field for managing permissions */}
-            {/* <FormField
-              control={form.control}
-              name="permissions"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Permissões (Avançado)</FormLabel>
-                  <FormControl>
-                    {/* Replace with a multi-select or checkbox group for permissions */}
-                    {/*<Input placeholder="Permissões separadas por vírgula" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            /> */}
-
             <DialogFooter>
               <DialogClose asChild>
                  <Button type="button" variant="outline">Cancelar</Button>

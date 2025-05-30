@@ -1,18 +1,11 @@
-
+// src/app/(admin)/roles/page.tsx
 'use client';
 
 import * as React from 'react';
-import { PlusCircle, Search, MoreHorizontal, Edit, Trash2, Briefcase, Loader2, Frown } from 'lucide-react';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { PlusCircle, MoreHorizontal, Edit, Trash2, Briefcase, Loader2, Frown, AlertTriangle } from 'lucide-react';
+import { DataTable } from '@/components/ui/data-table';
+import type { ColumnDef } from '@tanstack/react-table';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +14,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { useToast } from '@/hooks/use-toast';
+import { RoleForm } from '@/components/role/role-form';
+import type { Role } from '@/types/role'; // Use the new Role type
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { useAuth } from '@/hooks/use-auth';
+import { getRolesByOrganization, saveRole as saveRoleToFirestore, deleteRole as deleteRoleFromFirestore } from '@/lib/role-service'; // Import role services
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,71 +31,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { useToast } from '@/hooks/use-toast';
-import { RoleForm } from '@/components/role/role-form';
-import { DataTable } from '@/components/ui/data-table';
-import type { ColumnDef } from '@tanstack/react-table';
-import { LoadingSpinner } from '@/components/ui/loading-spinner'; // Import LoadingSpinner
-
-export interface Role {
-    id: string;
-    name: string;
-    description?: string;
-    permissions?: string[];
-}
-
-const mockRoles: Role[] = [
-    { id: 'role1', name: 'Recrutadora', description: 'Responsável pelo processo de recrutamento e seleção.' },
-    { id: 'role2', name: 'Desenvolvedor Backend', description: 'Desenvolve e mantém a lógica do servidor.' },
-    { id: 'role3', name: 'Analista de Marketing', description: 'Executa campanhas e análises de marketing.' },
-    { id: 'role4', name: 'Executivo de Contas', description: 'Gerencia relacionamento e vendas com clientes.' },
-    { id: 'role5', name: 'Desenvolvedora Frontend', description: 'Desenvolve interfaces de usuário.' },
-];
-
-const fetchRoles = async (): Promise<Role[]> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return [...mockRoles];
-};
-
-const saveRole = async (roleData: Omit<Role, 'id'> | Role): Promise<Role> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    if ('id' in roleData && roleData.id) {
-        const index = mockRoles.findIndex(r => r.id === roleData.id);
-        if (index !== -1) {
-            mockRoles[index] = { ...mockRoles[index], ...roleData };
-            console.log("Função atualizada:", mockRoles[index]);
-            return mockRoles[index];
-        } else {
-            throw new Error("Função não encontrada para atualização");
-        }
-    } else {
-        const newRole: Role = {
-            id: `role${Date.now()}`,
-            ...(roleData as Omit<Role, 'id'>),
-        };
-        mockRoles.push(newRole);
-        console.log("Nova função adicionada:", newRole);
-        return newRole;
-    }
-};
-
-const deleteRole = async (roleId: string): Promise<void> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const index = mockRoles.findIndex(r => r.id === roleId);
-    const isCoreRole = ['Recrutadora', 'Desenvolvedor Backend', 'Analista de Marketing', 'Executivo de Contas', 'Desenvolvedora Frontend'].includes(mockRoles[index]?.name);
-     if (isCoreRole && mockRoles.length <= 5) {
-        throw new Error("Não é possível remover funções essenciais (simulado).");
-    }
-    if (index !== -1) {
-        mockRoles.splice(index, 1);
-        console.log("Função removida com ID:", roleId);
-    } else {
-        throw new Error("Função não encontrada para remoção");
-    }
-};
 
 export default function RolesPage() {
+    const { organizationId, role: adminAuthRole } = useAuth(); // Renamed role to avoid conflict
     const [roles, setRoles] = React.useState<Role[]>([]);
     const [isLoading, setIsLoading] = React.useState(true);
     const [selectedRole, setSelectedRole] = React.useState<Role | null>(null);
@@ -110,7 +48,7 @@ export default function RolesPage() {
         {
             id: "actions",
             cell: ({ row }) => {
-                const role = row.original;
+                const currentRole = row.original; // Renamed to avoid conflict with adminAuthRole
                 return (
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -121,15 +59,15 @@ export default function RolesPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                            <DropdownMenuItem onClick={() => openEditForm(role)}>
+                            <DropdownMenuItem onClick={() => openEditForm(currentRole)}>
                                 <Edit className="mr-2 h-4 w-4" />
                                 Editar
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                                onClick={() => handleDeleteClick(role)}
+                                onClick={() => handleDeleteClick(currentRole)}
                                 className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                                disabled={['Recrutadora', 'Desenvolvedor Backend', 'Analista de Marketing', 'Executivo de Contas', 'Desenvolvedora Frontend'].includes(role.name) && roles.length <= 5}
+                                // disabled={['Recrutadora', 'Desenvolvedor Backend'].includes(currentRole.name) && roles.length <= 2} // Example disabled logic
                             >
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 Remover
@@ -143,9 +81,16 @@ export default function RolesPage() {
     ];
 
     const loadRoles = React.useCallback(async () => {
+        if (!organizationId || (adminAuthRole !== 'admin' && adminAuthRole !== 'super_admin')) {
+            setIsLoading(false);
+            if (adminAuthRole === 'admin' && !organizationId) {
+                 toast({ title: "Erro de Configuração", description: "ID da organização não encontrado para o admin.", variant: "destructive" });
+            }
+            return;
+        }
         setIsLoading(true);
         try {
-            const data = await fetchRoles();
+            const data = await getRolesByOrganization(organizationId);
             setRoles(data);
         } catch (error) {
             console.error("Falha ao carregar funções:", error);
@@ -153,16 +98,25 @@ export default function RolesPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [toast]);
+    }, [organizationId, adminAuthRole, toast]);
 
     React.useEffect(() => {
         loadRoles();
     }, [loadRoles]);
 
-    const handleSaveRole = async (data: Omit<Role, 'id'>) => {
-        const roleDataToSave = selectedRole ? { ...selectedRole, ...data } : data;
+
+    const handleSaveRole = async (data: Omit<Role, 'id' | 'organizationId' | 'createdAt' | 'updatedAt'>) => {
+         if (!organizationId) {
+            toast({ title: "Erro", description: "ID da organização não disponível para salvar.", variant: "destructive" });
+            return;
+        }
+        const roleDataToSave = selectedRole 
+            ? { ...data, id: selectedRole.id } 
+            : data;
+        
+        setIsLoading(true);
         try {
-            await saveRole(roleDataToSave);
+            await saveRoleToFirestore(organizationId, roleDataToSave);
             setIsFormOpen(false);
             setSelectedRole(null);
             await loadRoles();
@@ -177,6 +131,8 @@ export default function RolesPage() {
                 description: `Falha ao ${selectedRole ? 'atualizar' : 'criar'} função. Tente novamente.`,
                 variant: "destructive",
             });
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -186,15 +142,17 @@ export default function RolesPage() {
     };
 
     const confirmDelete = async () => {
-        if (roleToDelete) {
+        if (roleToDelete && organizationId) {
+            setIsLoading(true);
             try {
-                await deleteRole(roleToDelete.id);
+                await deleteRoleFromFirestore(organizationId, roleToDelete.id);
                 toast({ title: "Sucesso", description: "Função removida com sucesso." });
                 await loadRoles();
             } catch (error: any) {
                 console.error("Falha ao remover função:", error);
                 toast({ title: "Erro", description: error.message || "Falha ao remover função.", variant: "destructive" });
             } finally {
+                setIsLoading(false);
                 setIsDeleting(false);
                 setRoleToDelete(null);
             }
@@ -210,32 +168,53 @@ export default function RolesPage() {
         setSelectedRole(null);
         setIsFormOpen(true);
     };
+    
+    if (adminAuthRole === 'admin' && !organizationId && !isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full text-center p-4">
+                <AlertTriangle className="h-16 w-16 text-destructive mb-4" />
+                <h2 className="text-xl font-semibold mb-2">Acesso não Configurado</h2>
+                <p className="text-muted-foreground">
+                    Seu perfil de administrador não está vinculado a uma organização.
+                    Por favor, contate o Super Administrador do sistema.
+                </p>
+            </div>
+        );
+    }
+
 
     return (
-        <div className="space-y-6"> {/* Main container */}
+        <div className="space-y-6">
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                         <Briefcase className="h-5 w-5" />
-                        Gerenciamento de Funções
+                        Gerenciamento de Funções (Cargos)
                     </CardTitle>
                     <CardDescription>Crie, edite ou remova funções (cargos) na organização.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                     {isLoading ? (
-                        <div className="flex justify-center items-center py-10">
-                             {/* Use LoadingSpinner */}
-                             <LoadingSpinner text="Carregando funções..." />
-                        </div>
-                     ) : roles.length === 0 ? (
-                         <div className="text-center py-10 text-muted-foreground">
-                             <Frown className="mx-auto h-10 w-10 mb-2" />
-                             <p>Nenhuma função encontrada.</p>
-                             <Button className="mt-4" onClick={openAddForm}>
-                                 <PlusCircle className="mr-2 h-4 w-4" />
-                                 Criar Primeira Função
-                             </Button>
+                    {isLoading ? (
+                         <div className="flex justify-center items-center py-10">
+                             <LoadingSpinner text="Carregando funções..."/>
                          </div>
+                    ) : (!organizationId && adminAuthRole==='admin') ? (
+                         <div className="text-center py-10 text-muted-foreground">
+                             <AlertTriangle className="mx-auto h-10 w-10 mb-2 text-yellow-500" />
+                             <p>O administrador não está associado a uma organização.</p>
+                             <p className="text-xs">Não é possível carregar ou criar funções.</p>
+                         </div>
+                    ) : roles.length === 0 ? (
+                        <div className="text-center py-10 text-muted-foreground">
+                            <Frown className="mx-auto h-10 w-10 mb-2" />
+                            <p>Nenhuma função encontrada para esta organização.</p>
+                            {organizationId && (
+                                <Button className="mt-4" onClick={openAddForm}>
+                                    <PlusCircle className="mr-2 h-4 w-4" />
+                                    Criar Primeira Função
+                                </Button>
+                            )}
+                        </div>
                      ) : (
                         <DataTable
                             columns={columns}
@@ -243,35 +222,37 @@ export default function RolesPage() {
                             filterColumn="name"
                             filterPlaceholder="Buscar por nome..."
                         />
-                     )}
+                    )}
                 </CardContent>
-                { !isLoading && roles.length > 0 && ( // Only show footer if not loading and roles exist
+                 { !isLoading && roles.length > 0 && organizationId && (
                     <CardFooter className="flex justify-end">
                         <Button onClick={openAddForm}>
                             <PlusCircle className="mr-2 h-4 w-4" />
                             Adicionar Função
                         </Button>
                     </CardFooter>
-                )}
+                 )}
             </Card>
 
-            <RoleForm
-                role={selectedRole}
-                onSave={handleSaveRole}
-                open={isFormOpen}
-                onOpenChange={setIsFormOpen}
-            />
+            {organizationId && (
+                <RoleForm
+                    role={selectedRole}
+                    onSave={handleSaveRole}
+                    open={isFormOpen}
+                    onOpenChange={setIsFormOpen}
+                />
+            )}
 
             <AlertDialog open={isDeleting} onOpenChange={setIsDeleting}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>Confirmar Remoção</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Tem certeza que deseja remover a função "{roleToDelete?.name}"? Esta ação pode afetar colaboradores com esta função.
+                             Tem certeza que deseja remover a função "{roleToDelete?.name}"? Esta ação pode afetar colaboradores com esta função.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => setRoleToDelete(null)}>Cancelar</AlertDialogCancel>
+                        <AlertDialogCancel onClick={() => { setRoleToDelete(null); setIsDeleting(false); }}>Cancelar</AlertDialogCancel>
                         <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                             Remover
                         </AlertDialogAction>
