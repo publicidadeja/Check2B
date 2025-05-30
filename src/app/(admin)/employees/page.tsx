@@ -1,15 +1,9 @@
+
 // src/app/(admin)/employees/page.tsx
 'use client';
 
 import * as React from 'react';
-import { PlusCircle, MoreHorizontal, Edit, Trash2, Eye, UserX, UserCheck, Loader2, Users, Frown } from 'lucide-react';
-import {
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'; // Keep Table specific imports
+import { PlusCircle, MoreHorizontal, Edit, Trash2, Eye, UserX, UserCheck, Loader2, Users, Frown, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -32,8 +26,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { EmployeeForm } from '@/components/employee/employee-form';
-import type { Employee } from '@/types/employee'; // This should be UserProfile
-import type { UserProfile } from '@/types/user'; // Use UserProfile
+import type { UserProfile } from '@/types/user';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
@@ -41,13 +34,13 @@ import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { getUsersByRoleAndOrganization, saveUser, deleteUserFromFirestore, updateUserStatusInFirestore } from '@/lib/user-service';
-import { useAuth } from '@/hooks/use-auth'; // To get current admin's organizationId
+import { getUsersByRoleAndOrganization, saveUser as saveUserToFirestore } from '@/lib/user-service';
+import { useAuth } from '@/hooks/use-auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { getFirebaseApp } from '@/lib/firebase';
+import { getFirebaseApp, getDb } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore'; // Added getDoc and doc imports
 
-
-const getInitials = (name: string) => {
+const getInitials = (name?: string) => {
     if (!name) return '??';
     return name
         .split(' ')
@@ -59,7 +52,7 @@ const getInitials = (name: string) => {
 
 
 interface EmployeeProfileViewProps {
-    employee: UserProfile | null; // Changed to UserProfile
+    employee: UserProfile | null;
     open: boolean;
     onOpenChange: (open: boolean) => void;
 }
@@ -67,8 +60,7 @@ interface EmployeeProfileViewProps {
 function EmployeeProfileView({ employee, open, onOpenChange }: EmployeeProfileViewProps) {
     if (!employee) return null;
 
-    // Assuming 'admissionDate' might not be on UserProfile, or handle its absence
-    const admissionDateStr = (employee as any).admissionDate;
+    const admissionDateStr = employee.admissionDate;
 
 
     return (
@@ -80,7 +72,7 @@ function EmployeeProfileView({ employee, open, onOpenChange }: EmployeeProfileVi
                        <AvatarFallback className="text-3xl">{getInitials(employee.name)}</AvatarFallback>
                      </Avatar>
                     <DialogTitle className="text-2xl">{employee.name}</DialogTitle>
-                    <DialogDescription>{(employee as any).role} - {(employee as any).department}</DialogDescription> {/* Cast for now */}
+                    <DialogDescription>{employee.userRole} - {employee.department}</DialogDescription>
                     <Badge variant={employee.status === 'active' ? 'default' : 'secondary'} className={`mt-1 ${employee.status === 'active' ? 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/50 dark:text-green-200' : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300'}`}>
                         {employee.status === 'active' ? 'Ativo' : 'Inativo'}
                     </Badge>
@@ -92,7 +84,7 @@ function EmployeeProfileView({ employee, open, onOpenChange }: EmployeeProfileVi
                     </div>
                     <div className="flex justify-between">
                         <span className="text-muted-foreground">Telefone:</span>
-                        <span className="font-medium">{(employee as any).phone || '-'}</span>
+                        <span className="font-medium">{employee.phone || '-'}</span>
                     </div>
                      <div className="flex justify-between">
                         <span className="text-muted-foreground">Admissão:</span>
@@ -116,7 +108,7 @@ function EmployeeProfileView({ employee, open, onOpenChange }: EmployeeProfileVi
 
 
 export default function EmployeesPage() {
-  const { organizationId, role: adminRole } = useAuth();
+  const { organizationId, role: adminRole, user: adminUser } = useAuth();
   const [employees, setEmployees] = React.useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [selectedEmployee, setSelectedEmployee] = React.useState<UserProfile | null>(null);
@@ -144,8 +136,8 @@ export default function EmployeesPage() {
     },
     { accessorKey: "name", header: "Nome", cell: ({ row }) => <span className="font-medium">{row.original.name}</span> },
     { accessorKey: "email", header: "Email", cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.email}</span> },
-    { accessorKey: "department", header: "Departamento", cell: ({row}) => (row.original as any).department || '-' }, // Cast for now
-    { accessorKey: "role", header: "Função", cell: ({row}) => (row.original as any).role || '-' }, // Cast for now
+    { accessorKey: "department", header: "Departamento", cell: ({row}) => row.original.department || '-' },
+    { accessorKey: "userRole", header: "Função", cell: ({row}) => row.original.userRole || '-' },
     {
       accessorKey: "status",
       header: "Status",
@@ -197,12 +189,9 @@ export default function EmployeesPage() {
 
   const loadEmployees = React.useCallback(async () => {
     if (!organizationId || adminRole !== 'admin') {
-        // Do not load if not an admin or orgId is missing
-        // This can happen if user is super_admin or guest admin without specific org context here
         setIsLoading(false);
-        // setEmployees([]); // Clear employees if not supposed to load for current context
-        if (adminRole && adminRole !== 'super_admin' && !organizationId) { // Only show error if admin but no org
-             toast({ title: "Erro", description: "ID da organização não encontrado para o admin.", variant: "destructive" });
+        if (adminRole === 'admin' && !organizationId) {
+             toast({ title: "Erro de Configuração", description: "Administrador não vinculado a uma organização. Não é possível carregar colaboradores.", variant: "destructive" });
         }
         return;
     }
@@ -222,48 +211,47 @@ export default function EmployeesPage() {
     loadEmployees();
   }, [loadEmployees]);
 
- const handleSaveEmployee = async (data: any) => { // data is EmployeeFormData from EmployeeForm
+ const handleSaveEmployee = async (data: any) => {
     if (!organizationId || !firebaseApp) {
         toast({ title: "Erro", description: "ID da organização ou app Firebase não disponível.", variant: "destructive" });
         return;
     }
 
+    setIsLoading(true);
     const functions = getFunctions(firebaseApp);
-    const createEmployeeFunction = httpsCallable(functions, 'createOrganizationUser'); // Ensure this matches your CF name
-    const setClaimsFunction = httpsCallable(functions, 'setCustomUserClaimsFirebase');
-
-
+    const createEmployeeFunction = httpsCallable(functions, 'createOrganizationUser');
     const isEditing = !!selectedEmployee?.uid;
     let uidToUpdate = selectedEmployee?.uid;
 
     try {
         let userProfileData: UserProfile;
+
         if (isEditing && uidToUpdate) {
-            // Editing existing employee
             userProfileData = {
-                ...selectedEmployee,
+                ...(selectedEmployee as UserProfile), // Ensure selectedEmployee is treated as UserProfile
                 ...data,
                 uid: uidToUpdate,
                 organizationId: organizationId,
-                role: 'collaborator', // Ensure role is collaborator
-                // admissionDate is already Date from form
+                role: 'collaborator', // Role in terms of system access type
+                admissionDate: format(data.admissionDate, 'yyyy-MM-dd'),
+                // userRole is the job title/cargo, comes from data.role from form
+                userRole: data.role, // Make sure data.role from form becomes userRole
+                status: data.status,
             };
-            await saveUser(userProfileData); // Updates Firestore
+            await saveUserToFirestore(userProfileData);
+            // For existing users, claims (role: collaborator, orgId) should already be set.
+            // If a system role or orgId could change here (not typical for employee edit), claims update would be needed.
         } else {
-            // Creating new employee - Call Cloud Function to create Auth user & Firestore doc
-            // The Cloud Function should handle setting initial claims as well.
             const result = await createEmployeeFunction({
                 email: data.email,
-                password: data.password, // EmployeeForm needs a password field for creation
+                password: data.password,
                 name: data.name,
-                role: 'collaborator',
                 organizationId: organizationId,
-                // Pass other employee-specific fields if your CF handles them
                 department: data.department,
-                phone: data.phone,
+                role: data.role, // This is the 'cargo' or 'userRole' for the new user
                 photoUrl: data.photoUrl,
-                admissionDate: format(data.admissionDate, 'yyyy-MM-dd'), // Send as string
-                status: data.isActive ? 'active' : 'inactive',
+                admissionDate: format(data.admissionDate, 'yyyy-MM-dd'),
+                status: data.status,
             });
             uidToUpdate = (result.data as any).userId;
             if (!uidToUpdate) throw new Error("Cloud Function não retornou UID do usuário.");
@@ -272,14 +260,6 @@ export default function EmployeesPage() {
             const newUserDoc = await getDoc(doc(getDb()!, 'users', uidToUpdate));
             if (!newUserDoc.exists()) throw new Error("Documento do novo usuário não encontrado no Firestore.");
             userProfileData = { uid: uidToUpdate, ...newUserDoc.data() } as UserProfile;
-        }
-
-        // Ensure claims are set/updated correctly (important for role and org access)
-        // For new users, the createEmployeeFunction should handle this.
-        // For existing users, if role or orgId changes (not typical for employee edit), claims update is needed.
-        // For simplicity, we can re-apply claims if editing, or rely on createEmployeeFunction for new.
-        if (isEditing && uidToUpdate) {
-            await setClaimsFunction({ uid: uidToUpdate, claims: { role: 'collaborator', organizationId } });
         }
 
         setIsFormOpen(false);
@@ -296,6 +276,8 @@ export default function EmployeesPage() {
             description: error.message || `Falha ao ${isEditing ? 'atualizar' : 'cadastrar'} colaborador. Tente novamente.`,
             variant: "destructive",
         });
+    } finally {
+        setIsLoading(false);
     }
  };
 
@@ -306,18 +288,19 @@ export default function EmployeesPage() {
   };
 
   const confirmDelete = async () => {
-    if (employeeToDelete && firebaseApp) {
+    if (employeeToDelete && organizationId && firebaseApp) {
+       setIsLoading(true);
        try {
         const functions = getFunctions(firebaseApp);
-        const deleteUserFunction = httpsCallable(functions, 'deleteOrganizationUser'); // New CF needed
-        await deleteUserFunction({ userId: employeeToDelete.uid, organizationId: employeeToDelete.organizationId });
-        // Local optimistic update or re-fetch
+        const deleteUserFunction = httpsCallable(functions, 'deleteOrganizationUser');
+        await deleteUserFunction({ userId: employeeToDelete.uid, organizationId: organizationId });
         await loadEmployees();
         toast({ title: "Sucesso", description: "Colaborador removido com sucesso." });
       } catch (error: any) {
          console.error("Falha ao remover colaborador:", error);
          toast({ title: "Erro", description: error.message || "Falha ao remover colaborador.", variant: "destructive" });
       } finally {
+         setIsLoading(false);
          setIsDeleting(false);
          setEmployeeToDelete(null);
       }
@@ -326,10 +309,11 @@ export default function EmployeesPage() {
 
   const handleToggleStatus = async (employee: UserProfile) => {
     if (!firebaseApp) return;
+    setIsLoading(true);
     const newStatus = employee.status === 'active' ? 'inactive' : 'active';
     try {
       const functions = getFunctions(firebaseApp);
-      const toggleStatusFunction = httpsCallable(functions, 'toggleUserStatusFirebase'); // Use existing CF from superadmin
+      const toggleStatusFunction = httpsCallable(functions, 'toggleUserStatusFirebase');
       await toggleStatusFunction({ userId: employee.uid, status: newStatus });
 
       toast({ title: "Sucesso", description: `Status do colaborador ${employee.name} foi alterado.` });
@@ -337,6 +321,8 @@ export default function EmployeesPage() {
     } catch (error: any) {
        console.error("Falha ao alterar status do colaborador:", error);
        toast({ title: "Erro", description: error.message || "Falha ao alterar status do colaborador.", variant: "destructive" });
+    } finally {
+        setIsLoading(false);
     }
   };
 
@@ -356,7 +342,7 @@ export default function EmployeesPage() {
         setIsProfileViewOpen(true);
     };
 
-  if (adminRole && adminRole !== 'super_admin' && !organizationId && !isLoading) {
+  if (adminRole === 'admin' && !organizationId && !isLoading) {
       return (
           <div className="flex flex-col items-center justify-center h-full text-center p-4">
               <AlertTriangle className="h-16 w-16 text-destructive mb-4" />
@@ -384,7 +370,7 @@ export default function EmployeesPage() {
                      <div className="flex justify-center items-center py-10">
                          <LoadingSpinner text="Carregando colaboradores..." />
                      </div>
-                ) : employees.length === 0 && organizationId ? ( // Only show "no employees" if orgId is present
+                ) : employees.length === 0 && organizationId ? (
                      <div className="text-center py-10 text-muted-foreground">
                          <Frown className="mx-auto h-10 w-10 mb-2" />
                          <p>Nenhum colaborador encontrado para sua organização.</p>
@@ -393,11 +379,11 @@ export default function EmployeesPage() {
                              Criar Primeiro Colaborador
                          </Button>
                      </div>
-                 ) : !organizationId && adminRole !== 'super_admin' ? (
+                 ) : !organizationId && adminRole === 'admin' ? ( // Changed from adminRole !== 'super_admin'
                      <div className="text-center py-10 text-muted-foreground">
                         <AlertTriangle className="mx-auto h-10 w-10 mb-2 text-yellow-500" />
                         <p>O administrador não está associado a uma organização.</p>
-                        <p className="text-xs">Selecione uma organização ou contate o suporte.</p>
+                        <p className="text-xs">Não é possível carregar ou criar colaboradores.</p>
                     </div>
                  ) : (
                     <DataTable
@@ -408,7 +394,7 @@ export default function EmployeesPage() {
                     />
                  )}
              </CardContent>
-             { !isLoading && employees.length > 0 && organizationId && (
+             { !isLoading && organizationId && ( // Show Add button if not loading and orgId is present
                 <CardFooter className="flex justify-end">
                      <Button onClick={openAddForm}>
                         <PlusCircle className="mr-2 h-4 w-4" />
@@ -423,6 +409,9 @@ export default function EmployeesPage() {
             onSave={handleSaveEmployee}
             open={isFormOpen}
             onOpenChange={setIsFormOpen}
+            // Pass organizationId to EmployeeForm if it needs it directly
+            // (though current implementation of EmployeeForm doesn't use it directly)
+            // organizationId={organizationId} 
         />
 
         <EmployeeProfileView
@@ -450,3 +439,4 @@ export default function EmployeesPage() {
     </div>
   );
 }
+
