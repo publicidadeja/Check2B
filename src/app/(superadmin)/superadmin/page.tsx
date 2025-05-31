@@ -5,10 +5,12 @@
 import * as React from 'react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Building, Users, BarChart3, DollarSign, Activity, AlertTriangle } from 'lucide-react';
-import { ChartContainer, BarChart, XAxis, YAxis, Bar, ChartTooltip, ChartTooltipContent, ResponsiveContainer, CartesianGrid } from "@/components/ui/chart"; // Added ResponsiveContainer, CartesianGrid
+// Correção: ResponsiveContainer é importado de 'recharts', outros componentes de gráfico de @/components/ui/chart
+import { ChartContainer, BarChart, XAxis, YAxis, Bar, ChartTooltip, ChartTooltipContent, CartesianGrid } from "@/components/ui/chart";
+import { ResponsiveContainer } from "recharts";
 import type { ChartConfig } from "@/components/ui/chart";
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { getAllOrganizations, type Organization } from '@/lib/organization-service'; // type Organization might be defined elsewhere, ensure correct import
+import { getAllOrganizations, type Organization } from '@/lib/organization-service';
 import { getAllUsers, type UserProfile } from '@/lib/user-service';
 import { format, subMonths, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -19,8 +21,8 @@ interface SuperAdminDashboardData {
   totalUsers: number;
   totalAdmins: number;
   totalCollaborators: number;
-  monthlyRevenue: number; // Mocked for now
-  activityLast24h: number; // Mocked for now
+  monthlyRevenue: number;
+  activityLast24h: number;
 }
 
 const initialChartData = Array(6).fill(null).map((_, i) => {
@@ -30,7 +32,7 @@ const initialChartData = Array(6).fill(null).map((_, i) => {
 
 
 const chartConfig = {
-  organizations: { // Renamed from revenue to organizations
+  organizations: {
     label: "Novas Organizações",
     color: "hsl(var(--chart-1))",
   },
@@ -46,8 +48,8 @@ export default function SuperAdminDashboardPage() {
     totalUsers: 0,
     totalAdmins: 0,
     totalCollaborators: 0,
-    monthlyRevenue: 1250.50, // Keep mocked
-    activityLast24h: 350,   // Keep mocked
+    monthlyRevenue: 1250.50, // Dado mockado
+    activityLast24h: 350,   // Dado mockado
   });
   const [organizationsChartData, setOrganizationsChartData] = React.useState(initialChartData);
   const [error, setError] = React.useState<string | null>(null);
@@ -66,7 +68,7 @@ export default function SuperAdminDashboardPage() {
         const totalOrganizations = allOrganizations.length;
         const activeOrganizations = allOrganizations.filter(org => org.status === 'active').length;
         
-        const totalUsers = allUsers.length; // Or filter out super_admins if needed for this stat
+        const totalUsers = allUsers.length;
         const totalAdmins = allUsers.filter(user => user.role === 'admin').length;
         const totalCollaborators = allUsers.filter(user => user.role === 'collaborator').length;
 
@@ -77,14 +79,12 @@ export default function SuperAdminDashboardPage() {
           totalUsers,
           totalAdmins,
           totalCollaborators,
-          // monthlyRevenue and activityLast24h remain mocked
+          // monthlyRevenue and activityLast24h permanecem mockados
         }));
 
-        // Prepare chart data for organizations created per month
         const orgCreationStats: { [key: string]: number } = {};
         allOrganizations.forEach(org => {
           if (org.createdAt) {
-            // Ensure createdAt is a Date object before formatting
             const createdAtDate = org.createdAt instanceof Date ? org.createdAt : new Date(org.createdAt);
             if (!isNaN(createdAtDate.getTime())) {
                 const monthKey = format(createdAtDate, 'yyyy-MM');
@@ -220,3 +220,4 @@ export default function SuperAdminDashboardPage() {
     </div>
   );
 }
+
