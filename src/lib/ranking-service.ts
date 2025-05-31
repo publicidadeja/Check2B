@@ -1,6 +1,8 @@
+
 // src/lib/ranking-service.ts
 import { getDb } from './firebase';
 import type { Award, AwardHistoryEntry } from '@/app/(admin)/ranking/page'; // Ajustado para usar AwardHistoryEntry
+import type { RankingSettings, RankingSettingsData } from '@/types/ranking'; // Import RankingSettings
 import {
   collection,
   getDocs,
@@ -13,6 +15,7 @@ import {
   orderBy, // Adicionado orderBy
   Timestamp, // Adicionado Timestamp
   addDoc, // Adicionado addDoc
+  serverTimestamp, // Import serverTimestamp
 } from 'firebase/firestore';
 import type { Firestore } from 'firebase/firestore';
 import { format } from 'date-fns';
@@ -236,4 +239,59 @@ export const getAwardHistory = async (db: Firestore): Promise<AwardHistoryEntry[
             // Example: createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
         } as AwardHistoryEntry;
     });
+};
+
+// --- Ranking Settings ---
+const RANKING_CONFIG_DOC_ID = 'mainConfig'; // Fixed ID for the ranking config document
+
+/**
+ * Fetches ranking settings for a specific organization.
+ * @param organizationId The ID of the organization.
+ * @returns Promise resolving to RankingSettings object or null if not found/error.
+ */
+export const getRankingSettings = async (organizationId: string): Promise<RankingSettings | null> => {
+  const db = getDb();
+  if (!db || !organizationId) {
+    console.error('Firestore not initialized or organizationId missing. Cannot fetch ranking settings.');
+    return null;
+  }
+  const settingsDocRef = doc(db, `organizations/${organizationId}/rankingManagement`, RANKING_CONFIG_DOC_ID);
+  try {
+    const docSnap = await getDoc(settingsDocRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return {
+        id: docSnap.id, // Should be RANKING_CONFIG_DOC_ID
+        ...data,
+        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : undefined,
+      } as RankingSettings;
+    }
+    return null; // No settings found, return null to use defaults in component
+  } catch (error) {
+    console.error(`Error fetching ranking settings for org ${organizationId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Saves ranking settings for a specific organization.
+ * @param organizationId The ID of the organization.
+ * @param settingsData The ranking settings data to save.
+ * @returns Promise resolving on successful save.
+ */
+export const saveRankingSettings = async (organizationId: string, settingsData: RankingSettingsData): Promise<void> => {
+  const db = getDb();
+  if (!db || !organizationId) {
+    throw new Error('Firestore not initialized or organizationId missing. Cannot save ranking settings.');
+  }
+  const settingsDocRef = doc(db, `organizations/${organizationId}/rankingManagement`, RANKING_CONFIG_DOC_ID);
+  try {
+    await setDoc(settingsDocRef, {
+      ...settingsData,
+      updatedAt: serverTimestamp(),
+    }, { merge: true }); // Use merge:true to create if not exists or update if exists
+  } catch (error) {
+    console.error(`Error saving ranking settings for org ${organizationId}:`, error);
+    throw error;
+  }
 };

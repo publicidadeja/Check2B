@@ -54,13 +54,15 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { getAllAwards, saveAward, deleteAward, getActiveAward, getAwardById, saveAwardHistory, getAwardHistory } from '@/lib/ranking-service'; // Import Firestore service functions
+import { getAllAwards, saveAward, deleteAward, getActiveAward, getAwardById, saveAwardHistory, getAwardHistory, getRankingSettings, saveRankingSettings as saveRankingSettingsToFirestore } from '@/lib/ranking-service';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { getDb } from '@/lib/firebase';
 import type { Firestore } from 'firebase/firestore';
 import { TrendingDown, TrendingUp, Minus } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { mockEmployeesSimple, fetchRankingData as fetchMockRankingData, mockDepartments } from '@/lib/mockData/ranking';
+import { useAuth } from '@/hooks/use-auth'; // Import useAuth
+import type { RankingSettings, RankingSettingsData } from '@/types/ranking'; // Import RankingSettings types
 
 // --- Type Definitions ---
 export interface Award {
@@ -179,6 +181,7 @@ const rankingColumns: ColumnDef<RankingEntry>[] = [
         size: 50,
     },
     {
+        id: 'employeeName',
         accessorKey: "employeeName",
         header: "Colaborador",
         cell: ({ row }) => (
@@ -191,8 +194,8 @@ const rankingColumns: ColumnDef<RankingEntry>[] = [
             </div>
         ),
     },
-    { accessorKey: "department", header: "Departamento" },
-    { accessorKey: "role", header: "Função" },
+    { id: 'department', accessorKey: "department", header: "Departamento" },
+    { id: 'role', accessorKey: "role", header: "Função" },
     {
         id: 'score',
         accessorKey: "score",
@@ -816,78 +819,186 @@ const AwardHistory = () => {
 };
 
 // --- Advanced Settings Component ---
+const rankingSettingsSchema = z.object({
+    tieBreaker: z.enum(['zeros', 'admissionDate', 'manual']),
+    includeProbation: z.boolean(),
+    publicViewEnabled: z.boolean(),
+    notificationLevel: z.enum(['none', 'top3', 'significant', 'all']),
+});
+
+type RankingSettingsFormValues = z.infer<typeof rankingSettingsSchema>;
+
 const AdvancedSettings = () => {
-     const { toast } = useToast();
-     const [isSaving, setIsSaving] = React.useState(false);
-     const [tieBreaker, setTieBreaker] = React.useState('zeros');
-     const [includeProbation, setIncludeProbation] = React.useState(false);
-     const [publicView, setPublicView] = React.useState(true);
-     const [notificationLevel, setNotificationLevel] = React.useState('significant');
+    const { organizationId } = useAuth();
+    const { toast } = useToast();
+    const [isSaving, setIsSaving] = React.useState(false);
+    const [isLoadingSettings, setIsLoadingSettings] = React.useState(true);
+    const form = useForm<RankingSettingsFormValues>({
+        resolver: zodResolver(rankingSettingsSchema),
+        defaultValues: {
+            tieBreaker: 'zeros',
+            includeProbation: false,
+            publicViewEnabled: true,
+            notificationLevel: 'significant',
+        },
+    });
 
-     React.useEffect(() => {
-         console.log("Fetching advanced settings...");
-     }, []);
+    React.useEffect(() => {
+        const loadSettings = async () => {
+            if (!organizationId) {
+                setIsLoadingSettings(false);
+                return;
+            }
+            setIsLoadingSettings(true);
+            try {
+                const settings = await getRankingSettings(organizationId);
+                if (settings) {
+                    form.reset({
+                        tieBreaker: settings.tieBreaker,
+                        includeProbation: settings.includeProbation,
+                        publicViewEnabled: settings.publicViewEnabled,
+                        notificationLevel: settings.notificationLevel,
+                    });
+                } else {
+                    // Use default values if no settings are found
+                    form.reset({
+                        tieBreaker: 'zeros',
+                        includeProbation: false,
+                        publicViewEnabled: true,
+                        notificationLevel: 'significant',
+                    });
+                }
+            } catch (error) {
+                console.error("Erro ao carregar configurações do ranking:", error);
+                toast({ title: "Erro", description: "Não foi possível carregar as configurações avançadas.", variant: "destructive" });
+            } finally {
+                setIsLoadingSettings(false);
+            }
+        };
+        loadSettings();
+    }, [organizationId, form, toast]);
 
+    const handleSaveSettings = async (data: RankingSettingsFormValues) => {
+        if (!organizationId) {
+            toast({ title: "Erro", description: "ID da Organização não encontrado.", variant: "destructive" });
+            return;
+        }
+        setIsSaving(true);
+        try {
+            await saveRankingSettingsToFirestore(organizationId, data);
+            toast({ title: "Sucesso", description: "Configurações avançadas salvas." });
+            form.reset(data); // Reset form with saved values to clear dirty state
+        } catch (error) {
+            console.error("Erro ao salvar configurações:", error);
+            toast({ title: "Erro", description: "Falha ao salvar configurações.", variant: "destructive" });
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
-     const handleSaveSettings = async () => {
-         setIsSaving(true);
-         console.log("Salvando configs:", { tieBreaker, includeProbation, publicView, notificationLevel });
-         await new Promise(resolve => setTimeout(resolve, 1000));
-         toast({ title: "Sucesso", description: "Configurações avançadas salvas." });
-         setIsSaving(false);
-     }
+    if (!organizationId && !isLoadingSettings) {
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Cog className="h-5 w-5" /> Configurações Avançadas</CardTitle>
+            <CardDescription>Organização não identificada. Não é possível carregar ou salvar configurações.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AlertTriangle className="h-8 w-8 text-destructive mx-auto" />
+          </CardContent>
+        </Card>
+      );
+    }
 
     return (
         <div className="space-y-6">
             <Card>
-                 <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><Cog className="h-5 w-5" /> Configurações Avançadas do Ranking</CardTitle>
-                    <CardDescription>Personalize as regras e a visualização do sistema de ranking.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                     <div className="space-y-2">
-                        <Label htmlFor="tieBreaker">Critério de Desempate</Label>
-                        <Select value={tieBreaker} onValueChange={setTieBreaker}>
-                            <SelectTrigger id="tieBreaker"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="zeros">Menor número de zeros</SelectItem>
-                                <SelectItem value="admission">Data de admissão (mais antigo)</SelectItem>
-                                <SelectItem value="manual">Requer intervenção manual</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">Como o sistema deve desempatar colaboradores com a mesma pontuação.</p>
-                    </div>
-                     <Separator />
-                     <div className="flex items-center space-x-2">
-                        <Switch id="probation" checked={includeProbation} onCheckedChange={setIncludeProbation} />
-                        <Label htmlFor="probation" className="text-sm font-normal">Incluir colaboradores em período probatório no ranking?</Label>
-                     </div>
-                    <Separator />
-                     <div className="flex items-center space-x-2">
-                        <Switch id="publicView" checked={publicView} onCheckedChange={setPublicView} />
-                        <Label htmlFor="publicView" className="text-sm font-normal">Permitir que colaboradores visualizem o ranking?</Label>
-                    </div>
-                     <Separator />
-                     <div className="space-y-2">
-                        <Label htmlFor="notificationLevel">Nível de Notificação (Ranking)</Label>
-                         <Select value={notificationLevel} onValueChange={setNotificationLevel}>
-                            <SelectTrigger id="notificationLevel"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="none">Nenhuma</SelectItem>
-                                <SelectItem value="top3">Entrada/Saída do Top 3</SelectItem>
-                                <SelectItem value="significant">Mudanças Significativas (+/- 5 posições)</SelectItem>
-                                <SelectItem value="all">Qualquer Mudança</SelectItem>
-                            </SelectContent>
-                        </Select>
-                         <p className="text-xs text-muted-foreground">Quando os colaboradores devem ser notificados sobre sua posição.</p>
-                    </div>
-                </CardContent>
-                <CardFooter>
-                    <Button onClick={handleSaveSettings} disabled={isSaving}>
-                         {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                         {isSaving ? 'Salvando...' : 'Salvar Configurações'}
-                    </Button>
-                </CardFooter>
+                 <Form {...form}>
+                    <form onSubmit={form.handleSubmit(handleSaveSettings)}>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2"><Cog className="h-5 w-5" /> Configurações Avançadas do Ranking</CardTitle>
+                            <CardDescription>Personalize as regras e a visualização do sistema de ranking.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {isLoadingSettings ? (
+                                <div className="flex justify-center items-center py-10">
+                                    <LoadingSpinner text="Carregando configurações..." />
+                                </div>
+                            ) : (
+                                <>
+                                    <FormField
+                                        control={form.control}
+                                        name="tieBreaker"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Critério de Desempate</FormLabel>
+                                                <Select onValueChange={field.onChange} value={field.value}>
+                                                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                                    <SelectContent>
+                                                        <SelectItem value="zeros">Menor número de zeros</SelectItem>
+                                                        <SelectItem value="admissionDate">Data de admissão (mais antigo)</SelectItem>
+                                                        <SelectItem value="manual">Requer intervenção manual</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                <FormDescription className="text-xs">Como o sistema deve desempatar colaboradores com a mesma pontuação.</FormDescription>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <Separator />
+                                    <FormField
+                                        control={form.control}
+                                        name="includeProbation"
+                                        render={({ field }) => (
+                                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                                <FormLabel className="text-sm font-normal pr-2">Incluir colaboradores em período probatório no ranking?</FormLabel>
+                                                <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <Separator />
+                                    <FormField
+                                        control={form.control}
+                                        name="publicViewEnabled"
+                                        render={({ field }) => (
+                                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                                <FormLabel className="text-sm font-normal pr-2">Permitir que colaboradores visualizem o ranking?</FormLabel>
+                                                <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <Separator />
+                                    <FormField
+                                        control={form.control}
+                                        name="notificationLevel"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Nível de Notificação (Ranking)</FormLabel>
+                                                <Select onValueChange={field.onChange} value={field.value}>
+                                                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                                    <SelectContent>
+                                                        <SelectItem value="none">Nenhuma</SelectItem>
+                                                        <SelectItem value="top3">Entrada/Saída do Top 3</SelectItem>
+                                                        <SelectItem value="significant">Mudanças Significativas (+/- 5 posições)</SelectItem>
+                                                        <SelectItem value="all">Qualquer Mudança</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                <FormDescription className="text-xs">Quando os colaboradores devem ser notificados sobre sua posição.</FormDescription>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </>
+                            )}
+                        </CardContent>
+                        <CardFooter>
+                            <Button type="submit" disabled={isSaving || isLoadingSettings || !form.formState.isDirty}>
+                                 {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                 {isSaving ? 'Salvando...' : 'Salvar Configurações'}
+                            </Button>
+                        </CardFooter>
+                    </form>
+                </Form>
             </Card>
         </div>
     );
@@ -895,6 +1006,7 @@ const AdvancedSettings = () => {
 
 // --- Ranking Dashboard Component ---
 const RankingDashboard = () => {
+    const { organizationId } = useAuth();
     const [rankingData, setRankingData] = React.useState<RankingEntry[]>([]);
     const [currentMonth, setCurrentMonth] = React.useState(new Date());
     const [isLoading, setIsLoading] = React.useState(true);
@@ -911,7 +1023,7 @@ const RankingDashboard = () => {
         const loadRanking = async () => {
              setIsLoading(true);
              try {
-                 const data = await fetchMockRankingData(currentMonth);
+                 const data = await fetchMockRankingData(currentMonth); // MOCK DATA
                  setRankingData(data);
              } catch (error) {
                  console.error("Falha ao carregar ranking:", error);
@@ -989,8 +1101,6 @@ const RankingDashboard = () => {
             await saveAwardHistory(db, historyEntryData);
 
             toast({ title: "Sucesso!", description: `Vencedores para ${format(currentMonth, 'MMMM yyyy', { locale: ptBR })} confirmados.` });
-            // TODO: Optionally trigger notifications, update award status for the month if needed
-            // Could also refresh the AwardHistory tab data if it's visible
         } catch (error) {
             console.error("Erro ao confirmar vencedores:", error);
             toast({ title: "Erro", description: "Falha ao confirmar vencedores.", variant: "destructive" });
@@ -1118,5 +1228,3 @@ export default function RankingPage() {
     </div>
   );
 }
-
-    
