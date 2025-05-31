@@ -1,4 +1,3 @@
-
 // src/app/colaborador/layout.tsx
 'use client';
 
@@ -363,7 +362,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                                 ))
                             )}
                         </ScrollArea>
-                        {process.env.NODE_ENV === 'development' && !isGuest && (
+                        {process.env.NODE_ENV === 'development' && !isGuest && currentUserId && ( // Only show if not guest and user ID exists
                             <>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="p-1">
@@ -390,3 +389,5 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     </TooltipProvider>
   );
 }
+
+export default MobileLayout;
