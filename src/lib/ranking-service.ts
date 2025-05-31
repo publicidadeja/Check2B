@@ -1,6 +1,6 @@
 
 // src/lib/ranking-service.ts
-import { getDb } from './firebase';
+import { getDb, getFirebaseApp } from './firebase'; // Added getFirebaseApp
 import type { Award, AwardHistoryEntry, RankingEntry } from '@/app/(admin)/ranking/page';
 import type { RankingSettings, RankingSettingsData } from '@/types/ranking';
 import type { UserProfile } from '@/types/user';
@@ -15,12 +15,14 @@ import {
   getDoc,
   query,
   where,
-  orderBy, 
-  Timestamp, 
-  addDoc, 
+  orderBy,
+  Timestamp,
+  addDoc,
   serverTimestamp,
+  updateDoc, // Ensure updateDoc is imported
 } from 'firebase/firestore';
 import type { Firestore } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage"; // Added Storage imports
 import { format, startOfMonth, endOfMonth, parseISO } from 'date-fns';
 import { getEvaluationsForOrganizationInPeriod } from './evaluation-service';
 import { getApprovedChallengeParticipationsForOrganizationInPeriod } from './challenge-service';
@@ -78,10 +80,10 @@ export const saveAward = async (db: Firestore, awardData: Omit<Award, 'id'> | Aw
 
   if (idToSave) {
     docRef = doc(db, 'awards', idToSave);
-    await setDoc(docRef, dataForFirestore, { merge: true }); 
+    await setDoc(docRef, dataForFirestore, { merge: true });
   } else {
-    docRef = await addDoc(awardsCollectionRef, dataForFirestore); 
-    idToSave = docRef.id; 
+    docRef = await addDoc(awardsCollectionRef, dataForFirestore);
+    idToSave = docRef.id;
   }
 
   const savedDoc = await getDoc(docRef);
@@ -91,7 +93,7 @@ export const saveAward = async (db: Firestore, awardData: Omit<Award, 'id'> | Aw
   const savedData = savedDoc.data();
 
   return {
-    id: idToSave!, 
+    id: idToSave!,
     ...savedData,
     specificMonth: savedData?.specificMonth instanceof Timestamp ? savedData.specificMonth.toDate() : savedData?.specificMonth,
   } as Award;
@@ -144,12 +146,12 @@ export const getActiveAward = async (db: Firestore, monthDate: Date): Promise<Aw
     awardsCollectionRef,
     where('status', '==', 'active'),
     where('isRecurring', '==', false),
-    where('period', '==', monthPeriod) 
+    where('period', '==', monthPeriod)
   );
   const specificMonthSnapshot = await getDocs(specificMonthQuery);
 
   if (!specificMonthSnapshot.empty) {
-    const doc = specificMonthSnapshot.docs[0]; 
+    const doc = specificMonthSnapshot.docs[0];
     const data = doc.data();
     return {
       id: doc.id,
@@ -166,7 +168,7 @@ export const getActiveAward = async (db: Firestore, monthDate: Date): Promise<Aw
   const recurringSnapshot = await getDocs(recurringQuery);
 
   if (!recurringSnapshot.empty) {
-    const doc = recurringSnapshot.docs[0]; 
+    const doc = recurringSnapshot.docs[0];
     const data = doc.data();
     return {
       id: doc.id,
@@ -175,7 +177,7 @@ export const getActiveAward = async (db: Firestore, monthDate: Date): Promise<Aw
     } as Award;
   }
 
-  return null; 
+  return null;
 };
 
 /**
@@ -207,7 +209,7 @@ export const saveAwardHistory = async (db: Firestore, historyEntryData: Omit<Awa
         ...historyEntryData,
         deliveryPhotoUrl: historyEntryData.deliveryPhotoUrl || null,
         notes: historyEntryData.notes || null,
-        createdAt: Timestamp.now(), 
+        createdAt: Timestamp.now(),
     });
     return docRef.id;
 };
@@ -223,7 +225,7 @@ export const getAwardHistory = async (db: Firestore): Promise<AwardHistoryEntry[
         return [];
     }
     const historyCollectionRef = collection(db, 'awardHistory');
-    const q = query(historyCollectionRef, orderBy("period", "desc")); 
+    const q = query(historyCollectionRef, orderBy("period", "desc"));
     const snapshot = await getDocs(q);
 
     return snapshot.docs.map(docSnapshot => {
@@ -235,8 +237,72 @@ export const getAwardHistory = async (db: Firestore): Promise<AwardHistoryEntry[
     });
 };
 
+/**
+ * Uploads an award delivery photo to Firebase Storage.
+ * @param organizationId The ID of the organization.
+ * @param awardHistoryId The ID of the award history entry.
+ * @param file The photo file to upload.
+ * @returns Promise resolving to the download URL of the uploaded photo.
+ */
+export const uploadAwardDeliveryPhoto = async (
+  organizationId: string, // Add organizationId for path structuring
+  awardHistoryId: string,
+  file: File
+): Promise<string> => {
+  const app = getFirebaseApp();
+  if (!app) {
+    throw new Error('[RankingService] Firebase App not initialized. Cannot upload photo.');
+  }
+  const storage = getStorage(app);
+  if (!storage) {
+    throw new Error('[RankingService] Firebase Storage not initialized. Cannot upload photo.');
+  }
+  if (!organizationId || !awardHistoryId) {
+    throw new Error('[RankingService] Missing organizationId or awardHistoryId for photo upload.');
+  }
+
+  const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+  const filePath = `organizations/${organizationId}/award_deliveries/${awardHistoryId}/${Date.now()}_${sanitizedFileName}`;
+  const fileRef = ref(storage, filePath);
+
+  try {
+    const snapshot = await uploadBytes(fileRef, file);
+    const downloadURL = await getDownloadURL(snapshot.ref);
+    console.log(`[RankingService] Award delivery photo uploaded for ${awardHistoryId}: ${downloadURL}`);
+    return downloadURL;
+  } catch (error) {
+    console.error(`[RankingService] Error uploading award delivery photo for ${awardHistoryId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Updates the deliveryPhotoUrl for an award history entry in Firestore.
+ * @param db Firestore instance.
+ * @param awardHistoryId The ID of the award history entry to update.
+ * @param photoUrl The new photo URL.
+ * @returns Promise resolving on successful update.
+ */
+export const updateAwardHistoryPhoto = async (db: Firestore, awardHistoryId: string, photoUrl: string): Promise<void> => {
+  if (!db) {
+    throw new Error('Firestore not initialized. Cannot update award history photo.');
+  }
+  const historyDocRef = doc(db, 'awardHistory', awardHistoryId);
+  try {
+    await updateDoc(historyDocRef, {
+      deliveryPhotoUrl: photoUrl,
+      updatedAt: serverTimestamp(), // Optional: track updates
+    });
+    console.log(`[RankingService] Updated delivery photo for award history ${awardHistoryId}`);
+  } catch (error) {
+    console.error(`[RankingService] Error updating delivery photo for award history ${awardHistoryId}:`, error);
+    throw error;
+  }
+};
+
+
 // --- Ranking Settings ---
-const RANKING_CONFIG_DOC_ID = 'mainConfig'; 
+const RANKING_CONFIG_DOC_ID = 'mainConfig';
 
 /**
  * Fetches ranking settings for a specific organization.
@@ -255,12 +321,12 @@ export const getRankingSettings = async (organizationId: string): Promise<Rankin
     if (docSnap.exists()) {
       const data = docSnap.data();
       return {
-        id: docSnap.id, 
+        id: docSnap.id,
         ...data,
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : undefined,
       } as RankingSettings;
     }
-    return null; 
+    return null;
   } catch (error) {
     console.error(`Error fetching ranking settings for org ${organizationId}:`, error);
     throw error;
@@ -283,7 +349,7 @@ export const saveRankingSettings = async (organizationId: string, settingsData: 
     await setDoc(settingsDocRef, {
       ...settingsData,
       updatedAt: serverTimestamp(),
-    }, { merge: true }); 
+    }, { merge: true });
   } catch (error) {
     console.error(`Error saving ranking settings for org ${organizationId}:`, error);
     throw error;
@@ -328,17 +394,16 @@ export const calculateMonthlyRanking = async (organizationId: string, period: Da
         } else {
             console.warn("[RankingService] Ranking settings not found, using defaults.");
         }
-        
+
 
         const rankingEntries: Omit<RankingEntry, 'rank' | 'trend'>[] = employees
             .filter(emp => {
                 if (settings?.includeProbation === false && emp.admissionDate) {
-                    // Assuming probation is 3 months (90 days) for example
-                    const admission = parseISO(emp.admissionDate + 'T00:00:00Z'); // Add time component for correct ISO parsing
+                    const admission = parseISO(emp.admissionDate + 'T00:00:00Z');
                     const ninetyDaysAfterAdmission = new Date(admission.setDate(admission.getDate() + 90));
-                    return period >= ninetyDaysAfterAdmission; // Only include if current period is after probation
+                    return period >= ninetyDaysAfterAdmission;
                 }
-                return true; // Include if probation setting is true or no admission date
+                return true;
             })
             .map(employee => {
                 let score = 0;
@@ -347,17 +412,16 @@ export const calculateMonthlyRanking = async (organizationId: string, period: Da
                 const employeeEvaluations = evaluations.filter(ev => ev.employeeId === employee.uid);
                 employeeEvaluations.forEach(ev => {
                     if (ev.score === 10) {
-                        score += 10; // Or whatever points per positive evaluation
+                        score += 10;
                     } else if (ev.score === 0) {
                         zeros += 1;
-                        // score -= 5; // Optional: penalty for zeros
                     }
                 });
 
                 const employeeChallengeScores = challengeParticipations
                     .filter(cp => cp.employeeId === employee.uid && cp.score)
                     .reduce((sum, cp) => sum + (cp.score || 0), 0);
-                
+
                 score += employeeChallengeScores;
 
                 return {
@@ -365,43 +429,39 @@ export const calculateMonthlyRanking = async (organizationId: string, period: Da
                     employeeName: employee.name,
                     employeePhotoUrl: employee.photoUrl,
                     department: employee.department || 'N/A',
-                    role: employee.userRole || 'N/A', // userRole is the "cargo"
+                    role: employee.userRole || 'N/A',
                     score,
                     zeros,
-                    admissionDate: employee.admissionDate // For tie-breaking
+                    admissionDate: employee.admissionDate
                 };
             });
 
-        // Sort entries
         rankingEntries.sort((a, b) => {
             if (b.score !== a.score) {
-                return b.score - a.score; // Higher score first
+                return b.score - a.score;
             }
-            // Tie-breaking logic based on settings
             if (settings?.tieBreaker === 'zeros') {
                 if (a.zeros !== b.zeros) {
-                    return a.zeros - b.zeros; // Fewer zeros first
+                    return a.zeros - b.zeros;
                 }
             }
             if (settings?.tieBreaker === 'admissionDate' && a.admissionDate && b.admissionDate) {
                  try {
                     const dateA = parseISO(a.admissionDate + 'T00:00:00Z');
                     const dateB = parseISO(b.admissionDate + 'T00:00:00Z');
-                    return dateA.getTime() - dateB.getTime(); // Earlier admission date first
+                    return dateA.getTime() - dateB.getTime();
                 } catch (e) {
                     console.warn("Error parsing admission dates for tie-breaking:", a.admissionDate, b.admissionDate, e);
                 }
             }
-            // Default tie-breaker (e.g., alphabetical by name if scores and primary tie-breaker are same)
             return a.employeeName.localeCompare(b.employeeName);
         });
-        
+
         console.log(`[RankingService] ${rankingEntries.length} entries after filtering and sorting.`);
 
         return rankingEntries.map((entry, index) => ({
             ...entry,
             rank: index + 1,
-            // Trend calculation would require historical data and is complex; omitted for now
         })) as RankingEntry[];
 
     } catch (error) {
@@ -409,3 +469,4 @@ export const calculateMonthlyRanking = async (organizationId: string, period: Da
         throw error;
     }
 };
+

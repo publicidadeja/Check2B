@@ -7,7 +7,7 @@ import { format, parseISO, subMonths, addMonths, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
-import { Trophy, Cog, History, Award as AwardIcon, Crown, Medal, BarChartHorizontal, Loader2, ListFilter, PlusCircle, Edit, Trash2, MoreHorizontal, FileClock, User, Activity, AlertTriangle, Eye, CheckCircle } from "lucide-react";
+import { Trophy, Cog, History, Award as AwardIcon, Crown, Medal, BarChartHorizontal, Loader2, ListFilter, PlusCircle, Edit, Trash2, MoreHorizontal, FileClock, User, Activity, AlertTriangle, Eye, CheckCircle, Image as ImageIcon, UploadCloud } from "lucide-react"; // Added ImageIcon, UploadCloud
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -55,15 +55,15 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { getAllAwards, saveAward, deleteAward, getActiveAward, getAwardById, saveAwardHistory, getAwardHistory, getRankingSettings, saveRankingSettings as saveRankingSettingsToFirestore, calculateMonthlyRanking } from '@/lib/ranking-service';
+import { getAllAwards, saveAward, deleteAward, getActiveAward, getAwardById, saveAwardHistory, getAwardHistory, getRankingSettings, saveRankingSettings as saveRankingSettingsToFirestore, calculateMonthlyRanking, uploadAwardDeliveryPhoto, updateAwardHistoryPhoto } from '@/lib/ranking-service'; // Added uploadAwardDeliveryPhoto, updateAwardHistoryPhoto
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { getDb } from '@/lib/firebase';
 import type { Firestore } from 'firebase/firestore';
 import { TrendingDown, TrendingUp, Minus } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { mockEmployeesSimple, mockDepartments } from '@/lib/mockData/ranking'; // Removed fetchRankingData
-import { useAuth } from '@/hooks/use-auth'; 
-import type { RankingSettings, RankingSettingsData } from '@/types/ranking'; 
+import { mockEmployeesSimple, mockDepartments } from '@/lib/mockData/ranking';
+import { useAuth } from '@/hooks/use-auth';
+import type { RankingSettings, RankingSettingsData } from '@/types/ranking';
 
 // --- Type Definitions ---
 export interface Award {
@@ -73,7 +73,7 @@ export interface Award {
     monetaryValue?: number;
     nonMonetaryValue?: string;
     imageUrl?: string;
-    period: string; 
+    period: string;
     eligibilityCriteria?: boolean;
     winnerCount: number;
     valuesPerPosition?: { [key: number]: { monetary?: number, nonMonetary?: string } };
@@ -103,7 +103,7 @@ export interface AwardHistoryEntry {
     winners: { rank: number; employeeName: string; prize: string }[];
     deliveryPhotoUrl?: string;
     notes?: string;
-    createdAt?: Date; 
+    createdAt?: Date;
 }
 
 // --- Zod Schema for Award Form ---
@@ -380,13 +380,13 @@ const AwardConfiguration = () => {
 
      const awardColumns: ColumnDef<Award>[] = [
         {
-            id: "title_award", 
+            id: "title_award",
             accessorKey: "title",
             header: "Título",
             cell: ({ row }) => <span className="font-medium">{row.original.title}</span>,
         },
         {
-            id: "period_award", 
+            id: "period_award",
             accessorKey: "period",
             header: "Período",
             cell: ({ row }) => (
@@ -396,14 +396,14 @@ const AwardConfiguration = () => {
             ),
         },
         {
-            id: 'winnerCount_award', 
+            id: 'winnerCount_award',
             accessorKey: "winnerCount",
             header: () => <div className="text-center">Ganhadores</div>,
             cell: ({ row }) => <div className="text-center">{row.original.winnerCount}</div>,
             size: 100,
         },
         {
-            id: 'eligibleDepartments_award', 
+            id: 'eligibleDepartments_award',
             accessorKey: "eligibleDepartments",
             header: () => <div className="text-center">Elegíveis</div>,
             cell: ({ row }) => (
@@ -416,7 +416,7 @@ const AwardConfiguration = () => {
             size: 120,
         },
         {
-            id: "status_award", 
+            id: "status_award",
             accessorKey: "status",
             header: "Status",
             cell: ({ row }) => {
@@ -430,7 +430,7 @@ const AwardConfiguration = () => {
             size: 100,
         },
         {
-            id: "actions_award", 
+            id: "actions_award",
             cell: ({ row }) => {
                 const award = row.original;
                 return (
@@ -723,6 +723,14 @@ const AwardHistory = () => {
      const [isLoading, setIsLoading] = React.useState(true);
      const { toast } = useToast();
      const [db, setDb] = React.useState<Firestore | null>(null);
+     const { organizationId } = useAuth(); // Get organizationId
+
+     // States for photo upload dialog
+     const [isPhotoDialogOpen, setIsPhotoDialogOpen] = React.useState(false);
+     const [selectedEntryForPhoto, setSelectedEntryForPhoto] = React.useState<AwardHistoryEntry | null>(null);
+     const [photoFile, setPhotoFile] = React.useState<File | null>(null);
+     const [isUploadingPhoto, setIsUploadingPhoto] = React.useState(false);
+     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
      React.useEffect(() => {
         setDb(getDb());
@@ -737,7 +745,7 @@ const AwardHistory = () => {
         setIsLoading(true);
         try {
             const data = await getAwardHistory(db);
-            setHistory(data); 
+            setHistory(data);
         } catch (error) {
              console.error("Falha ao carregar histórico:", error);
              toast({ title: "Erro", description: "Não foi possível carregar o histórico de premiações.", variant: "destructive" });
@@ -752,7 +760,7 @@ const AwardHistory = () => {
 
 
      const handleExportHistory = () => {
-        exportData(history.map(h => ({ 
+        exportData(history.map(h => ({
             periodo: h.period,
             premiacao: h.awardTitle,
             vencedores: h.winners.map(w => `${w.rank}º: ${w.employeeName} (${w.prize})`).join('; '),
@@ -760,6 +768,48 @@ const AwardHistory = () => {
         })), 'historico_premiacoes');
         toast({ title: "Sucesso", description: "Histórico exportado como CSV." });
      };
+
+     const handleOpenPhotoDialog = (entry: AwardHistoryEntry) => {
+        setSelectedEntryForPhoto(entry);
+        setPhotoFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = ''; // Reset file input
+        setIsPhotoDialogOpen(true);
+     };
+
+     const handlePhotoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            if (file.size > 5 * 1024 * 1024) { // 5MB Limit
+                toast({title: "Arquivo Grande", description: "A foto não pode exceder 5MB.", variant: "destructive"});
+                setPhotoFile(null);
+                if (fileInputRef.current) fileInputRef.current.value = '';
+                return;
+            }
+            setPhotoFile(file);
+        } else {
+            setPhotoFile(null);
+        }
+     };
+
+    const handleSavePhoto = async () => {
+        if (!photoFile || !selectedEntryForPhoto || !db || !organizationId) {
+            toast({title: "Erro", description: "Dados incompletos para salvar foto.", variant: "destructive"});
+            return;
+        }
+        setIsUploadingPhoto(true);
+        try {
+            const photoUrl = await uploadAwardDeliveryPhoto(organizationId, selectedEntryForPhoto.id, photoFile);
+            await updateAwardHistoryPhoto(db, selectedEntryForPhoto.id, photoUrl);
+            toast({title: "Sucesso", description: "Foto da entrega adicionada."});
+            await loadHistory(); // Refresh history
+            setIsPhotoDialogOpen(false);
+        } catch (error: any) {
+            console.error("Falha ao salvar foto da entrega:", error);
+            toast({title: "Erro", description: error.message || "Não foi possível salvar a foto.", variant: "destructive"});
+        } finally {
+            setIsUploadingPhoto(false);
+        }
+    };
 
 
     return (
@@ -785,7 +835,7 @@ const AwardHistory = () => {
                                             <CardTitle className="text-base">{entry.awardTitle} - {format(parseISO(entry.period + "-01"), "MMMM yyyy", {locale: ptBR})}</CardTitle>
                                             <CardDescription>Vencedor(es) e detalhes da entrega.</CardDescription>
                                         </CardHeader>
-                                        <CardContent className="text-sm space-y-2 px-4 pb-4">
+                                        <CardContent className="text-sm space-y-2 px-4 pb-3">
                                             <div>
                                                 <strong>Vencedores:</strong>
                                                 <ul className="list-disc list-inside pl-4 mt-1">
@@ -799,11 +849,16 @@ const AwardHistory = () => {
                                             {entry.deliveryPhotoUrl && (
                                                 <div className="mt-2">
                                                     <strong>Foto da Entrega:</strong><br/>
-                                                    <img src={entry.deliveryPhotoUrl} alt={`Entrega ${entry.awardTitle} ${entry.period}`} className="mt-1 rounded-md max-h-32 border" data-ai-hint="award ceremony" />
+                                                    <img src={entry.deliveryPhotoUrl} alt={`Entrega ${entry.awardTitle} ${entry.period}`} className="mt-1 rounded-md max-h-32 border object-cover" data-ai-hint="award ceremony" />
                                                 </div>
                                             )}
                                             {entry.notes && <p className="text-xs text-muted-foreground pt-1"><strong>Observações:</strong> {entry.notes}</p>}
                                         </CardContent>
+                                        <CardFooter className="px-4 py-2 border-t">
+                                            <Button variant="outline" size="sm" className="text-xs" onClick={() => handleOpenPhotoDialog(entry)}>
+                                                <ImageIcon className="mr-2 h-3 w-3"/> {entry.deliveryPhotoUrl ? 'Alterar Foto' : 'Adicionar Foto'}
+                                            </Button>
+                                        </CardFooter>
                                     </Card>
                                 ))}
                              </div>
@@ -816,6 +871,45 @@ const AwardHistory = () => {
                     </Button>
                  </CardFooter>
             </Card>
+            {/* Dialog for Photo Upload */}
+            <Dialog open={isPhotoDialogOpen} onOpenChange={setIsPhotoDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Foto da Entrega</DialogTitle>
+                        <DialogDescription>
+                            Adicione ou altere a foto para "{selectedEntryForPhoto?.awardTitle}" ({selectedEntryForPhoto?.period}).
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4 space-y-3">
+                        <div>
+                            <Label htmlFor="photo-upload-input" className="text-sm font-medium">Selecionar Imagem (JPG, PNG - Máx 5MB)</Label>
+                            <Input
+                                id="photo-upload-input"
+                                type="file"
+                                accept="image/jpeg, image/png"
+                                ref={fileInputRef}
+                                onChange={handlePhotoFileChange}
+                                className="mt-1"
+                                disabled={isUploadingPhoto}
+                            />
+                            {photoFile && <p className="text-xs text-muted-foreground mt-1 truncate">Selecionado: {photoFile.name}</p>}
+                        </div>
+                        {selectedEntryForPhoto?.deliveryPhotoUrl && !photoFile && (
+                            <div>
+                                <Label className="text-xs text-muted-foreground">Foto Atual:</Label>
+                                <img src={selectedEntryForPhoto.deliveryPhotoUrl} alt="Foto atual da entrega" className="mt-1 rounded-md max-h-40 border" data-ai-hint="award ceremony" />
+                            </div>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild><Button variant="outline" disabled={isUploadingPhoto}>Cancelar</Button></DialogClose>
+                        <Button onClick={handleSavePhoto} disabled={isUploadingPhoto || !photoFile}>
+                            {isUploadingPhoto ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
+                            {isUploadingPhoto ? 'Salvando...' : 'Salvar Foto'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };
@@ -888,7 +982,7 @@ const AdvancedSettings = () => {
         try {
             await saveRankingSettingsToFirestore(organizationId, data);
             toast({ title: "Sucesso", description: "Configurações avançadas salvas." });
-            form.reset(data); 
+            form.reset(data);
         } catch (error) {
             console.error("Erro ao salvar configurações:", error);
             toast({ title: "Erro", description: "Falha ao salvar configurações.", variant: "destructive" });
@@ -1007,7 +1101,7 @@ const AdvancedSettings = () => {
 
 // --- Ranking Dashboard Component ---
 const RankingDashboard = () => {
-    const { organizationId, isLoading: authLoading } = useAuth(); // Use auth hook
+    const { organizationId, isLoading: authLoading } = useAuth();
     const [rankingData, setRankingData] = React.useState<RankingEntry[]>([]);
     const [currentMonth, setCurrentMonth] = React.useState(new Date());
     const [isLoading, setIsLoading] = React.useState(true);
@@ -1096,7 +1190,7 @@ const RankingDashboard = () => {
                         : activeAward.monetaryValue ? `R$ ${activeAward.monetaryValue.toFixed(2)}` : activeAward.nonMonetaryValue || 'Prêmio Indefinido'
                 })),
             };
-            
+
             await saveAwardHistory(db, historyEntryData);
 
             toast({ title: "Sucesso!", description: `Vencedores para ${format(currentMonth, 'MMMM yyyy', { locale: ptBR })} confirmados.` });
