@@ -380,13 +380,13 @@ const AwardConfiguration = () => {
 
      const awardColumns: ColumnDef<Award>[] = [
         {
-            id: "title_award", // Explicit ID
+            id: "title_award", 
             accessorKey: "title",
             header: "Título",
             cell: ({ row }) => <span className="font-medium">{row.original.title}</span>,
         },
         {
-            id: "period_award", // Explicit ID
+            id: "period_award", 
             accessorKey: "period",
             header: "Período",
             cell: ({ row }) => (
@@ -396,14 +396,14 @@ const AwardConfiguration = () => {
             ),
         },
         {
-            id: 'winnerCount_award', // Explicit ID
+            id: 'winnerCount_award', 
             accessorKey: "winnerCount",
             header: () => <div className="text-center">Ganhadores</div>,
             cell: ({ row }) => <div className="text-center">{row.original.winnerCount}</div>,
             size: 100,
         },
         {
-            id: 'eligibleDepartments_award', // Explicit ID
+            id: 'eligibleDepartments_award', 
             accessorKey: "eligibleDepartments",
             header: () => <div className="text-center">Elegíveis</div>,
             cell: ({ row }) => (
@@ -416,7 +416,7 @@ const AwardConfiguration = () => {
             size: 120,
         },
         {
-            id: "status_award", // Explicit ID
+            id: "status_award", 
             accessorKey: "status",
             header: "Status",
             cell: ({ row }) => {
@@ -430,7 +430,7 @@ const AwardConfiguration = () => {
             size: 100,
         },
         {
-            id: "actions_award", // Explicit ID
+            id: "actions_award", 
             cell: ({ row }) => {
                 const award = row.original;
                 return (
@@ -485,7 +485,7 @@ const AwardConfiguration = () => {
                                  <LoadingSpinner text="Carregando premiações..." />
                              </div>
                         ) : (
-                            <DataTable columns={awardColumns} data={awards} filterColumn='title' filterPlaceholder='Buscar por título...'/>
+                            <DataTable columns={awardColumns} data={awards} filterColumn='title_award' filterPlaceholder='Buscar por título...'/>
                         )}
                     </CardContent>
                 </Card>
@@ -1237,3 +1237,4 @@ export default function RankingPage() {
     </div>
   );
 }
+
