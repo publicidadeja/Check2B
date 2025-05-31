@@ -390,9 +390,9 @@ exports.deleteOrganizationUser = onCall({
     const isSuperAdmin = callerClaims.role === 'super_admin';
     const isAdminDeletingCollaboratorInOwnOrg = 
         callerClaims.role === 'admin' &&
-        callerClaims.organizationId === targetOrganizationId &&
-        userToDeleteClaims.organizationId === targetOrganizationId &&
-        userToDeleteClaims.role === 'collaborator';
+        callerClaims.organizationId === targetOrganizationId && // Caller's org must match target org
+        userToDeleteClaims.organizationId === targetOrganizationId && // User to delete must be in target org
+        userToDeleteClaims.role === 'collaborator'; // Admin can only delete collaborators in their org
 
     if (!isSuperAdmin && !isAdminDeletingCollaboratorInOwnOrg) {
         console.error(`[deleteOrganizationUser] Permission denied. Caller role: ${callerClaims.role}, User to delete role: ${userToDeleteClaims.role}, Target Org: ${targetOrganizationId}, User Org: ${userToDeleteClaims.organizationId}`);
@@ -484,8 +484,8 @@ exports.toggleUserStatusFirebase = onCall({
   const isSuperAdmin = callerClaims.role === 'super_admin';
   const isAdminManagingOwnOrgUser = 
       callerClaims.role === 'admin' &&
-      callerClaims.organizationId &&
-      callerClaims.organizationId === userToUpdateClaims.organizationId;
+      callerClaims.organizationId && // Caller must have an org ID
+      callerClaims.organizationId === userToUpdateClaims.organizationId; // Caller's org ID must match user's org ID
 
   if (!isSuperAdmin && !isAdminManagingOwnOrgUser) {
     console.error(`[toggleUserStatusFirebase] Permission denied. Caller role: ${callerClaims.role}, Target user org: ${userToUpdateClaims.organizationId}, Caller org: ${callerClaims.organizationId}`);
@@ -569,6 +569,7 @@ exports.removeAdminFromOrganizationFirebase = onCall({
     console.log(`[removeAdminFromOrganizationFirebase] Current claims for UID ${userId}:`, util.inspect(currentClaims, {depth: null}));
 
     if (currentClaims.role === 'admin' && currentClaims.organizationId === organizationId) {
+        // Rebaixar para 'collaborator' na mesma organização
         const newClaims = { role: 'collaborator', organizationId: organizationId }; 
         
         try {
@@ -584,7 +585,7 @@ exports.removeAdminFromOrganizationFirebase = onCall({
         try {
             console.log(`[removeAdminFromOrganizationFirebase] Attempting to update Firestore role for UID ${userId}.`);
             await admin.firestore().collection('users').doc(userId).update({
-                role: newClaims.role,
+                role: newClaims.role, // Update role in Firestore as well
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
             console.log(`[removeAdminFromOrganizationFirebase] Firestore role updated successfully for UID ${userId}.`);
@@ -602,4 +603,158 @@ exports.removeAdminFromOrganizationFirebase = onCall({
     }
 });
 
+
+exports.addAdminToMyOrg = onCall({
+    enforceAppCheck: true,
+}, async (request) => {
+    const data = request.data; // { name, email, password }
+    const auth = request.auth; // { uid, token: { role, organizationId, ... } }
+    const app = request.app;
+
+    console.log('[addAdminToMyOrg] Function called with data:', JSON.stringify({name: data.name, email: data.email, password: '***'}));
+    console.log(`[addAdminToMyOrg] Caller UID: ${auth?.uid || 'N/A'}`);
+    console.log('[addAdminToMyOrg] Caller claims:', util.inspect(auth?.token, {depth: null}));
+    console.log('[addAdminToMyOrg] App Check token verification:', util.inspect(app, { depth: null }));
+
+    if (!auth || !auth.token) {
+        throw new HttpsError('unauthenticated', 'Autenticação é necessária.');
+    }
+    if (auth.token.role !== 'admin') {
+        throw new HttpsError('permission-denied', 'Apenas administradores podem adicionar outros admins à sua organização.');
+    }
+    if (!auth.token.organizationId) {
+        throw new HttpsError('failed-precondition', 'Administrador chamador não possui ID de organização.');
+    }
+
+    const { name, email, password } = data;
+    const callerOrganizationId = auth.token.organizationId;
+
+    if (!name || !email || !password) {
+        throw new HttpsError('invalid-argument', 'Nome, email e senha são obrigatórios.');
+    }
+    if (password.length < 6) {
+        throw new HttpsError('invalid-argument', 'A senha deve ter pelo menos 6 caracteres.');
+    }
+
+    let newUserRecord;
+    try {
+        newUserRecord = await admin.auth().createUser({
+            email: email,
+            password: password,
+            displayName: name,
+            emailVerified: false, // Ou true, se preferir
+        });
+        console.log(`[addAdminToMyOrg] User created in Auth: ${newUserRecord.uid}`);
+    } catch (error) {
+        const err = error;
+        console.error('[addAdminToMyOrg] Error creating user in Auth:', err);
+        if (err.code === 'auth/email-already-exists') {
+            throw new HttpsError('already-exists', 'Este email já está em uso.');
+        }
+        throw new HttpsError('internal', `Falha ao criar usuário no Firebase Auth. Detalhe: ${err.message}`);
+    }
+
+    const claimsToSet = { role: 'admin', organizationId: callerOrganizationId };
+    try {
+        await admin.auth().setCustomUserClaims(newUserRecord.uid, claimsToSet);
+        console.log(`[addAdminToMyOrg] Custom claims set for ${newUserRecord.uid}:`, claimsToSet);
+    } catch (error) {
+        const err = error;
+        console.error(`[addAdminToMyOrg] Error setting custom claims for ${newUserRecord.uid}:`, err);
+        throw new HttpsError('internal', `Falha ao definir custom claims. Detalhe: ${err.message}`);
+    }
+
+    try {
+        const userProfileData = {
+            uid: newUserRecord.uid,
+            name: name,
+            email: email,
+            role: 'admin',
+            organizationId: callerOrganizationId,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: 'active', // Novo admin é ativo por padrão
+        };
+        await admin.firestore().collection('users').doc(newUserRecord.uid).set(userProfileData);
+        console.log(`[addAdminToMyOrg] User profile created in Firestore for ${newUserRecord.uid}.`);
+    } catch (error) {
+        const err = error;
+        console.error(`[addAdminToMyOrg] Error creating user profile in Firestore for ${newUserRecord.uid}:`, err);
+        throw new HttpsError('internal', `Falha ao criar perfil do usuário no Firestore. Detalhe: ${err.message}`);
+    }
+
+    return { success: true, userId: newUserRecord.uid, message: `Administrador '${name}' adicionado com sucesso à sua organização.` };
+});
+
+exports.demoteAdminInMyOrg = onCall({
+    enforceAppCheck: true,
+}, async (request) => {
+    const data = request.data; // { userIdToDemote }
+    const auth = request.auth; // { uid, token: { role, organizationId, ... } }
+    const app = request.app;
+
+    console.log('[demoteAdminInMyOrg] Function called with data:', JSON.stringify(data));
+    console.log(`[demoteAdminInMyOrg] Caller UID: ${auth?.uid || 'N/A'}`);
+    console.log('[demoteAdminInMyOrg] Caller claims:', util.inspect(auth?.token, {depth: null}));
+    console.log('[demoteAdminInMyOrg] App Check token verification:', util.inspect(app, { depth: null }));
+
+    if (!auth || !auth.token) {
+        throw new HttpsError('unauthenticated', 'Autenticação é necessária.');
+    }
+    if (auth.token.role !== 'admin') {
+        throw new HttpsError('permission-denied', 'Apenas administradores podem rebaixar outros admins da sua organização.');
+    }
+    if (!auth.token.organizationId) {
+        throw new HttpsError('failed-precondition', 'Administrador chamador não possui ID de organização.');
+    }
+
+    const { userIdToDemote } = data;
+    const callerUid = auth.uid;
+    const callerOrganizationId = auth.token.organizationId;
+
+    if (!userIdToDemote) {
+        throw new HttpsError('invalid-argument', 'UID do usuário a ser rebaixado é obrigatório.');
+    }
+    if (userIdToDemote === callerUid) {
+        throw new HttpsError('invalid-argument', 'Você não pode rebaixar a si mesmo.');
+    }
+
+    let userToDemoteRecord;
+    try {
+        userToDemoteRecord = await admin.auth().getUser(userIdToDemote);
+    } catch (error) {
+        const err = error;
+        console.error(`[demoteAdminInMyOrg] Error fetching user to demote (UID: ${userIdToDemote}):`, err);
+        throw new HttpsError('not-found', `Usuário com UID ${userIdToDemote} não encontrado.`);
+    }
+
+    const userToDemoteClaims = userToDemoteRecord.customClaims || {};
+    if (userToDemoteClaims.role !== 'admin' || userToDemoteClaims.organizationId !== callerOrganizationId) {
+        throw new HttpsError('failed-precondition', 'O usuário especificado não é um administrador desta organização.');
+    }
+
+    // Rebaixar para 'collaborator' na mesma organização
+    const newClaims = { role: 'collaborator', organizationId: callerOrganizationId };
+    try {
+        await admin.auth().setCustomUserClaims(userIdToDemote, newClaims);
+        console.log(`[demoteAdminInMyOrg] Custom claims updated for ${userIdToDemote} to:`, newClaims);
+    } catch (error) {
+        const err = error;
+        console.error(`[demoteAdminInMyOrg] Error setting custom claims for ${userIdToDemote}:`, err);
+        throw new HttpsError('internal', `Falha ao atualizar claims do usuário. Detalhe: ${err.message}`);
+    }
+
+    try {
+        await admin.firestore().collection('users').doc(userIdToDemote).update({
+            role: 'collaborator', // Atualiza o papel no Firestore
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`[demoteAdminInMyOrg] Firestore role updated for ${userIdToDemote}.`);
+    } catch (error) {
+        const err = error;
+        console.error(`[demoteAdminInMyOrg] Error updating Firestore role for ${userIdToDemote}:`, err);
+        // Não re-lançar, pois a alteração de claims é a principal.
+    }
+
+    return { success: true, message: `Administrador ${userToDemoteRecord.displayName || userIdToDemote} foi rebaixado para colaborador.` };
+});
     
