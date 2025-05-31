@@ -8,22 +8,23 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, UserPlus, DatabaseBackup, Settings2, UserCog, FileClock, PlusCircle, AlertTriangle, Trash2, UserMinus } from 'lucide-react';
+import { Loader2, UserPlus, DatabaseBackup, Settings2, UserCog, FileClock, AlertTriangle, Trash2, UserMinus } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal } from 'lucide-react'; // Removed Trash2 as it's imported above
+import { MoreHorizontal } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useAuth } from '@/hooks/use-auth';
 import { getGeneralSettings, saveGeneralSettings, type GeneralSettingsData } from '@/lib/settings-service';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { getFunctions, httpsCallable } from 'firebase/functions'; // For calling Cloud Functions
-import { getFirebaseApp } from '@/lib/firebase'; // For initializing Firebase app for functions
-import { getUsersByRoleAndOrganization } from '@/lib/user-service'; // For loading admins
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getFirebaseApp } from '@/lib/firebase';
+import { getUsersByRoleAndOrganization } from '@/lib/user-service';
 import type { UserProfile } from '@/types/user';
+import { AddAdminToOrgForm, type AddAdminFormData } from '@/components/admin/add-admin-to-org-form'; // Import the new form
 
 const generalSettingsSchema = z.object({
     bonusValue: z.coerce.number().min(0, "Valor não pode ser negativo.").default(100),
@@ -68,16 +69,18 @@ export default function SettingsPage() {
 
     const [isLoadingAdmins, setIsLoadingAdmins] = React.useState(true);
     const [admins, setAdmins] = React.useState<UserProfile[]>([]);
-    const [isAddingAdmin, setIsAddingAdmin] = React.useState(false);
-    const [adminToDemote, setAdminToDemote] = React.useState<UserProfile | null>(null);
-    const [isDemotingAdmin, setIsDemotingAdmin] = React.useState(false);
-    const [newAdminEmail, setNewAdminEmail] = React.useState("");
+    const [isAddAdminDialogOpen, setIsAddAdminDialogOpen] = React.useState(false); // State for new dialog
+    const [isProcessingAdminAction, setIsProcessingAdminAction] = React.useState(false); // General processing state for admin actions
 
-    const [isLoadingBackups, setIsLoadingBackups] = React.useState(true); // Kept for mock
-    const [backups, setBackups] = React.useState<BackupInfo[]>([]); // Kept for mock
-    const [isCreatingBackup, setIsCreatingBackup] = React.useState(false); // Kept for mock
-    const [isRestoringBackup, setIsRestoringBackup] = React.useState(false); // Kept for mock
-    const [backupToRestore, setBackupToRestore] = React.useState<BackupInfo | null>(null); // Kept for mock
+    const [adminToDemote, setAdminToDemote] = React.useState<UserProfile | null>(null);
+    const [isDemotingAdminDialogOpen, setIsDemotingAdminDialogOpen] = React.useState(false);
+
+
+    const [isLoadingBackups, setIsLoadingBackups] = React.useState(true);
+    const [backups, setBackups] = React.useState<BackupInfo[]>([]);
+    const [isCreatingBackup, setIsCreatingBackup] = React.useState(false);
+    const [isRestoringBackup, setIsRestoringBackup] = React.useState(false);
+    const [backupToRestore, setBackupToRestore] = React.useState<BackupInfo | null>(null);
 
 
     const form = useForm<z.infer<typeof generalSettingsSchema>>({
@@ -103,8 +106,8 @@ export default function SettingsPage() {
                         zeroLimit: settings.zeroLimit,
                     });
                 }
-                await loadAdmins(); // Now loads real admins
-                loadBackups(); // Still mock
+                await loadAdmins();
+                loadBackups();
             } catch (error) {
                 console.error("Erro ao carregar configurações gerais ou admins:", error);
                 toast({ title: "Erro", description: "Não foi possível carregar dados da página.", variant: "destructive" });
@@ -142,7 +145,7 @@ export default function SettingsPage() {
         setIsLoadingAdmins(true);
         try {
             const data = await getUsersByRoleAndOrganization('admin', organizationId);
-            setAdmins(data.filter(admin => admin.uid !== adminUser?.uid)); // Exclude self from list
+            setAdmins(data.filter(admin => admin.uid !== adminUser?.uid));
         } catch (error) {
             toast({ title: "Erro", description: "Falha ao carregar lista de administradores.", variant: "destructive" });
         } finally {
@@ -150,46 +153,26 @@ export default function SettingsPage() {
         }
     }, [organizationId, toast, adminUser?.uid]);
 
-    const handleAddAdmin = async () => {
-        if (!newAdminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newAdminEmail)) {
-             toast({ title: "Erro", description: "Por favor, insira um email válido.", variant: "destructive" });
-             return;
-        }
+    const handleAddAdminSubmit = async (data: AddAdminFormData) => {
         if (!firebaseApp || !organizationId) {
             toast({ title: "Erro de Configuração", description: "Firebase ou ID da Organização não disponível.", variant: "destructive" });
             return;
         }
-        setIsAddingAdmin(true);
+        setIsProcessingAdminAction(true);
         const functions = getFunctions(firebaseApp);
         const addAdminFunction = httpsCallable(functions, 'addAdminToMyOrg');
-        // For addAdminToMyOrg, name and password are also needed.
-        // This UI only collects email, so it's a simplified version.
-        // For a full implementation, the UI should collect name and initial password.
-        // For now, let's assume a simplified Cloud Function or adjust as needed.
-        // This example will fail if 'addAdminToMyOrg' strictly requires name and password from client.
-        // We need to adjust the UI or the Cloud Function. Let's adjust UI to be simple for now.
-        // And assume the CF can handle a simpler input or defaults.
-        // Actually, the `addAdminToMyOrg` CF requires name and password.
-        // This part of the UI needs a proper form to collect name, email, password.
-        // For this iteration, I'll mock the call and show a toast.
-        // A full implementation requires a dialog form for new admin details.
-
-        // TODO: Implement a proper dialog form to collect name, email, and password for the new admin.
-        // For now, this button won't call the CF correctly.
-        toast({ title: "Ação Necessária", description: "Implementar formulário para coletar nome e senha do novo admin.", variant: "default" });
-        console.warn("TODO: Implement proper form for adding admin with name and password before calling addAdminToMyOrg CF.");
-        // Example of what the call would look like with more data:
-        /*
+        
         try {
-             await addAdminFunction({ name: "Nome do Novo Admin", email: newAdminEmail, password: "PasswordTemporario123" });
-             toast({ title: "Sucesso", description: `Administrador adicionado (requer dados completos).` });
-             setNewAdminEmail("");
+             await addAdminFunction({ name: data.name, email: data.email, password: data.password });
+             toast({ title: "Sucesso", description: `Administrador ${data.name} adicionado com sucesso.` });
              await loadAdmins();
+             // setIsAddAdminDialogOpen(false); // Form will close itself via onOpenChange
         } catch (error: any) {
-             toast({ title: "Erro", description: error.message || "Falha ao adicionar administrador.", variant: "destructive" });
+             console.error("Erro ao adicionar admin via CF:", error);
+             toast({ title: "Erro ao Adicionar Admin", description: error.message || "Falha ao adicionar administrador.", variant: "destructive" });
+        } finally {
+            setIsProcessingAdminAction(false);
         }
-        */
-        setIsAddingAdmin(false);
     };
 
      const handleDemoteAdminClick = (admin: UserProfile) => {
@@ -198,27 +181,29 @@ export default function SettingsPage() {
              return;
         }
         setAdminToDemote(admin);
-        setIsDemotingAdmin(true);
+        setIsDemotingAdminDialogOpen(true);
     };
 
      const confirmDemoteAdmin = async () => {
         if (adminToDemote && firebaseApp && organizationId) {
+            setIsProcessingAdminAction(true);
             const functions = getFunctions(firebaseApp);
             const demoteAdminFunction = httpsCallable(functions, 'demoteAdminInMyOrg');
             try {
                 await demoteAdminFunction({ userIdToDemote: adminToDemote.uid });
                 toast({ title: "Sucesso", description: `Administrador ${adminToDemote.name} rebaixado para colaborador.` });
                 await loadAdmins();
-            } catch (error: any) {
+            } catch (error: any)
+             {
                 toast({ title: "Erro", description: error.message || "Falha ao rebaixar administrador.", variant: "destructive" });
             } finally {
-                setIsDemotingAdmin(false);
+                setIsProcessingAdminAction(false);
+                setIsDemotingAdminDialogOpen(false);
                 setAdminToDemote(null);
             }
         }
      };
 
-    // --- Backup & Restore (remains mock) ---
     const loadBackups = React.useCallback(async () => {
         setIsLoadingBackups(true);
         try {
@@ -350,21 +335,16 @@ export default function SettingsPage() {
             </Card>
 
             <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><UserCog className="h-5 w-5" /> Gerenciamento de Administradores</CardTitle>
-                    <CardDescription>Adicione ou remova outros usuários administrativos para esta organização.</CardDescription>
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                        <CardTitle className="flex items-center gap-2"><UserCog className="h-5 w-5" /> Gerenciamento de Administradores</CardTitle>
+                        <CardDescription>Adicione ou remova outros usuários administrativos para esta organização.</CardDescription>
+                    </div>
+                     <Button onClick={() => setIsAddAdminDialogOpen(true)} disabled={!organizationId || isProcessingAdminAction}>
+                        <UserPlus className="mr-2 h-4 w-4" /> Adicionar Admin
+                     </Button>
                 </CardHeader>
                 <CardContent>
-                    <div className="mb-4 space-y-2">
-                        <Label htmlFor="newAdminEmail">Adicionar Novo Administrador (por Email)</Label>
-                        <div className="flex gap-2">
-                             <Input id="newAdminEmail" type="email" placeholder="email@check2b.com" value={newAdminEmail} onChange={(e) => setNewAdminEmail(e.target.value)} disabled={isAddingAdmin}/>
-                             <Button onClick={handleAddAdmin} disabled={isAddingAdmin || !newAdminEmail || !organizationId}>
-                                {isAddingAdmin ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />} Adicionar (Formulário Simplificado)
-                             </Button>
-                        </div>
-                         <p className="text-xs text-muted-foreground">Nota: Para adicionar um admin, você precisaria de um formulário completo (nome, email, senha). Esta é uma UI simplificada para teste.</p>
-                    </div>
                      <Separator className="my-4" />
                      <h4 className="text-sm font-medium mb-2">Administradores Atuais (Exceto Você)</h4>
                      <div className="rounded-md border">
@@ -375,12 +355,18 @@ export default function SettingsPage() {
                                 ) : admins.length === 0 ? (<TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-4">Nenhum outro administrador encontrado.</TableCell></TableRow>
                                 ) : (admins.map(admin => (
                                         <TableRow key={admin.uid}><TableCell className="font-medium">{admin.name}</TableCell><TableCell>{admin.email}</TableCell><TableCell className="text-right">
-                                             <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /><span className="sr-only">Ações</span></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => handleDemoteAdminClick(admin)} className="text-orange-600 focus:text-orange-700 focus:bg-orange-50"><UserMinus className="mr-2 h-4 w-4" /> Rebaixar para Colaborador</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+                                             <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8" disabled={isProcessingAdminAction}><MoreHorizontal className="h-4 w-4" /><span className="sr-only">Ações</span></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => handleDemoteAdminClick(admin)} className="text-orange-600 focus:text-orange-700 focus:bg-orange-50"><UserMinus className="mr-2 h-4 w-4" /> Rebaixar para Colaborador</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
                                          </TableCell></TableRow>)))}</TableBody></Table></div></CardContent>
             </Card>
 
-             <AlertDialog open={isDemotingAdmin} onOpenChange={setIsDemotingAdmin}>
-                <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirmar Rebaixamento</AlertDialogTitle><AlertDialogDescription>Tem certeza que deseja rebaixar o administrador "{adminToDemote?.name}" ({adminToDemote?.email}) para o papel de colaborador? Eles perderão o acesso administrativo.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setAdminToDemote(null)}>Cancelar</AlertDialogCancel><AlertDialogAction onClick={confirmDemoteAdmin} className="bg-orange-500 text-white hover:bg-orange-600">Rebaixar Admin</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+            <AddAdminToOrgForm
+                onSave={handleAddAdminSubmit}
+                open={isAddAdminDialogOpen}
+                onOpenChange={setIsAddAdminDialogOpen}
+            />
+
+             <AlertDialog open={isDemotingAdminDialogOpen} onOpenChange={setIsDemotingAdminDialogOpen}>
+                <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirmar Rebaixamento</AlertDialogTitle><AlertDialogDescription>Tem certeza que deseja rebaixar o administrador "{adminToDemote?.name}" ({adminToDemote?.email}) para o papel de colaborador? Eles perderão o acesso administrativo.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setAdminToDemote(null)} disabled={isProcessingAdminAction}>Cancelar</AlertDialogCancel><AlertDialogAction onClick={confirmDemoteAdmin} className="bg-orange-500 text-white hover:bg-orange-600" disabled={isProcessingAdminAction}>{isProcessingAdminAction && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Rebaixar Admin</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
             </AlertDialog>
 
             <Card>
