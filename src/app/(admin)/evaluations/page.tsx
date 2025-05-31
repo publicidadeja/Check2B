@@ -13,6 +13,7 @@ import {
   ListFilter,
   Info,
   Frown,
+  Link as LinkIcon, // Added LinkIcon
 } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -77,7 +78,7 @@ interface TaskEvaluationState extends Task {
     justification?: string;
     evidenceFile?: File | null;
     evidenceUrl?: string; 
-    evaluationId?: string; // To track existing evaluations
+    evaluationId?: string;
 }
 
 interface EmployeeEvaluationState extends UserProfile {
@@ -96,7 +97,7 @@ export default function EvaluationsPage() {
   const [dailyEvaluations, setDailyEvaluations] = React.useState<Map<string, Evaluation>>(new Map());
 
   const [departments, setDepartments] = React.useState<string[]>([]);
-  const [roles, setRoles] = React.useState<string[]>([]); // userRole/cargo
+  const [roles, setRoles] = React.useState<string[]>([]);
   const [selectedDepartments, setSelectedDepartments] = React.useState<Set<string>>(new Set());
   const [selectedRoles, setSelectedRoles] = React.useState<Set<string>>(new Set());
 
@@ -104,7 +105,7 @@ export default function EvaluationsPage() {
 
   const loadEvaluationData = React.useCallback(async () => {
     if (!organizationId || authLoading) {
-        if(!authLoading) setIsLoadingData(false); // If not authLoading but no orgId, stop loading
+        if(!authLoading) setIsLoadingData(false);
         return;
     }
     setIsLoadingData(true);
@@ -125,7 +126,7 @@ export default function EvaluationsPage() {
         const uniqueRoles = new Set<string>();
 
         const employeesWithTasks = employeesData
-          .filter(emp => emp.status === 'active') // Consider only active employees
+          .filter(emp => emp.status === 'active')
           .map(emp => {
             if (emp.department) uniqueDepts.add(emp.department);
             if (emp.userRole) uniqueRoles.add(emp.userRole);
@@ -140,12 +141,13 @@ export default function EvaluationsPage() {
                     justification: existingEval?.justification || '',
                     evidenceUrl: existingEval?.evidenceUrl || undefined,
                     evaluationId: existingEval?.id,
+                    evidenceFile: null, // Initialize evidenceFile
                 };
             });
             return {
                 ...emp,
                 tasks: taskStates,
-                allEvaluated: tasksForEmp.length > 0 ? taskStates.every(t => t.score !== undefined) : true, // True if no tasks
+                allEvaluated: tasksForEmp.length > 0 ? taskStates.every(t => t.score !== undefined) : true,
                 isSaving: false,
             };
         }).sort((a,b) => a.name.localeCompare(b.name));
@@ -207,7 +209,13 @@ export default function EvaluationsPage() {
            ? {
                ...emp,
                tasks: emp.tasks.map(task =>
-                 task.id === taskId ? { ...task, evidenceFile: file, evidenceUrl: file ? URL.createObjectURL(file) : task.evidenceUrl } : task
+                 task.id === taskId ? { 
+                     ...task, 
+                     evidenceFile: file, 
+                     // Clear existing URL if new file is selected, otherwise keep existing URL if no new file.
+                     // The actual preview/display logic in JSX will handle showing this temp URL or existing one.
+                     evidenceUrl: file ? URL.createObjectURL(file) : task.evidenceUrl 
+                 } : task
                ),
              }
            : emp
@@ -244,13 +252,15 @@ export default function EvaluationsPage() {
          taskId: task.id,
          score: task.score!,
          justification: task.justification,
-         evidenceUrl: task.evidenceUrl, // TODO: Implement actual file upload and get URL
+         evidenceFile: task.evidenceFile, // Pass the File object
+         evaluationId: task.evaluationId, // Pass existing eval ID if available
        }));
 
      try {
+       // saveEmployeeEvaluations now handles the upload internally
        await saveEmployeeEvaluations(organizationId, currentUser.uid, employeeId, format(selectedDate, 'yyyy-MM-dd'), taskEvaluationsForSave);
        toast({ title: "Sucesso!", description: `Avaliações para ${employeeState.name} salvas.` });
-       await loadEvaluationData(); // Recarregar dados para refletir o salvamento
+       await loadEvaluationData(); 
      } catch (error) {
        console.error("Falha ao salvar avaliações:", error);
        toast({ title: "Erro", description: `Falha ao salvar avaliações para ${employeeState.name}.`, variant: "destructive" });
@@ -268,7 +278,7 @@ export default function EvaluationsPage() {
     });
   };
 
-  const toggleRoleFilter = (role: string) => { // userRole / cargo
+  const toggleRoleFilter = (role: string) => {
      setSelectedRoles(prev => {
          const newSet = new Set(prev);
          if (newSet.has(role)) newSet.delete(role);
@@ -432,16 +442,17 @@ export default function EvaluationsPage() {
                                         <Input
                                             id={`evidence-${employee.uid}-${task.id}`}
                                             type="file"
+                                            accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt" // Example accept types
                                             className="h-9 text-xs file:mr-2 file:text-xs file:font-medium file:border-0 file:bg-muted file:text-muted-foreground hover:file:bg-muted/80"
                                             onChange={(e) => handleEvidenceChange(employee.uid, task.id, e.target.files ? e.target.files[0] : null)}
                                             aria-label={`Anexar evidência para ${task.title}`}
                                             />
                                         {task.evidenceFile && <p className='text-[10px] truncate mt-1 text-muted-foreground' title={task.evidenceFile.name}>{task.evidenceFile.name}</p>}
-                                        {!task.evidenceFile && task.evidenceUrl && 
-                                            <a href={task.evidenceUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline mt-1 block truncate" title="Ver evidência">
-                                                Ver evidência
+                                        {!task.evidenceFile && task.evidenceUrl && typeof task.evidenceUrl === 'string' && task.evidenceUrl.startsWith('http') && (
+                                            <a href={task.evidenceUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-accent hover:underline mt-1 block truncate flex items-center gap-1" title="Ver evidência anexada">
+                                                <LinkIcon className="h-3 w-3" /> Ver evidência
                                             </a>
-                                        }
+                                        )}
                                     </div>
                                 </div>
                                 {task.score === 0 && (
@@ -493,3 +504,4 @@ export default function EvaluationsPage() {
     </div>
   );
 }
+

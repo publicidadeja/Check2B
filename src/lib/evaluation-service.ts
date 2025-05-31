@@ -1,6 +1,6 @@
 
 // src/lib/evaluation-service.ts
-import { getDb } from './firebase';
+import { getDb, getFirebaseApp } from './firebase'; // Added getFirebaseApp
 import type { Evaluation } from '@/types/evaluation';
 import type { Task } from '@/types/task';
 import type { UserProfile } from '@/types/user';
@@ -14,10 +14,49 @@ import {
   Timestamp,
   orderBy,
   writeBatch,
-  getCountFromServer, // Import getCountFromServer
+  getCountFromServer,
 } from 'firebase/firestore';
-import { format, parseISO, startOfMonth, endOfMonth, subMonths } from 'date-fns'; // Added subMonths
-import { getAllTasksForOrganization } from './task-service'; // Assuming this function exists
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage"; // Added Storage imports
+import { format, parseISO, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { getAllTasksForOrganization } from './task-service';
+
+/**
+ * Uploads an evidence file for an evaluation to Firebase Storage.
+ * @param organizationId The ID of the organization.
+ * @param evaluationId A unique identifier for the evaluation (e.g., employeeId-taskId-dateString).
+ * @param file The file to upload.
+ * @returns Promise resolving to the download URL of the uploaded file.
+ */
+export const uploadEvaluationEvidence = async (
+  organizationId: string,
+  evaluationId: string, // This should be a stable identifier for the evaluation event
+  file: File
+): Promise<string> => {
+  const app = getFirebaseApp();
+  if (!app) {
+    throw new Error('Firebase App not initialized. Cannot upload evidence.');
+  }
+  const storage = getStorage(app);
+  if (!storage) {
+    throw new Error('Firebase Storage not initialized. Cannot upload evidence.');
+  }
+
+  // Sanitize filename: replace non-alphanumeric (except dots) with underscores
+  const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+  const filePath = `organizations/${organizationId}/evaluations_evidence/${evaluationId}/${sanitizedFileName}`;
+  const fileRef = ref(storage, filePath);
+
+  try {
+    const snapshot = await uploadBytes(fileRef, file);
+    const downloadURL = await getDownloadURL(snapshot.ref);
+    console.log(`[EvaluationService] Evidence file uploaded to ${filePath}, URL: ${downloadURL}`);
+    return downloadURL;
+  } catch (error) {
+    console.error(`[EvaluationService] Error uploading evidence file for evaluation ${evaluationId}:`, error);
+    throw error;
+  }
+};
+
 
 /**
  * Fetches tasks applicable to a specific employee on a given date for a specific organization.
@@ -33,15 +72,14 @@ export const getTasksForEmployeeOnDate = (
   date: Date,
   allOrgTasks: Task[]
 ): Task[] => {
-  if (!employee || employee.status !== 'active') return []; // Check if UserProfile has isActive, or adjust
-  
-  // Ensure employee has department and userRole for filtering
+  if (!employee || employee.status !== 'active') return [];
+
   const employeeDepartment = employee.department;
-  const employeeUserRole = employee.userRole; // This is the cargo/função
+  const employeeUserRole = employee.userRole;
 
   return allOrgTasks.filter(task => {
     let appliesByPeriodicity = false;
-    const dayOfWeek = date.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const dayOfWeek = date.getDay();
     const dateString = format(date, 'yyyy-MM-dd');
 
     switch (task.periodicity) {
@@ -49,17 +87,13 @@ export const getTasksForEmployeeOnDate = (
         appliesByPeriodicity = true;
         break;
       case 'specific_days':
-        // Example: Assuming specific_days stores an array of day numbers [0,1,2,3,4,5,6]
-        // This part needs to be adapted based on how specific_days is actually stored in your Task type.
-        // For now, a placeholder logic:
         if (Array.isArray(task.specificDays) && task.specificDays.includes(dayOfWeek.toString())) {
              appliesByPeriodicity = true;
-        } else if (task.id === 't6' && dayOfWeek === 5) { // Mock logic for specific task t6 on Friday
+        } else if (task.id === 't6' && dayOfWeek === 5) {
             appliesByPeriodicity = true;
         }
         break;
       case 'specific_dates':
-        // Example: Assuming specific_dates stores an array of "YYYY-MM-DD" strings
         if (Array.isArray(task.specificDates) && task.specificDates.includes(dateString)) {
             appliesByPeriodicity = true;
         }
@@ -70,8 +104,7 @@ export const getTasksForEmployeeOnDate = (
 
     if (!appliesByPeriodicity) return false;
 
-    // Check assignment
-    if (!task.assignedTo) return true; // Global task
+    if (!task.assignedTo) return true;
     if (task.assignedTo === 'department' && task.assignedEntityId === employeeDepartment) return true;
     if (task.assignedTo === 'role' && task.assignedEntityId === employeeUserRole) return true;
     if (task.assignedTo === 'individual' && task.assignedEntityId === employee.uid) return true;
@@ -134,7 +167,7 @@ export const getEvaluationsForOrganizationInPeriod = async (organizationId: stri
     evaluationsCollectionRef,
     where("evaluationDate", ">=", startDateString),
     where("evaluationDate", "<=", endDateString),
-    orderBy("evaluationDate", "asc") // Optional: order by date
+    orderBy("evaluationDate", "asc")
   );
 
   try {
@@ -151,7 +184,6 @@ export const getEvaluationsForOrganizationInPeriod = async (organizationId: stri
     });
   } catch (error) {
     console.error(`Error fetching evaluations for org ${organizationId} in period ${startDateString} - ${endDateString}:`, error);
-    // Firestore might require an index for this query. The error message will usually include a link to create it.
     throw error;
   }
 };
@@ -161,11 +193,12 @@ interface TaskEvaluationStateForSave {
     taskId: string;
     score?: 0 | 10;
     justification?: string;
-    evidenceUrl?: string;
+    evidenceFile?: File | null; // Keep File type here
+    evaluationId?: string; // For existing evaluations
 }
 /**
  * Saves or updates evaluations for a specific employee on a given date.
- * Uses batch writes for efficiency.
+ * Uses batch writes for efficiency. Handles evidence file upload.
  * @param organizationId The ID of the organization.
  * @param evaluatorId The ID of the admin performing the evaluation.
  * @param employeeId The ID of the employee being evaluated.
@@ -188,11 +221,29 @@ export const saveEmployeeEvaluations = async (
   const batch = writeBatch(db);
   const evaluationsPath = `organizations/${organizationId}/evaluations`;
 
-  taskEvaluations.forEach(taskEval => {
-    if (taskEval.score === undefined) return; // Skip tasks not scored
+  for (const taskEval of taskEvaluations) {
+    if (taskEval.score === undefined) continue; // Skip tasks not scored
 
-    const evaluationId = `${employeeId}-${taskEval.taskId}-${dateString}`;
-    const evalDocRef = doc(db, evaluationsPath, evaluationId);
+    // Use existing evaluationId if present (for updates), or generate one for storage path uniqueness if new.
+    // The actual Firestore document ID will still be employeeId-taskId-dateString.
+    const evaluationIdForStorage = taskEval.evaluationId || `${employeeId}-${taskEval.taskId}-${dateString}-new-${Date.now()}`;
+    const firestoreDocId = `${employeeId}-${taskEval.taskId}-${dateString}`;
+    const evalDocRef = doc(db, evaluationsPath, firestoreDocId);
+
+    let evidenceUrlToSave: string | undefined = undefined;
+
+    if (taskEval.evidenceFile) {
+      try {
+        evidenceUrlToSave = await uploadEvaluationEvidence(
+          organizationId,
+          evaluationIdForStorage, // Use the stable/generated ID for storage path
+          taskEval.evidenceFile
+        );
+      } catch (uploadError) {
+        console.error(`[EvaluationService] Failed to upload evidence for task ${taskEval.taskId}, employee ${employeeId}. Skipping evidence for this task.`, uploadError);
+        // Optionally, decide if the whole save operation should fail or just skip this evidence
+      }
+    }
 
     const evaluationData: Partial<Evaluation> = {
       employeeId: employeeId,
@@ -200,15 +251,21 @@ export const saveEmployeeEvaluations = async (
       evaluationDate: dateString,
       score: taskEval.score,
       justification: taskEval.justification || undefined,
-      evidenceUrl: taskEval.evidenceUrl || undefined,
+      evidenceUrl: evidenceUrlToSave, // This will be undefined if upload failed or no file
       evaluatorId: evaluatorId,
       organizationId: organizationId,
-      isDraft: false, // Assuming these are final evaluations
-      updatedAt: new Date(), // Will be converted to Timestamp by Firestore
+      isDraft: false, 
+      updatedAt: new Date(), 
     };
     
-    batch.set(evalDocRef, { ...evaluationData, createdAt: evaluationData.createdAt || new Date() }, { merge: true });
-  });
+    // For new evaluations, also set createdAt. For updates, merge will preserve existing createdAt.
+    const existingEvalDoc = await getDoc(evalDocRef);
+    if (!existingEvalDoc.exists()) {
+        evaluationData.createdAt = new Date();
+    }
+    
+    batch.set(evalDocRef, evaluationData, { merge: true });
+  }
 
   try {
     await batch.commit();
@@ -285,7 +342,7 @@ export const getMonthlyEvaluationStats = async (
 
   for (let i = 0; i < numberOfMonths; i++) {
     const targetMonthDate = subMonths(today, i);
-    const monthName = format(targetMonthDate, 'MMM', { locale: require('date-fns/locale/pt-BR').default }); // For pt-BR month names
+    const monthName = format(targetMonthDate, 'MMM', { locale: require('date-fns/locale/pt-BR').default });
     const firstDayOfMonth = format(startOfMonth(targetMonthDate), 'yyyy-MM-dd');
     const lastDayOfMonth = format(endOfMonth(targetMonthDate), 'yyyy-MM-dd');
 
@@ -296,14 +353,13 @@ export const getMonthlyEvaluationStats = async (
     );
     
     try {
-      // Here we just count all evaluation documents for the month.
-      // If you need to count *distinct completed evaluations per employee day*, the logic would be more complex.
       const snapshot = await getCountFromServer(q);
       stats.push({ month: monthName, total: snapshot.data().count });
     } catch (error) {
       console.error(`Error fetching evaluation stats for month ${monthName} of org ${organizationId}:`, error);
-      stats.push({ month: monthName, total: 0 }); // Add zero if error
+      stats.push({ month: monthName, total: 0 });
     }
   }
-  return stats.reverse(); // Reverse to have oldest month first for chart
+  return stats.reverse();
 };
+
