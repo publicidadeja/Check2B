@@ -228,7 +228,6 @@ export const getApprovedChallengeParticipationsForOrganizationInPeriod = async (
   const participationsPath = `organizations/${organizationId}/${PARTICIPATIONS_COLLECTION}`;
   const participationsCollectionRef = collection(db, participationsPath);
 
-  // Convert JS Dates to Firestore Timestamps for querying
   const startTimestamp = Timestamp.fromDate(startDate);
   const endTimestamp = Timestamp.fromDate(endDate);
 
@@ -237,7 +236,6 @@ export const getApprovedChallengeParticipationsForOrganizationInPeriod = async (
     where("status", "==", "approved"),
     where("evaluatedAt", ">=", startTimestamp),
     where("evaluatedAt", "<=", endTimestamp)
-    // Optional: orderBy("evaluatedAt", "desc")
   );
 
   try {
@@ -257,8 +255,6 @@ export const getApprovedChallengeParticipationsForOrganizationInPeriod = async (
     });
   } catch (error) {
     console.error(`[ChallengeService] Error fetching approved participations for org ${organizationId} in period:`, error);
-    // Firestore might require an index for this query. The error message will usually include a link to create it.
-    // Example index: collectionGroup: challengeParticipations, fields: status (ASC), evaluatedAt (ASC/DESC)
     throw error;
   }
 };
@@ -333,11 +329,6 @@ export const getChallengeDetails = async (organizationId: string, challengeId: s
 
 /**
  * Uploads a submission file for a challenge to Firebase Storage.
- * @param organizationId The ID of the organization.
- * @param challengeId The ID of the challenge.
- * @param employeeId The ID of the employee submitting.
- * @param file The file to upload.
- * @returns Promise resolving to the download URL of the uploaded file.
  */
 export const uploadChallengeSubmissionFile = async (
   organizationId: string,
@@ -372,7 +363,6 @@ export const uploadChallengeSubmissionFile = async (
   }
 };
 
-// Helper to delete a submission file (example)
 export const deleteChallengeSubmissionFile = async (fileUrl: string): Promise<void> => {
     const storage = getStorage();
     if (!storage) throw new Error("[ChallengeService] Firebase Storage not initialized.");
@@ -389,4 +379,170 @@ export const deleteChallengeSubmissionFile = async (fileUrl: string): Promise<vo
             throw error;
         }
     }
+};
+
+/**
+ * Fetches all challenge participations for a specific employee within an organization.
+ */
+export const getChallengeParticipationsByEmployee = async (organizationId: string, employeeId: string): Promise<ChallengeParticipation[]> => {
+  const db = getDb();
+  if (!db || !organizationId || !employeeId) {
+    console.error('[ChallengeService] Firestore not initialized or missing IDs for getChallengeParticipationsByEmployee.');
+    return [];
+  }
+  const participationsPath = `organizations/${organizationId}/${PARTICIPATIONS_COLLECTION}`;
+  const participationsCollectionRef = collection(db, participationsPath);
+  const q = query(participationsCollectionRef, where("employeeId", "==", employeeId), orderBy("createdAt", "desc"));
+
+  try {
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(docSnapshot => {
+      const data = docSnapshot.data();
+      return {
+        id: docSnapshot.id,
+        ...data,
+        organizationId,
+        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : undefined),
+        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : undefined),
+        acceptedAt: data.acceptedAt instanceof Timestamp ? data.acceptedAt.toDate() : (data.acceptedAt ? new Date(data.acceptedAt) : undefined),
+        submittedAt: data.submittedAt instanceof Timestamp ? data.submittedAt.toDate() : (data.submittedAt ? new Date(data.submittedAt) : undefined),
+        evaluatedAt: data.evaluatedAt instanceof Timestamp ? data.evaluatedAt.toDate() : (data.evaluatedAt ? new Date(data.evaluatedAt) : undefined),
+      } as ChallengeParticipation;
+    });
+  } catch (error) {
+    console.error(`[ChallengeService] Error fetching participations for employee ${employeeId} in org ${organizationId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Allows an employee to accept a challenge. Creates or updates participation status to 'accepted'.
+ */
+export const acceptChallengeForEmployee = async (
+  organizationId: string,
+  challengeId: string,
+  employeeId: string,
+  employeeName: string
+): Promise<ChallengeParticipation> => {
+  const db = getDb();
+  if (!db || !organizationId || !challengeId || !employeeId) {
+    throw new Error('[ChallengeService] Missing required IDs for accepting challenge.');
+  }
+
+  const participationsPath = `organizations/${organizationId}/${PARTICIPATIONS_COLLECTION}`;
+  const participationsCollectionRef = collection(db, participationsPath);
+  const q = query(participationsCollectionRef, where("employeeId", "==", employeeId), where("challengeId", "==", challengeId));
+
+  const snapshot = await getDocs(q);
+  let participationDocRef;
+  const now = serverTimestamp();
+
+  if (snapshot.empty) {
+    // Create new participation
+    const newParticipationData: Omit<ChallengeParticipation, 'id' | 'createdAt' | 'updatedAt'> = {
+      challengeId,
+      employeeId,
+      employeeName,
+      status: 'accepted',
+      acceptedAt: new Date(), // Will be converted by serverTimestamp effectively if 'now' is used in setDoc
+      organizationId,
+      // Other fields like submissionText, score, etc., will be undefined initially
+    };
+    participationDocRef = await addDoc(collection(db, participationsPath), {
+        ...newParticipationData,
+        createdAt: now,
+        updatedAt: now,
+        acceptedAt: now, // Ensure acceptedAt is set on creation
+    });
+  } else {
+    // Update existing participation if status is 'pending'
+    participationDocRef = snapshot.docs[0].ref;
+    const currentData = snapshot.docs[0].data() as ChallengeParticipation;
+    if (currentData.status === 'pending') {
+      await updateDoc(participationDocRef, {
+        status: 'accepted',
+        acceptedAt: now,
+        updatedAt: now,
+        employeeName: employeeName, // Ensure employeeName is updated/set
+      });
+    } else if (currentData.status !== 'accepted') {
+      // If already submitted, approved, etc., don't allow re-accepting through this flow.
+      // Or, if already 'accepted', no need to update again unless a specific field changed.
+      // For simplicity, we'll just fetch and return current if already accepted or further.
+      console.log(`[ChallengeService] Challenge ${challengeId} already in status ${currentData.status} for employee ${employeeId}.`);
+    }
+  }
+
+  const updatedDoc = await getDoc(participationDocRef);
+  if (!updatedDoc.exists()) throw new Error("[ChallengeService] Participation not found after accept operation.");
+  const data = updatedDoc.data()!;
+  return {
+    id: updatedDoc.id,
+    ...data,
+    organizationId,
+    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
+    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(),
+    acceptedAt: data.acceptedAt instanceof Timestamp ? data.acceptedAt.toDate() : (data.acceptedAt ? new Date(data.acceptedAt) : undefined),
+  } as ChallengeParticipation;
+};
+
+
+/**
+ * Allows an employee to submit their evidence for an accepted challenge.
+ */
+export const submitChallengeForEmployee = async (
+  organizationId: string,
+  challengeId: string,
+  employeeId: string,
+  submissionText?: string,
+  submissionFileUrl?: string
+): Promise<ChallengeParticipation> => {
+  const db = getDb();
+  if (!db || !organizationId || !challengeId || !employeeId) {
+    throw new Error('[ChallengeService] Missing required IDs for submitting challenge.');
+  }
+
+  const participationsPath = `organizations/${organizationId}/${PARTICIPATIONS_COLLECTION}`;
+  const participationsCollectionRef = collection(db, participationsPath);
+  const q = query(participationsCollectionRef, where("employeeId", "==", employeeId), where("challengeId", "==", challengeId));
+
+  const snapshot = await getDocs(q);
+
+  if (snapshot.empty) {
+    throw new Error("Participation not found. Employee must accept the challenge first.");
+  }
+
+  const participationDocRef = snapshot.docs[0].ref;
+  const currentData = snapshot.docs[0].data() as ChallengeParticipation;
+
+  if (currentData.status !== 'accepted') {
+    throw new Error(`Challenge cannot be submitted. Current status: ${currentData.status}.`);
+  }
+
+  const dataToUpdate: Partial<ChallengeParticipation> = {
+    status: 'submitted',
+    submittedAt: new Date(), // Will be serverTimestamp
+    submissionText: submissionText || null,
+    submissionFileUrl: submissionFileUrl || null,
+    updatedAt: new Date(), // Will be serverTimestamp
+  };
+
+  await updateDoc(participationDocRef, {
+      ...dataToUpdate,
+      submittedAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+  });
+
+  const updatedDoc = await getDoc(participationDocRef);
+  if (!updatedDoc.exists()) throw new Error("[ChallengeService] Participation not found after submission.");
+  const data = updatedDoc.data()!;
+  return {
+    id: updatedDoc.id,
+    ...data,
+    organizationId,
+    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
+    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(),
+    acceptedAt: data.acceptedAt instanceof Timestamp ? data.acceptedAt.toDate() : (data.acceptedAt ? new Date(data.acceptedAt) : undefined),
+    submittedAt: data.submittedAt instanceof Timestamp ? data.submittedAt.toDate() : new Date(),
+  } as ChallengeParticipation;
 };

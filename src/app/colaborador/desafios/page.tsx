@@ -16,7 +16,7 @@
  import { Badge } from '@/components/ui/badge';
  import { ScrollArea } from '@/components/ui/scroll-area';
  import { useToast } from '@/hooks/use-toast';
- import { format, parseISO, differenceInDays, isPast, isValid } from 'date-fns';
+ import { format, parseISO, differenceInDays, isPast, isValid, isBefore } from 'date-fns';
  import { ptBR } from 'date-fns/locale';
  import {
    Dialog,
@@ -36,159 +36,28 @@
  import { Skeleton } from "@/components/ui/skeleton";
  import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
  import { LoadingSpinner } from '@/components/ui/loading-spinner';
- import { useAuth } from '@/hooks/use-auth'; // Import useAuth
+ import { useAuth } from '@/hooks/use-auth';
 
  import type { Challenge, ChallengeParticipation } from '@/types/challenge';
- import { mockEmployeesSimple } from '@/lib/mockData/ranking';
- import { mockChallenges as allAdminChallenges, mockCurrentParticipations } from '@/lib/mockData/challenges';
- import { uploadChallengeSubmissionFile } from '@/lib/challenge-service'; // Import the upload service
+ import {
+    getAllChallenges,
+    getChallengeParticipationsByEmployee,
+    acceptChallengeForEmployee,
+    submitChallengeForEmployee,
+    uploadChallengeSubmissionFile
+ } from '@/lib/challenge-service';
+ import { mockEmployeesSimple } from '@/lib/mockData/ranking'; // Still used for employeeName temporarily
 
- // Mock Employee ID (replace with actual auth user ID)
- // const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva -> Will use from useAuth
-
- // --- Mock Fetching Functions (Keep for now, will be replaced by service calls) ---
- const fetchEmployeeChallenges = async (employeeId: string): Promise<{ available: Challenge[], active: Challenge[], completed: Challenge[] }> => {
-     await new Promise(resolve => setTimeout(resolve, 600));
-     const employee = mockEmployeesSimple.find(e => e.id === employeeId);
-     if (!employee) throw new Error("Colaborador não encontrado.");
-
-     const employeeParticipations = mockCurrentParticipations.filter(p => p.employeeId === employeeId);
-     const participationMap = new Map(employeeParticipations.map(p => [p.challengeId, p]));
-
-     const available: Challenge[] = [];
-     const active: Challenge[] = [];
-     const completed: Challenge[] = [];
-
-     allAdminChallenges.forEach(challenge => {
-         const startDateValid = challenge.periodStartDate && isValid(parseISO(challenge.periodStartDate));
-         const endDateValid = challenge.periodEndDate && isValid(parseISO(challenge.periodEndDate));
-         if (!startDateValid || !endDateValid) {
-            console.warn(`Skipping challenge ${challenge.id} due to invalid dates.`);
-            return;
-         }
-
-         const endDate = parseISO(challenge.periodEndDate);
-         const startDate = parseISO(challenge.periodStartDate);
-         const isChallengePeriodOver = isPast(endDate);
-         const isChallengeNotStarted = new Date() < startDate;
-
-         let isEligible = false;
-         if (challenge.status === 'draft' || challenge.status === 'archived') return;
-
-         if (challenge.eligibility.type === 'all') isEligible = true;
-         else if (challenge.eligibility.type === 'department' && challenge.eligibility.entityIds?.includes(employee.department)) isEligible = true;
-         else if (challenge.eligibility.type === 'role' && challenge.eligibility.entityIds?.includes(employee.role)) isEligible = true;
-         else if (challenge.eligibility.type === 'individual' && challenge.eligibility.entityIds?.includes(employee.id)) isEligible = true;
-
-         if (!isEligible) return;
-
-         const participation = participationMap.get(challenge.id);
-         const participationStatus = participation?.status || 'pending';
-
-          if (challenge.status === 'scheduled' && isChallengeNotStarted) {
-             if (participationStatus === 'pending') {
-                 available.push(challenge);
-             }
-          } else if (challenge.status === 'active' || (challenge.status === 'scheduled' && !isChallengeNotStarted)) {
-             if (participationStatus === 'pending') {
-                  if (!isChallengePeriodOver) available.push(challenge);
-             } else if (participationStatus === 'accepted' || participationStatus === 'submitted') {
-                  if (!isChallengePeriodOver || challenge.status === 'evaluating') {
-                      active.push(challenge);
-                  } else {
-                      completed.push(challenge);
-                  }
-             } else if (participationStatus === 'approved' || participationStatus === 'rejected') {
-                 completed.push(challenge);
-             }
-          } else if (challenge.status === 'evaluating') {
-              if (participationStatus === 'accepted' || participationStatus === 'submitted') {
-                  active.push(challenge);
-              } else {
-                  completed.push(challenge);
-              }
-          } else if (challenge.status === 'completed') {
-             completed.push(challenge);
-          }
-     });
-
-     completed.sort((a, b) => parseISO(b.periodEndDate).getTime() - parseISO(a.periodEndDate).getTime());
-     available.sort((a, b) => parseISO(a.periodStartDate).getTime() - parseISO(b.periodStartDate).getTime());
-     active.sort((a, b) => parseISO(a.periodEndDate).getTime() - parseISO(b.periodEndDate).getTime());
-
-     return { available, active, completed };
-  }
-
- const acceptChallenge = async (employeeId: string, challengeId: string): Promise<ChallengeParticipation> => {
-     await new Promise(resolve => setTimeout(resolve, 400));
-     const existingIndex = mockCurrentParticipations.findIndex(p => p.employeeId === employeeId && p.challengeId === challengeId);
-     let participation: ChallengeParticipation;
-     const challenge = allAdminChallenges.find(c => c.id === challengeId);
-      if (!challenge || challenge.status !== 'active' && challenge.status !== 'scheduled') {
-         throw new Error("Não é possível aceitar este desafio no momento.");
-     }
-      if (isPast(parseISO(challenge.periodEndDate))) {
-           throw new Error("O prazo para aceitar este desafio expirou.");
-      }
-
-     if (existingIndex > -1) {
-         if (mockCurrentParticipations[existingIndex].status !== 'pending') {
-             throw new Error("Desafio já interagido.");
-         }
-         mockCurrentParticipations[existingIndex].status = 'accepted';
-         mockCurrentParticipations[existingIndex].acceptedAt = new Date();
-         participation = mockCurrentParticipations[existingIndex];
-     } else {
-         participation = { id:`p${Date.now()}`, employeeId, challengeId, status: 'accepted', acceptedAt: new Date(), organizationId: 'org_default' };
-         mockCurrentParticipations.push(participation);
-     }
-     console.log("Challenge accepted:", participation);
-     return participation;
- };
-
- const submitChallenge = async (employeeId: string, challengeId: string, submissionText?: string, fileUrl?: string): Promise<ChallengeParticipation> => {
-     await new Promise(resolve => setTimeout(resolve, 800));
-     const participationIndex = mockCurrentParticipations.findIndex(p => p.employeeId === employeeId && p.challengeId === challengeId);
-     const challenge = allAdminChallenges.find(c => c.id === challengeId);
-
-     if (participationIndex === -1 || !['accepted'].includes(mockCurrentParticipations[participationIndex].status)) {
-         throw new Error("Aceite o desafio antes de submeter.");
-     }
-     if (!challenge || !['active', 'evaluating', 'scheduled'].includes(challenge.status)) {
-          throw new Error("Não é possível submeter este desafio (não está ativo/em avaliação).");
-     }
-      if (isPast(parseISO(challenge.periodEndDate)) && challenge.status !== 'evaluating') {
-          throw new Error("O prazo para submissão deste desafio expirou.");
-      }
-      if (new Date() < parseISO(challenge.periodStartDate)) {
-           throw new Error("O desafio ainda não começou.");
-      }
-
-     const participation = mockCurrentParticipations[participationIndex];
-     participation.status = 'submitted';
-     participation.submittedAt = new Date();
-     participation.submissionText = submissionText;
-     participation.submissionFileUrl = fileUrl; // Use the passed fileUrl
-
-     console.log("Challenge submitted:", participation);
-
-     setTimeout(async () => {
-         console.log(`[Simulated Eval] Evaluating challenge ${challengeId} for user ${employeeId}`);
-         const evalStatus = Math.random() > 0.2 ? 'approved' : 'rejected';
-         const evalFeedback = evalStatus === 'approved' ? 'Excelente trabalho!' : 'Não atendeu aos critérios. Verifique o feedback.';
-         const finalScore = evalStatus === 'approved' ? challenge.points : 0;
-
-         const finalParticipationIndex = mockCurrentParticipations.findIndex(p => p.employeeId === employeeId && p.challengeId === challengeId && p.status === 'submitted');
-         if (finalParticipationIndex > -1) {
-             mockCurrentParticipations[finalParticipationIndex].status = evalStatus;
-             mockCurrentParticipations[finalParticipationIndex].feedback = evalFeedback;
-             mockCurrentParticipations[finalParticipationIndex].score = finalScore;
-             console.log(`[Simulated Eval] Challenge ${challengeId} evaluated as ${evalStatus}`);
-         }
-     }, 5000);
-
-     return participation;
- };
+ interface ChallengeDetailsModalProps {
+     challenge: Challenge | null;
+     participation?: ChallengeParticipation | null;
+     onAccept?: (challengeId: string) => void;
+     onSubmit?: (challengeId: string, submissionText?: string, fileUrl?: string) => void;
+     isOpen: boolean;
+     onOpenChange: (open: boolean) => void;
+     organizationId: string | null;
+     employeeId: string | null;
+ }
 
  const getSafeStatusBadgeVariant = (status: ChallengeParticipation['status']): "default" | "secondary" | "destructive" | "outline" => {
      switch (status) {
@@ -210,17 +79,6 @@
          rejected: 'Rejeitado',
      };
      return map[status] || status;
- }
-
- interface ChallengeDetailsModalProps {
-     challenge: Challenge | null;
-     participation?: ChallengeParticipation | null;
-     onAccept?: (challengeId: string) => void;
-     onSubmit?: (challengeId: string, submissionText?: string, fileUrl?: string) => void; // Changed file to fileUrl
-     isOpen: boolean;
-     onOpenChange: (open: boolean) => void;
-     organizationId: string | null; // Added organizationId
-     employeeId: string | null; // Added employeeId
  }
 
  function ChallengeDetailsModal({ challenge, participation, onAccept, onSubmit, isOpen, onOpenChange, organizationId, employeeId }: ChallengeDetailsModalProps) {
@@ -263,19 +121,19 @@
          );
      }
 
-     const endDate = parseISO(challenge.periodEndDate);
+     const endDate = parseISO(challenge.periodEndDate + "T23:59:59.999Z"); // Consider end of day
      const startDate = parseISO(challenge.periodStartDate);
      const isChallengeOver = isPast(endDate);
-     const isChallengeNotStarted = new Date() < startDate;
+     const isChallengeNotStarted = isBefore(new Date(), startDate);
 
      const canSubmit = participation?.status === 'accepted' &&
-                       (['active', 'evaluating'].includes(challenge.status) || (challenge.status === 'scheduled' && !isChallengeNotStarted)) &&
+                       (challenge.status === 'active' || challenge.status === 'evaluating' || (challenge.status === 'scheduled' && !isChallengeNotStarted)) &&
                        (!isChallengeOver || challenge.status === 'evaluating');
 
      const canAccept = challenge.participationType === 'Opcional' &&
                        (!participation || participation.status === 'pending') &&
                        !isChallengeOver && !isChallengeNotStarted &&
-                       ['active', 'scheduled'].includes(challenge.status);
+                       (challenge.status === 'active' || (challenge.status === 'scheduled' && !isChallengeNotStarted));
 
      const isReadOnly = !canSubmit && (participation?.status === 'submitted' || participation?.status === 'approved' || participation?.status === 'rejected');
      const isPendingAcceptance = !participation || participation.status === 'pending';
@@ -283,7 +141,7 @@
      const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
          const file = event.target.files?.[0];
          if (file) {
-             if (file.size > 10 * 1024 * 1024) {
+             if (file.size > 10 * 1024 * 1024) { // 10MB limit
                 toast({title: "Arquivo Grande", description: "O arquivo não pode exceder 10MB.", variant: "destructive"});
                 if (event.target) event.target.value = '';
                 setSubmissionFile(null);
@@ -313,7 +171,7 @@
              if (submissionFile) {
                  fileUrl = await uploadChallengeSubmissionFile(organizationId, challenge.id, employeeId, submissionFile);
              }
-             await onSubmit(challenge.id, submissionText, fileUrl); // Pass fileUrl
+             await onSubmit(challenge.id, submissionText, fileUrl);
              toast({ title: "Sucesso!", description: "Sua conclusão foi enviada para avaliação." });
              onOpenChange(false);
          } catch (error: any) {
@@ -365,7 +223,7 @@
                                  {!isChallengeOver && challenge.status !== 'completed' && challenge.status !== 'evaluating' && daysRemaining >= 0 && (
                                       <span className={cn("text-[10px] ml-1 font-medium", daysRemaining <= 1 ? 'text-destructive' : 'text-blue-600' )}>({daysRemaining + 1}d restantes)</span>
                                  )}
-                                 {(isChallengeOver && challenge.status !== 'evaluating') && <span className="text-xs ml-1 text-destructive font-medium">(Encerrado)</span>}
+                                 {(isChallengeOver && challenge.status !== 'evaluating' && challenge.status !== 'active') && <span className="text-xs ml-1 text-destructive font-medium">(Encerrado)</span>}
                                  {isChallengeNotStarted && <span className="text-xs ml-1 text-blue-600 font-medium">(Aguardando Início)</span>}
                              </p>
                          </div>
@@ -401,7 +259,7 @@
                                               {isReadOnly && participation?.submissionFileUrl && (
                                                  <div className="mt-1">
                                                       <Button asChild variant="link" size="sm" className="p-0 h-auto text-xs text-accent">
-                                                          <a href={participation.submissionFileUrl} target="_blank" rel="noopener noreferrer"><FileText className="inline h-3 w-3 mr-1"/> Ver Anexo (Simulado)</a>
+                                                          <a href={participation.submissionFileUrl} target="_blank" rel="noopener noreferrer"><FileText className="inline h-3 w-3 mr-1"/> Ver Anexo</a>
                                                       </Button>
                                                  </div>
                                              )}
@@ -447,9 +305,8 @@
  }
 
  export default function EmployeeChallengesPage() {
-     const [availableChallenges, setAvailableChallenges] = React.useState<Challenge[]>([]);
-     const [activeChallenges, setActiveChallenges] = React.useState<Challenge[]>([]);
-     const [completedChallenges, setCompletedChallenges] = React.useState<Challenge[]>([]);
+     const [allChallenges, setAllChallenges] = React.useState<Challenge[]>([]);
+     const [participations, setParticipations] = React.useState<ChallengeParticipation[]>([]);
      const [isLoading, setIsLoading] = React.useState(true);
      const [selectedChallenge, setSelectedChallenge] = React.useState<Challenge | null>(null);
      const [isDetailsModalOpen, setIsDetailsModalOpen] = React.useState(false);
@@ -458,58 +315,65 @@
      const [filterCategory, setFilterCategory] = React.useState<string>('all');
      const [filterDifficulty, setFilterDifficulty] = React.useState<'all' | Challenge['difficulty']>('all');
      const { toast } = useToast();
-     const { user, organizationId, isLoading: authIsLoading } = useAuth(); // Get user and orgId
-     const CURRENT_EMPLOYEE_ID = user?.uid || null; // Use UID from auth
+     const { user, organizationId, isLoading: authIsLoading } = useAuth();
+     const CURRENT_EMPLOYEE_ID = user?.uid || null;
+     const CURRENT_EMPLOYEE_NAME = user?.displayName || "Colaborador";
 
-     const [participationMap, setParticipationMap] = React.useState<Map<string, ChallengeParticipation>>(new Map());
+     const participationMap = React.useMemo(() => new Map(participations.map(p => [p.challengeId, p])), [participations]);
 
      const loadChallengesData = React.useCallback(async () => {
-         if (!CURRENT_EMPLOYEE_ID || authIsLoading) {
-             if (!authIsLoading) setIsLoading(false); // Stop loading if auth is done but no user
+         if (!CURRENT_EMPLOYEE_ID || !organizationId || authIsLoading) {
+             if (!authIsLoading && (!CURRENT_EMPLOYEE_ID || !organizationId)) setIsLoading(false);
              return;
          }
          setIsLoading(true);
          try {
-             const [challengeData, currentParticipationsData] = await Promise.all([
-                 fetchEmployeeChallenges(CURRENT_EMPLOYEE_ID),
-                 Promise.resolve(mockCurrentParticipations.filter(p => p.employeeId === CURRENT_EMPLOYEE_ID))
+             const [challengesData, participationsData] = await Promise.all([
+                 getAllChallenges(organizationId),
+                 getChallengeParticipationsByEmployee(organizationId, CURRENT_EMPLOYEE_ID)
              ]);
-             setAvailableChallenges(challengeData.available);
-             setActiveChallenges(challengeData.active);
-             setCompletedChallenges(challengeData.completed);
-             setParticipationMap(new Map(currentParticipationsData.map(p => [p.challengeId, p])));
+             setAllChallenges(challengesData);
+             setParticipations(participationsData);
          } catch (error) {
-             console.error("Erro ao carregar desafios:", error);
+             console.error("Erro ao carregar desafios e participações:", error);
              toast({ title: "Erro", description: "Não foi possível carregar seus desafios.", variant: "destructive" });
          } finally {
              setIsLoading(false);
          }
-     }, [toast, CURRENT_EMPLOYEE_ID, authIsLoading]);
+     }, [toast, CURRENT_EMPLOYEE_ID, organizationId, authIsLoading]);
 
      React.useEffect(() => {
          loadChallengesData();
      }, [loadChallengesData]);
 
      const handleAcceptChallenge = async (challengeId: string) => {
-         if (!CURRENT_EMPLOYEE_ID) return;
-         setIsLoading(true);
+         if (!CURRENT_EMPLOYEE_ID || !organizationId) return;
+         setIsLoading(true); // Indicate loading on the page while action is performed
          try {
-             await acceptChallenge(CURRENT_EMPLOYEE_ID, challengeId);
-             toast({ title: "Desafio Aceito!", description: `Você começou o desafio: "${allAdminChallenges.find(c => c.id === challengeId)?.title}".`, });
-             await loadChallengesData();
+             await acceptChallengeForEmployee(organizationId, challengeId, CURRENT_EMPLOYEE_ID, CURRENT_EMPLOYEE_NAME);
+             toast({ title: "Desafio Aceito!", description: `Você começou o desafio: "${allChallenges.find(c => c.id === challengeId)?.title}".`, });
+             await loadChallengesData(); // Refresh all data
          } catch (error: any) {
              console.error("Erro ao aceitar desafio:", error);
              toast({ title: "Erro", description: error.message || "Não foi possível aceitar o desafio.", variant: "destructive" });
+         } finally {
              setIsLoading(false);
          }
      };
 
       const handleSubmitChallenge = async (challengeId: string, submissionText?: string, fileUrl?: string) => {
-         if (!CURRENT_EMPLOYEE_ID) return;
+         if (!CURRENT_EMPLOYEE_ID || !organizationId) return;
          // Modal handles its own submitting state, page handles overall loading for list refresh
-         const updatedParticipation = await submitChallenge(CURRENT_EMPLOYEE_ID, challengeId, submissionText, fileUrl);
-         setParticipationMap(prev => new Map(prev).set(challengeId, updatedParticipation));
-         await loadChallengesData();
+         // The modal calls this function AFTER file upload (if any) is complete
+         try {
+             await submitChallengeForEmployee(organizationId, challengeId, CURRENT_EMPLOYEE_ID, submissionText, fileUrl);
+             // No toast here, modal handles it. Just reload data.
+             await loadChallengesData();
+         } catch (error: any) {
+             console.error("Erro ao submeter desafio (na página):", error);
+             // Modal should display its own error, but can have a fallback toast here if needed.
+             toast({ title: "Erro na Submissão", description: error.message || "Falha ao registrar submissão.", variant: "destructive" });
+         }
      };
 
      const openDetailsModal = (challenge: Challenge) => {
@@ -520,6 +384,80 @@
      const getParticipationForChallenge = (challengeId: string): ChallengeParticipation | undefined => {
          return participationMap.get(challengeId);
      }
+
+     const categorizedChallenges = React.useMemo(() => {
+        const available: Challenge[] = [];
+        const active: Challenge[] = [];
+        const completed: Challenge[] = [];
+
+        allChallenges.forEach(challenge => {
+            const participation = getParticipationForChallenge(challenge.id);
+            const participationStatus = participation?.status || 'pending';
+
+            const startDateValid = challenge.periodStartDate && isValid(parseISO(challenge.periodStartDate));
+            const endDateValid = challenge.periodEndDate && isValid(parseISO(challenge.periodEndDate));
+            if (!startDateValid || !endDateValid) return; // Skip invalid challenges
+
+            const endDate = parseISO(challenge.periodEndDate + "T23:59:59.999Z");
+            const startDate = parseISO(challenge.periodStartDate);
+            const isChallengePeriodOver = isPast(endDate);
+            const isChallengeNotStartedYet = isBefore(new Date(), startDate);
+
+            // Filter by eligibility (basic example, replace with actual employee data)
+            const employee = mockEmployeesSimple.find(e => e.id === CURRENT_EMPLOYEE_ID); // Using mock for demo, replace!
+            if (!employee) return; // Should not happen if CURRENT_EMPLOYEE_ID is valid
+
+            let isEligible = false;
+            if (challenge.eligibility.type === 'all') isEligible = true;
+            else if (challenge.eligibility.type === 'department' && challenge.eligibility.entityIds?.includes(employee.department)) isEligible = true;
+            else if (challenge.eligibility.type === 'role' && challenge.eligibility.entityIds?.includes(employee.role)) isEligible = true;
+            else if (challenge.eligibility.type === 'individual' && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID!)) isEligible = true;
+
+            if (!isEligible || challenge.status === 'draft' || challenge.status === 'archived') return;
+
+            if (challenge.status === 'active' || (challenge.status === 'scheduled' && !isChallengeNotStartedYet)) {
+                if (participationStatus === 'pending' && !isChallengePeriodOver) {
+                    available.push(challenge);
+                } else if (participationStatus === 'accepted' || participationStatus === 'submitted') {
+                    if (!isChallengePeriodOver || challenge.status === 'evaluating') {
+                        active.push(challenge);
+                    } else {
+                        completed.push(challenge); // Moved to completed if period over and was active
+                    }
+                } else if (participationStatus === 'approved' || participationStatus === 'rejected') {
+                    completed.push(challenge);
+                }
+            } else if (challenge.status === 'evaluating') {
+                 if (participationStatus === 'accepted' || participationStatus === 'submitted' || participationStatus === 'approved' || participationStatus === 'rejected') {
+                     // If user participated, it shows in active if still being evaluated, or completed if evaluated
+                     if (participationStatus === 'accepted' || participationStatus === 'submitted') active.push(challenge);
+                     else completed.push(challenge);
+                 }
+            } else if (challenge.status === 'completed') {
+                completed.push(challenge);
+            } else if (challenge.status === 'scheduled' && isChallengeNotStartedYet) {
+                // Only add to available if participation is pending
+                if (participationStatus === 'pending') {
+                    available.push(challenge);
+                }
+            }
+        });
+
+        // Sort logic (example: by end date for active/available, by submitted/evaluated for completed)
+        available.sort((a,b) => parseISO(a.periodStartDate).getTime() - parseISO(b.periodStartDate).getTime());
+        active.sort((a,b) => parseISO(a.periodEndDate).getTime() - parseISO(b.periodEndDate).getTime());
+        completed.sort((a,b) => {
+            const pA = getParticipationForChallenge(a.id);
+            const pB = getParticipationForChallenge(b.id);
+            const dateA = pA?.submittedAt || pA?.evaluatedAt || parseISO(a.periodEndDate);
+            const dateB = pB?.submittedAt || pB?.evaluatedAt || parseISO(b.periodEndDate);
+            return (dateB instanceof Date ? dateB.getTime() : 0) - (dateA instanceof Date ? dateA.getTime() : 0);
+        });
+
+
+        return { available, active, completed };
+    }, [allChallenges, participationMap, CURRENT_EMPLOYEE_ID]);
+
 
       const filterChallenges = (challenges: Challenge[]): Challenge[] => {
          return challenges.filter(ch => {
@@ -534,14 +472,14 @@
          });
      };
 
-     const filteredAvailable = filterChallenges(availableChallenges);
-     const filteredActive = filterChallenges(activeChallenges);
-     const filteredCompleted = filterChallenges(completedChallenges);
+     const filteredAvailable = filterChallenges(categorizedChallenges.available);
+     const filteredActive = filterChallenges(categorizedChallenges.active);
+     const filteredCompleted = filterChallenges(categorizedChallenges.completed);
 
      const availableCategories = React.useMemo(() => {
-         const allCats = [...availableChallenges, ...activeChallenges, ...completedChallenges].map(c => c.category).filter((c): c is string => !!c);
+         const allCats = allChallenges.map(c => c.category).filter((c): c is string => !!c);
          return ['all', ...Array.from(new Set(allCats)).sort()];
-     }, [availableChallenges, activeChallenges, completedChallenges]);
+     }, [allChallenges]);
 
      const renderChallengeCard = (challenge: Challenge, listType: 'available' | 'active' | 'completed') => {
          const participation = getParticipationForChallenge(challenge.id);
@@ -553,7 +491,7 @@
          if (!startDateValid || !endDateValid) {
              return <Card key={challenge.id} className="shadow-sm p-3 text-xs text-destructive border-destructive">Erro: Datas inválidas para o desafio "{challenge.title}".</Card>;
          }
-         const endDate = parseISO(challenge.periodEndDate);
+         const endDate = parseISO(challenge.periodEndDate + "T23:59:59.999Z");
          const isChallengeOver = isPast(endDate);
          const daysRemaining = differenceInDays(endDate, new Date());
 
@@ -585,7 +523,7 @@
      if (authIsLoading) {
         return <div className="flex justify-center items-center h-full py-10"><LoadingSpinner text="Autenticando..." /></div>;
     }
-    if (!CURRENT_EMPLOYEE_ID && !authIsLoading) { // Show this if auth is done but no user ID
+    if (!CURRENT_EMPLOYEE_ID && !authIsLoading) {
         return (
             <Card className="m-4 p-4 text-center">
                 <CardHeader><CardTitle>Acesso Negado</CardTitle></CardHeader>
@@ -593,6 +531,15 @@
             </Card>
         );
     }
+     if (!organizationId && !authIsLoading) {
+        return (
+            <Card className="m-4 p-4 text-center">
+                <CardHeader><CardTitle>Organização Não Encontrada</CardTitle></CardHeader>
+                <CardContent><p className="text-destructive">Sua conta não está vinculada a uma organização.</p></CardContent>
+            </Card>
+        );
+    }
+
 
      return (
           <div className="space-y-4 p-4">
@@ -610,7 +557,11 @@
                          <TabsTrigger value="active" className="text-xs px-1 flex items-center gap-1"><Clock className="h-3 w-3"/> Em Andamento {isLoading ? "" : `(${filteredActive.length})`}</TabsTrigger>
                          <TabsTrigger value="completed" className="text-xs px-1 flex items-center gap-1"><History className="h-3 w-3"/> Histórico {isLoading ? "" : `(${filteredCompleted.length})`}</TabsTrigger>
                      </TabsList>
-                      {[{ value: "available", challenges: filteredAvailable, emptyText: "Nenhum desafio novo disponível com os filtros atuais." },{ value: "active", challenges: filteredActive, emptyText: "Nenhum desafio em andamento com os filtros atuais." },{ value: "completed", challenges: filteredCompleted, emptyText: "Nenhum desafio concluído ou passado com os filtros atuais." }].map(tab => (
+                      {[
+                        { value: "available", challenges: filteredAvailable, emptyText: "Nenhum desafio novo disponível com os filtros atuais." },
+                        { value: "active", challenges: filteredActive, emptyText: "Nenhum desafio em andamento com os filtros atuais." },
+                        { value: "completed", challenges: filteredCompleted, emptyText: "Nenhum desafio concluído ou passado com os filtros atuais." }
+                      ].map(tab => (
                          <TabsContent key={tab.value} value={tab.value} className="mt-4">
                               {isLoading ? (<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">{renderSkeletonCards(tab.value === 'completed' ? 8 : 4)}</div>)
                                : tab.challenges.length === 0 ? (<div className="text-center text-muted-foreground py-16 px-4"><Frown className="h-12 w-12 mx-auto mb-3 text-gray-400"/><p className="text-sm">{tab.emptyText}</p><Button variant="outline" size="sm" className="mt-4 text-xs" onClick={() => { setSearchTerm(''); setFilterStatus('all'); setFilterCategory('all'); setFilterDifficulty('all'); }}>Limpar Filtros</Button></div>)
@@ -625,8 +576,8 @@
                      onSubmit={handleSubmitChallenge}
                      isOpen={isDetailsModalOpen}
                      onOpenChange={setIsDetailsModalOpen}
-                     organizationId={organizationId} // Pass organizationId
-                     employeeId={CURRENT_EMPLOYEE_ID} // Pass employeeId
+                     organizationId={organizationId}
+                     employeeId={CURRENT_EMPLOYEE_ID}
                   />
              </div>
      );
