@@ -132,7 +132,7 @@
             setIsLoadingProfile(false); 
          }
 
-     }, [authUser, authLoading, isGuest, toast]); // Removido profileForm e notificationForm das dependências
+     }, [authUser, authLoading, isGuest, toast, profileForm, notificationForm]); // Reverted: profileForm, notificationForm in deps
 
      const onProfileSubmit = async (data: ProfileFormData) => {
          if (!authUser?.uid || !employeeProfile) return;

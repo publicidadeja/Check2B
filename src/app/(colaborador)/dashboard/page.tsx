@@ -39,7 +39,7 @@
  import { Label } from '@/components/ui/label'; 
  import { LoadingSpinner } from '@/components/ui/loading-spinner'; 
  import { useAuth } from '@/hooks/use-auth';
- import type { UserProfile } from '@/types/user';
+ // import type { UserProfile } from '@/types/user'; // Was commented out
 
  // Import types
  import type { Task } from '@/types/task';
@@ -50,7 +50,7 @@
  import { getAllTasksForOrganization } from '@/lib/task-service';
  import { getTasksForEmployeeOnDate, getEvaluationsForDay, getEvaluationsForOrganizationInPeriod } from '@/lib/evaluation-service';
  import { getAllChallenges, getChallengeParticipationsByEmployee } from '@/lib/challenge-service';
- import { getUserProfileData } from '@/lib/auth';
+ // import { getUserProfileData } from '@/lib/auth'; // Was commented out
 
 
  interface EmployeeDashboardData {
@@ -61,7 +61,7 @@
      activeChallenges: Challenge[];
      monthlyPerformanceTrend?: 'up' | 'down' | 'stable';
      employeeName: string; 
-     userProfile?: UserProfile | null;
+     // userProfile?: UserProfile | null; // This was part of my previous change, reverting
  }
 
 
@@ -91,14 +91,23 @@
                  const startCurrentMonthStr = format(startOfMonth(today), 'yyyy-MM-dd');
                  const endCurrentMonthStr = format(endOfMonth(today), 'yyyy-MM-dd');
 
-                 const userProfileData = await getUserProfileData(CURRENT_EMPLOYEE_ID);
-                 if (!userProfileData) {
-                    throw new Error("Perfil do colaborador não encontrado.");
-                 }
+                 // const userProfileData = await getUserProfileData(CURRENT_EMPLOYEE_ID); // Reverted
+                 // if (!userProfileData) { // Reverted
+                 //    throw new Error("Perfil do colaborador não encontrado."); // Reverted
+                 // } // Reverted
 
                  const allOrgTasks = await getAllTasksForOrganization(organizationId);
-                 // Use userProfileData aqui em vez de placeholders
-                 const tasksToday = getTasksForEmployeeOnDate(userProfileData, today, allOrgTasks);
+                 
+                 // Reverted to use placeholder for task filtering
+                 const employeeProfileForTaskFiltering = { 
+                    uid: CURRENT_EMPLOYEE_ID, 
+                    // These were placeholders, keeping them as per the prior state before my last change
+                    department: user?.photoURL || 'N/A', 
+                    userRole: user?.email?.includes('dev') ? 'Desenvolvedor' : 'N/A', 
+                    status: 'active' 
+                 } as any; 
+
+                 const tasksToday = getTasksForEmployeeOnDate(employeeProfileForTaskFiltering, today, allOrgTasks);
                  
                  const evaluationsToday = await getEvaluationsForDay(organizationId, todayStr); 
                  const employeeEvaluationsToday = evaluationsToday.filter(ev => ev.employeeId === CURRENT_EMPLOYEE_ID);
@@ -136,9 +145,8 @@
 
                      let isEligible = false;
                      if (ch.eligibility.type === 'all') isEligible = true;
-                     // Use userProfileData para elegibilidade
-                     else if (ch.eligibility.type === 'department' && userProfileData.department && ch.eligibility.entityIds?.includes(userProfileData.department)) isEligible = true;
-                     else if (ch.eligibility.type === 'role' && userProfileData.userRole && ch.eligibility.entityIds?.includes(userProfileData.userRole)) isEligible = true;
+                     else if (ch.eligibility.type === 'department' && employeeProfileForTaskFiltering.department && ch.eligibility.entityIds?.includes(employeeProfileForTaskFiltering.department)) isEligible = true; // Reverted
+                     else if (ch.eligibility.type === 'role' && employeeProfileForTaskFiltering.userRole && ch.eligibility.entityIds?.includes(employeeProfileForTaskFiltering.userRole)) isEligible = true; // Reverted
                      else if (ch.eligibility.type === 'individual' && ch.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID)) isEligible = true;
                      
                      if (!isEligible) return false;
@@ -154,8 +162,8 @@
                      tasksToday,
                      activeChallenges,
                      monthlyPerformanceTrend: 'stable', 
-                     employeeName: userProfileData.name || employeeDisplayName,
-                     userProfile: userProfileData
+                     employeeName: employeeDisplayName, // Reverted, was userProfileData.name
+                     // userProfile: userProfileData // Reverted
                  });
 
              } catch (error: any) {
@@ -171,7 +179,7 @@
          };
 
          fetchEmployeeDashboardData();
-     }, [CURRENT_EMPLOYEE_ID, organizationId, authIsLoading, employeeDisplayName, toast]);
+     }, [CURRENT_EMPLOYEE_ID, organizationId, authIsLoading, employeeDisplayName, toast, user?.photoURL, user?.email]); // Added user dependencies for placeholders
 
 
      if (authIsLoading || isLoading || !data) {
