@@ -1,3 +1,4 @@
+
 // src/app/(admin)/tasks/page.tsx
 'use client';
 
@@ -75,7 +76,7 @@ export default function TasksPage() {
   }
 
   const columns: ColumnDef<Task>[] = [
-    { accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
+    { id: "title", accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
     {
       accessorKey: "category",
       header: "Categoria",
@@ -298,3 +299,4 @@ export default function TasksPage() {
     </div>
   );
 }
+

@@ -95,7 +95,7 @@ import {
 } from '@/lib/challenge-service';
 import { mockEmployeesSimple } from '@/lib/mockData/challenges'; // For form select population
 
-// Utility Functions
+// Utility Functions moved to module scope
 const getStatusText = (status: Challenge['status']): string => {
     const map: Record<Challenge['status'], string> = {
         active: 'Ativo', scheduled: 'Agendado', evaluating: 'Em Avaliação',
@@ -115,8 +115,13 @@ const getStatusBadgeVariant = (status: Challenge['status']): "default" | "second
 const formatPeriod = (start?: string, end?: string) => {
     if (!start || !end) return 'N/A';
     try {
-        // Assuming start and end are already YYYY-MM-DD strings
-        return `${format(parseISO(start), 'dd/MM/yy', { locale: ptBR })} - ${format(parseISO(end), 'dd/MM/yy', { locale: ptBR })}`;
+        const startDate = parseISO(start);
+        const endDate = parseISO(end);
+        if (!isValid(startDate) || !isValid(endDate)) {
+             console.warn("Invalid date provided to formatPeriod:", start, end);
+             return 'Datas Inválidas';
+        }
+        return `${format(startDate, 'dd/MM/yy', { locale: ptBR })} - ${format(endDate, 'dd/MM/yy', { locale: ptBR })}`;
     } catch (error) {
         console.error("Error formatting date:", error, start, end);
         return `${start} - ${end}`;
@@ -250,7 +255,7 @@ const ManageChallenges = () => {
     React.useEffect(() => { if (selectedChallenge) setIsFormOpen(true); }, [selectedChallenge]);
 
      const columns: ColumnDef<Challenge>[] = [
-        { accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
+        { id: "title", accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
         { accessorKey: "period", header: "Período", cell: ({ row }) => formatPeriod(row.original.periodStartDate, row.original.periodEndDate) },
         { 
             id: 'points', 
@@ -602,7 +607,7 @@ const ChallengeEvaluation = () => {
                              : challengesToEvaluate.length === 0 ? (<SelectItem value="no-challenges" disabled>Nenhum desafio em avaliação</SelectItem>)
                              : (challengesToEvaluate.map(ch => (
                                 <SelectItem key={ch.id} value={ch.id}>
-                                    {ch.title} ({ch.periodEndDate ? format(parseISO(ch.periodEndDate), 'dd/MM/yy') : 'Data Inválida'})
+                                    {ch.title} ({ch.periodEndDate && isValid(parseISO(ch.periodEndDate)) ? format(parseISO(ch.periodEndDate), 'dd/MM/yy') : 'Data Inválida'})
                                 </SelectItem>
                              )))}
                         </SelectContent>
@@ -749,7 +754,11 @@ const ChallengeHistory = () => {
                 ).then(res => res.flat());
                 
                 setHistoryChallenges(challengesData.filter(c => ['completed', 'archived', 'evaluating'].includes(c.status))
-                                            .sort((a, b) => parseISO(b.periodEndDate).getTime() - parseISO(a.periodEndDate).getTime()));
+                                            .sort((a, b) => {
+                                                const dateA = a.periodEndDate ? parseISO(a.periodEndDate) : new Date(0);
+                                                const dateB = b.periodEndDate ? parseISO(b.periodEndDate) : new Date(0);
+                                                return dateB.getTime() - dateA.getTime();
+                                            }));
                 setAllParticipations(participationsData);
             } catch (error) {
                  console.error("Failed to load challenge history:", error);
@@ -771,7 +780,7 @@ const ChallengeHistory = () => {
     const openDetails = (challengeId: string) => { setSelectedChallengeIdForDetails(challengeId); setIsDetailsOpen(true); };
 
     const historyColumns: ColumnDef<Challenge>[] = [
-        { accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
+        { id: "title", accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
         { accessorKey: "period", header: "Período", cell: ({ row }) => formatPeriod(row.original.periodStartDate, row.original.periodEndDate) },
         { 
             id: 'historyPoints', 
