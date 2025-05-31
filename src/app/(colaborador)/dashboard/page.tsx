@@ -59,10 +59,9 @@
      projectedBonus: number;
      tasksToday: Task[];
      activeChallenges: Challenge[];
-     // recentNotifications: Notification[]; // Removed from dashboard data
      monthlyPerformanceTrend?: 'up' | 'down' | 'stable';
      employeeName: string; 
-     userProfile?: UserProfile | null; // Added to store full profile
+     userProfile?: UserProfile | null;
  }
 
 
@@ -98,7 +97,9 @@
                  }
 
                  const allOrgTasks = await getAllTasksForOrganization(organizationId);
+                 // Use userProfileData aqui em vez de placeholders
                  const tasksToday = getTasksForEmployeeOnDate(userProfileData, today, allOrgTasks);
+                 
                  const evaluationsToday = await getEvaluationsForDay(organizationId, todayStr); 
                  const employeeEvaluationsToday = evaluationsToday.filter(ev => ev.employeeId === CURRENT_EMPLOYEE_ID);
 
@@ -135,6 +136,7 @@
 
                      let isEligible = false;
                      if (ch.eligibility.type === 'all') isEligible = true;
+                     // Use userProfileData para elegibilidade
                      else if (ch.eligibility.type === 'department' && userProfileData.department && ch.eligibility.entityIds?.includes(userProfileData.department)) isEligible = true;
                      else if (ch.eligibility.type === 'role' && userProfileData.userRole && ch.eligibility.entityIds?.includes(userProfileData.userRole)) isEligible = true;
                      else if (ch.eligibility.type === 'individual' && ch.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID)) isEligible = true;
@@ -357,8 +359,6 @@
                          )}
                      </CardContent>
                  </Card>
-
-                 {/* Notifications card removed as notifications are handled in the header dropdown via MobileLayout */}
 
              </div>
          </TooltipProvider>

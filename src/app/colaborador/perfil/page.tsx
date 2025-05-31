@@ -86,7 +86,7 @@
      React.useEffect(() => {
          const loadProfileAndPermissions = async () => {
             if (authLoading || !authUser?.uid) {
-                if(!authLoading && !authUser?.uid && !isGuest) { // Only set loading false if auth is done, no user, and not guest
+                if(!authLoading && !authUser?.uid && !isGuest) { 
                     setIsLoadingProfile(false);
                 }
                  return;
@@ -126,13 +126,13 @@
              }
          };
 
-         if (!isGuest) { // Only load if not guest
+         if (!isGuest) { 
             loadProfileAndPermissions();
          } else {
-            setIsLoadingProfile(false); // Stop loading for guest
+            setIsLoadingProfile(false); 
          }
 
-     }, [authUser, authLoading, isGuest, profileForm, notificationForm, toast]);
+     }, [authUser, authLoading, isGuest, toast]); // Removido profileForm e notificationForm das dependências
 
      const onProfileSubmit = async (data: ProfileFormData) => {
          if (!authUser?.uid || !employeeProfile) return;
@@ -149,21 +149,14 @@
                 phone: data.phone,
                 photoUrl: finalPhotoUrl,
              };
-
-             // We only update fields that are directly editable by the user in this form.
-             // Name, email, department, role, admissionDate are usually managed by admins.
-             // Status is also usually admin-managed.
-             // So, we pass only the updatable fields to saveUser or ensure saveUser handles partial updates.
-             // For this, we'll construct a minimal UserProfile object with just the changed fields.
              const profileToSave: UserProfile = {
-                 ...employeeProfile, // Start with existing full profile
+                 ...employeeProfile, 
                  phone: data.phone,
                  photoUrl: finalPhotoUrl,
-                 // Ensure other non-editable fields are not accidentally overwritten if saveUser expects full UserProfile
              };
 
 
-             await saveUser(profileToSave); // saveUser should handle merging this with existing data
+             await saveUser(profileToSave); 
 
              setEmployeeProfile(prev => prev ? ({ ...prev, ...updatedProfileData }) : null);
              profileForm.reset({ phone: data.phone, photoUrl: finalPhotoUrl });
@@ -217,10 +210,9 @@
             setSelectedFile(null);
              if (fileInputRef.current) fileInputRef.current.value = '';
         } else if (!url) {
-            setPhotoPreview(undefined); // Clear preview if URL is cleared
+            setPhotoPreview(undefined); 
         } else {
-            // Optionally revert to employeeProfile.photoUrl if URL becomes invalid but not empty
-            // For now, let the Zod validation handle it visually
+            //
         }
     };
 
@@ -275,7 +267,7 @@
      };
 
       const handleLogout = async () => {
-        await authLogout(); // Use logout from useAuth context
+        await authLogout(); 
         router.push('/login');
       };
 
@@ -427,4 +419,3 @@
          </div>
      );
  }
-    
