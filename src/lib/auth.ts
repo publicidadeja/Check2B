@@ -16,7 +16,7 @@ import {
     updatePassword, // Import updatePassword
 } from "firebase/auth";
 import Cookies from 'js-cookie';
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, Timestamp } from "firebase/firestore"; // Added Timestamp import
 import { getAuthInstance, getDb } from "./firebase";
 import type { UserProfile } from '@/types/user';
 
@@ -121,13 +121,30 @@ export const getUserProfileData = async (userId: string): Promise<UserProfile | 
 
     if (userDocSnap.exists()) {
         const data = userDocSnap.data();
+        // Helper to safely convert Firestore Timestamp or string to Date
+        const toDate = (fieldValue: any): Date | undefined => {
+            if (fieldValue instanceof Timestamp) {
+                return fieldValue.toDate();
+            }
+            if (typeof fieldValue === 'string') {
+                const parsedDate = new Date(fieldValue);
+                return isNaN(parsedDate.getTime()) ? undefined : parsedDate;
+            }
+            if (fieldValue && typeof fieldValue === 'object' && fieldValue.seconds !== undefined && fieldValue.nanoseconds !== undefined) {
+                // Handle Firestore Timestamp-like objects if not direct instance (e.g., from SSR or client cache)
+                return new Timestamp(fieldValue.seconds, fieldValue.nanoseconds).toDate();
+            }
+            return undefined; // Return undefined if not a valid format
+        };
+
         return {
             uid: userId,
             name: data.name || 'Nome não definido',
             email: data.email,
             role: data.role || 'collaborator',
             organizationId: data.organizationId || null,
-            createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : new Date()),
+            createdAt: toDate(data.createdAt) || new Date(), // Fallback to new Date() if conversion fails
+            updatedAt: toDate(data.updatedAt),
             status: data.status || 'pending',
             photoUrl: data.photoUrl || undefined,
             department: data.department || undefined,
@@ -240,3 +257,4 @@ export const onAuthChange = (callback: (user: User | null) => void) => {
 };
 
 export { auth, db };
+
