@@ -46,7 +46,7 @@
     submitChallengeForEmployee,
     uploadChallengeSubmissionFile
  } from '@/lib/challenge-service';
- import { mockEmployeesSimple } from '@/lib/mockData/ranking'; // Still used for employeeName temporarily
+ // Removed: import { mockEmployeesSimple } from '@/lib/mockData/ranking'; // No longer needed here
 
  interface ChallengeDetailsModalProps {
      challenge: Challenge | null;
@@ -121,7 +121,7 @@
          );
      }
 
-     const endDate = parseISO(challenge.periodEndDate + "T23:59:59.999Z"); // Consider end of day
+     const endDate = parseISO(challenge.periodEndDate + "T23:59:59.999Z");
      const startDate = parseISO(challenge.periodStartDate);
      const isChallengeOver = isPast(endDate);
      const isChallengeNotStarted = isBefore(new Date(), startDate);
@@ -348,11 +348,11 @@
 
      const handleAcceptChallenge = async (challengeId: string) => {
          if (!CURRENT_EMPLOYEE_ID || !organizationId) return;
-         setIsLoading(true); // Indicate loading on the page while action is performed
+         setIsLoading(true); 
          try {
              await acceptChallengeForEmployee(organizationId, challengeId, CURRENT_EMPLOYEE_ID, CURRENT_EMPLOYEE_NAME);
              toast({ title: "Desafio Aceito!", description: `Você começou o desafio: "${allChallenges.find(c => c.id === challengeId)?.title}".`, });
-             await loadChallengesData(); // Refresh all data
+             await loadChallengesData(); 
          } catch (error: any) {
              console.error("Erro ao aceitar desafio:", error);
              toast({ title: "Erro", description: error.message || "Não foi possível aceitar o desafio.", variant: "destructive" });
@@ -363,15 +363,11 @@
 
       const handleSubmitChallenge = async (challengeId: string, submissionText?: string, fileUrl?: string) => {
          if (!CURRENT_EMPLOYEE_ID || !organizationId) return;
-         // Modal handles its own submitting state, page handles overall loading for list refresh
-         // The modal calls this function AFTER file upload (if any) is complete
          try {
              await submitChallengeForEmployee(organizationId, challengeId, CURRENT_EMPLOYEE_ID, submissionText, fileUrl);
-             // No toast here, modal handles it. Just reload data.
              await loadChallengesData();
          } catch (error: any) {
              console.error("Erro ao submeter desafio (na página):", error);
-             // Modal should display its own error, but can have a fallback toast here if needed.
              toast({ title: "Erro na Submissão", description: error.message || "Falha ao registrar submissão.", variant: "destructive" });
          }
      };
@@ -390,27 +386,29 @@
         const active: Challenge[] = [];
         const completed: Challenge[] = [];
 
+        const employeeProfileForEligibility = { // Temporary mock until useAuth provides full UserProfile
+            department: user?.photoURL || 'N/A', // Placeholder, replace with actual user.department
+            role: user?.email?.includes('dev') ? 'Desenvolvedor' : 'N/A', // Placeholder, replace with actual user.userRole
+        };
+
+
         allChallenges.forEach(challenge => {
             const participation = getParticipationForChallenge(challenge.id);
             const participationStatus = participation?.status || 'pending';
 
             const startDateValid = challenge.periodStartDate && isValid(parseISO(challenge.periodStartDate));
             const endDateValid = challenge.periodEndDate && isValid(parseISO(challenge.periodEndDate));
-            if (!startDateValid || !endDateValid) return; // Skip invalid challenges
+            if (!startDateValid || !endDateValid) return; 
 
             const endDate = parseISO(challenge.periodEndDate + "T23:59:59.999Z");
             const startDate = parseISO(challenge.periodStartDate);
             const isChallengePeriodOver = isPast(endDate);
             const isChallengeNotStartedYet = isBefore(new Date(), startDate);
 
-            // Filter by eligibility (basic example, replace with actual employee data)
-            const employee = mockEmployeesSimple.find(e => e.id === CURRENT_EMPLOYEE_ID); // Using mock for demo, replace!
-            if (!employee) return; // Should not happen if CURRENT_EMPLOYEE_ID is valid
-
             let isEligible = false;
             if (challenge.eligibility.type === 'all') isEligible = true;
-            else if (challenge.eligibility.type === 'department' && challenge.eligibility.entityIds?.includes(employee.department)) isEligible = true;
-            else if (challenge.eligibility.type === 'role' && challenge.eligibility.entityIds?.includes(employee.role)) isEligible = true;
+            else if (challenge.eligibility.type === 'department' && challenge.eligibility.entityIds?.includes(employeeProfileForEligibility.department)) isEligible = true;
+            else if (challenge.eligibility.type === 'role' && challenge.eligibility.entityIds?.includes(employeeProfileForEligibility.role)) isEligible = true;
             else if (challenge.eligibility.type === 'individual' && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID!)) isEligible = true;
 
             if (!isEligible || challenge.status === 'draft' || challenge.status === 'archived') return;
@@ -422,28 +420,25 @@
                     if (!isChallengePeriodOver || challenge.status === 'evaluating') {
                         active.push(challenge);
                     } else {
-                        completed.push(challenge); // Moved to completed if period over and was active
+                        completed.push(challenge); 
                     }
                 } else if (participationStatus === 'approved' || participationStatus === 'rejected') {
                     completed.push(challenge);
                 }
             } else if (challenge.status === 'evaluating') {
                  if (participationStatus === 'accepted' || participationStatus === 'submitted' || participationStatus === 'approved' || participationStatus === 'rejected') {
-                     // If user participated, it shows in active if still being evaluated, or completed if evaluated
                      if (participationStatus === 'accepted' || participationStatus === 'submitted') active.push(challenge);
                      else completed.push(challenge);
                  }
             } else if (challenge.status === 'completed') {
                 completed.push(challenge);
             } else if (challenge.status === 'scheduled' && isChallengeNotStartedYet) {
-                // Only add to available if participation is pending
                 if (participationStatus === 'pending') {
                     available.push(challenge);
                 }
             }
         });
 
-        // Sort logic (example: by end date for active/available, by submitted/evaluated for completed)
         available.sort((a,b) => parseISO(a.periodStartDate).getTime() - parseISO(b.periodStartDate).getTime());
         active.sort((a,b) => parseISO(a.periodEndDate).getTime() - parseISO(b.periodEndDate).getTime());
         completed.sort((a,b) => {
@@ -456,7 +451,7 @@
 
 
         return { available, active, completed };
-    }, [allChallenges, participationMap, CURRENT_EMPLOYEE_ID]);
+    }, [allChallenges, participationMap, CURRENT_EMPLOYEE_ID, user]);
 
 
       const filterChallenges = (challenges: Challenge[]): Challenge[] => {
@@ -582,3 +577,4 @@
              </div>
      );
  }
+    
