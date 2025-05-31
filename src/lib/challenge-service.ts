@@ -1,7 +1,7 @@
 
 // src/lib/challenge-service.ts
 import { getDb, getFirebaseApp } from './firebase'; // Added getFirebaseApp
-import type { Challenge, ChallengeParticipation } from '@/types/challenge';
+import type { Challenge, ChallengeParticipation, ChallengeSettings, ChallengeSettingsData } from '@/types/challenge'; // Added ChallengeSettings
 import {
   collection,
   getDocs,
@@ -23,6 +23,9 @@ import { format } from 'date-fns';
 
 const CHALLENGES_COLLECTION = 'challenges';
 const PARTICIPATIONS_COLLECTION = 'challengeParticipations';
+const CHALLENGE_MANAGEMENT_COLLECTION = 'challengeManagement';
+const CHALLENGE_SETTINGS_DOC_ID = 'settings';
+
 
 /**
  * Fetches all challenges for a specific organization from Firestore.
@@ -199,7 +202,7 @@ export const getParticipationsForChallenge = async (organizationId: string, chal
         id: docSnapshot.id,
         ...data,
         organizationId,
-        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
+        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : undefined),
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : undefined),
         acceptedAt: data.acceptedAt instanceof Timestamp ? data.acceptedAt.toDate() : (data.acceptedAt ? new Date(data.acceptedAt) : undefined),
         submittedAt: data.submittedAt instanceof Timestamp ? data.submittedAt.toDate() : (data.submittedAt ? new Date(data.submittedAt) : undefined),
@@ -466,9 +469,6 @@ export const acceptChallengeForEmployee = async (
         employeeName: employeeName, // Ensure employeeName is updated/set
       });
     } else if (currentData.status !== 'accepted') {
-      // If already submitted, approved, etc., don't allow re-accepting through this flow.
-      // Or, if already 'accepted', no need to update again unless a specific field changed.
-      // For simplicity, we'll just fetch and return current if already accepted or further.
       console.log(`[ChallengeService] Challenge ${challengeId} already in status ${currentData.status} for employee ${employeeId}.`);
     }
   }
@@ -545,4 +545,67 @@ export const submitChallengeForEmployee = async (
     acceptedAt: data.acceptedAt instanceof Timestamp ? data.acceptedAt.toDate() : (data.acceptedAt ? new Date(data.acceptedAt) : undefined),
     submittedAt: data.submittedAt instanceof Timestamp ? data.submittedAt.toDate() : new Date(),
   } as ChallengeParticipation;
+};
+
+// --- Challenge Settings Functions ---
+
+/**
+ * Fetches challenge settings for a specific organization.
+ * @param organizationId The ID of the organization.
+ * @returns Promise resolving to ChallengeSettings object or null if not found/error.
+ */
+export const getChallengeSettings = async (organizationId: string): Promise<ChallengeSettings | null> => {
+  const db = getDb();
+  if (!db || !organizationId) {
+    console.error('[ChallengeService] Firestore not initialized or organizationId missing for getChallengeSettings.');
+    return null;
+  }
+  const settingsDocRef = doc(db, `organizations/${organizationId}/${CHALLENGE_MANAGEMENT_COLLECTION}`, CHALLENGE_SETTINGS_DOC_ID);
+  try {
+    const docSnap = await getDoc(settingsDocRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return {
+        id: docSnap.id,
+        organizationId,
+        ...data,
+        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : undefined,
+      } as ChallengeSettings;
+    }
+    // Return default settings if none found in DB
+    return {
+        organizationId,
+        rankingFactor: 1.0,
+        defaultParticipationType: 'Opcional',
+        enableGamificationFeatures: false,
+        maxMonthlyChallengePointsCap: null,
+    } as ChallengeSettings;
+  } catch (error) {
+    console.error(`[ChallengeService] Error fetching challenge settings for org ${organizationId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Saves challenge settings for a specific organization.
+ * @param organizationId The ID of the organization.
+ * @param settingsData The challenge settings data to save.
+ * @returns Promise resolving on successful save.
+ */
+export const saveChallengeSettings = async (organizationId: string, settingsData: ChallengeSettingsData): Promise<void> => {
+  const db = getDb();
+  if (!db || !organizationId) {
+    throw new Error('[ChallengeService] Firestore not initialized or organizationId missing for saveChallengeSettings.');
+  }
+  const settingsDocRef = doc(db, `organizations/${organizationId}/${CHALLENGE_MANAGEMENT_COLLECTION}`, CHALLENGE_SETTINGS_DOC_ID);
+  try {
+    await setDoc(settingsDocRef, {
+      ...settingsData,
+      organizationId, // Ensure organizationId is stored within the document as well
+      updatedAt: serverTimestamp(),
+    }, { merge: true }); // Use merge to create if not exists, or update if exists
+  } catch (error) {
+    console.error(`[ChallengeService] Error saving challenge settings for org ${organizationId}:`, error);
+    throw error;
+  }
 };

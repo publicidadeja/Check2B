@@ -69,7 +69,7 @@ import {
 } from '@/components/ui/dialog';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChallengeForm } from '@/components/challenge/challenge-form';
-import type { Challenge, ChallengeParticipation } from '@/types/challenge';
+import type { Challenge, ChallengeParticipation, ChallengeSettings, ChallengeSettingsData } from '@/types/challenge'; // Added ChallengeSettings types
 import { useToast } from '@/hooks/use-toast';
 import { format, parseISO, differenceInDays, isPast, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -92,6 +92,8 @@ import {
     getChallengeDetails as fetchChallengeDetailsFromFirestore,
     getParticipationsForChallenge as fetchParticipantsForChallengeFromFirestore,
     evaluateSubmission as evaluateSubmissionInFirestore,
+    getChallengeSettings, // Added
+    saveChallengeSettings, // Added
 } from '@/lib/challenge-service';
 import { mockEmployeesSimple } from '@/lib/mockData/challenges'; // For form select population
 
@@ -397,9 +399,8 @@ const ManageChallenges = () => {
 };
 
 const ChallengeDashboard = () => {
-    // TODO: Implement actual data fetching for dashboard
     const { organizationId, isLoading: authLoading } = useAuth();
-    const [isLoading, setIsLoadingData] = React.useState(true);
+    const [isLoadingData, setIsLoadingData] = React.useState(true);
     const [activeChallengesCount, setActiveChallengesCount] = React.useState(0);
     const [pendingSubmissionsCount, setPendingSubmissionsCount] = React.useState(0);
     const [completionRate, setCompletionRate] = React.useState('N/A');
@@ -424,7 +425,6 @@ const ChallengeDashboard = () => {
                 }
                 setPendingSubmissionsCount(totalPending);
 
-                // Calculate completionRate (example: approved / (approved + rejected))
                 let totalApproved = 0;
                 let totalEvaluated = 0;
                 for (const challenge of allChallenges.filter(c => ['completed', 'evaluating'].includes(c.status))) {
@@ -454,7 +454,7 @@ const ChallengeDashboard = () => {
           <CardDescription>Visão geral do programa de desafios.</CardDescription>
         </CardHeader>
          <CardContent>
-            {isLoading ? (
+            {isLoadingData ? (
                 <div className="flex justify-center items-center py-10"><LoadingSpinner text="Carregando dashboard..." /></div>
              ) : (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -576,7 +576,6 @@ const ChallengeEvaluation = () => {
             });
             toast({ title: "Sucesso", description: `Avaliação para ${participant.employeeName} salva.` });
             setParticipants(prev => prev.filter(p => p.id !== participantId)); // Remove from list
-             // Optionally, auto-update challenge status if all evaluated
         } catch (error) {
             console.error("Falha ao salvar avaliação:", error);
             toast({ title: "Erro", description: "Falha ao salvar avaliação.", variant: "destructive" });
@@ -819,26 +818,140 @@ const ChallengeHistory = () => {
     );
 };
 
-const ChallengeSettings = () => { /* ... unchanged, uses mock data ... */
+const ChallengeSettings = () => {
+    const { organizationId, isLoading: authLoading } = useAuth();
     const { toast } = useToast();
+    const [isLoadingData, setIsLoadingData] = React.useState(true);
     const [isSaving, setIsSaving] = React.useState(false);
-    const [settings, setSettings] = React.useState({
-        rankingFactor: 1.0, enableGamification: false, maxPointsCap: '', defaultParticipation: 'Opcional',
+    const [settings, setSettings] = React.useState<ChallengeSettingsData>({
+        rankingFactor: 1.0,
+        defaultParticipationType: 'Opcional',
+        enableGamificationFeatures: false,
+        maxMonthlyChallengePointsCap: null,
     });
-    React.useEffect(() => { console.log("Loading challenge settings (simulated)..."); }, []);
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => setSettings(prev => ({ ...prev, [e.target.id]: e.target.type === 'number' ? (e.target.value === '' ? '' : parseFloat(e.target.value)) : e.target.value }));
-    const handleSwitchChange = (checked: boolean) => setSettings(prev => ({ ...prev, enableGamification: checked }));
-    const handleSelectChange = (value: string) => setSettings(prev => ({ ...prev, defaultParticipation: value }));
-    const handleSaveSettings = async () => { setIsSaving(true); await new Promise(r => setTimeout(r, 800)); toast({ title: "Sucesso", description: "Configurações salvas." }); setIsSaving(false); };
+
+    React.useEffect(() => {
+        if (!organizationId || authLoading) {
+            if (!authLoading) setIsLoadingData(false);
+            return;
+        }
+        const loadSettings = async () => {
+            setIsLoadingData(true);
+            try {
+                const data = await getChallengeSettings(organizationId);
+                if (data) {
+                    setSettings({ // Ensure all fields from ChallengeSettingsData are set
+                        rankingFactor: data.rankingFactor,
+                        defaultParticipationType: data.defaultParticipationType,
+                        enableGamificationFeatures: data.enableGamificationFeatures,
+                        maxMonthlyChallengePointsCap: data.maxMonthlyChallengePointsCap,
+                    });
+                }
+            } catch (error) {
+                console.error("Falha ao carregar configurações de desafios:", error);
+                toast({ title: "Erro", description: "Não foi possível carregar as configurações.", variant: "destructive" });
+            } finally {
+                setIsLoadingData(false);
+            }
+        };
+        loadSettings();
+    }, [organizationId, authLoading, toast]);
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { id, value, type } = e.target;
+        setSettings(prev => ({
+            ...prev,
+            [id]: type === 'number' ? (value === '' ? null : parseFloat(value)) : value,
+        }));
+    };
+    const handleSwitchChange = (checked: boolean, id: keyof ChallengeSettingsData) => {
+        setSettings(prev => ({ ...prev, [id]: checked }));
+    };
+    const handleSelectChange = (value: string, id: keyof ChallengeSettingsData) => {
+        setSettings(prev => ({ ...prev, [id]: value as 'Opcional' | 'Obrigatório' }));
+    };
+
+    const handleSaveSettings = async () => {
+        if (!organizationId) {
+            toast({ title: "Erro", description: "ID da Organização não encontrado.", variant: "destructive" });
+            return;
+        }
+        setIsSaving(true);
+        try {
+            await saveChallengeSettings(organizationId, settings);
+            toast({ title: "Sucesso", description: "Configurações de desafios salvas." });
+        } catch (error) {
+            console.error("Erro ao salvar configurações de desafios:", error);
+            toast({ title: "Erro", description: "Falha ao salvar configurações.", variant: "destructive" });
+        } finally {
+            setIsSaving(false);
+        }
+    };
+    
+    if (authLoading) return <LoadingSpinner text="Autenticando..." />;
+    if (!organizationId && !authLoading) return <Card><CardHeader><CardTitle>Acesso Negado</CardTitle></CardHeader><CardContent><p>Admin sem organização.</p></CardContent></Card>;
+
+
     return (
-        <Card><CardHeader><CardTitle className="flex items-center gap-2"><Cog className="h-5 w-5" /> Configurações</CardTitle><CardDescription>Ajuste regras gerais.</CardDescription></CardHeader>
-            <CardContent className="space-y-6">
-                <div className="space-y-2"><Label htmlFor="rankingFactor">Fator no Ranking</Label><Input id="rankingFactor" type="number" value={settings.rankingFactor} onChange={handleInputChange} step="0.1" min="0" max="2" className="w-[100px]"/> <p className="text-xs text-muted-foreground">Multiplicador para pontos de desafios.</p></div><Separator />
-                <div className="space-y-2"><Label htmlFor="defaultParticipation">Participação Padrão</Label><Select value={settings.defaultParticipation} onValueChange={handleSelectChange}><SelectTrigger id="defaultParticipation" className="w-[180px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Opcional">Opcional</SelectItem><SelectItem value="Obrigatório">Obrigatório</SelectItem></SelectContent></Select><p className="text-xs text-muted-foreground">Padrão ao criar novo desafio.</p></div><Separator />
-                <div className="flex items-center space-x-2"><Switch id="enableGamification" checked={settings.enableGamification} onCheckedChange={handleSwitchChange} /><Label htmlFor="enableGamification" className="text-sm font-normal">Habilitar Gamificação</Label></div><p className="text-xs text-muted-foreground -mt-4 pl-8">Ativa emblemas/conquistas (requer implementação).</p><Separator />
-                <div className="space-y-2"><Label htmlFor="maxPointsCap">Teto Mensal de Pontos (Opcional)</Label><TooltipProvider><Tooltip><TooltipTrigger asChild><Input id="maxPointsCap" type="number" placeholder="Sem limite" value={settings.maxPointsCap} onChange={handleInputChange} min="0" className="w-[120px]"/></TooltipTrigger><TooltipContent><p>Deixe em branco para não aplicar limite.</p></TooltipContent></Tooltip></TooltipProvider><p className="text-xs text-muted-foreground">Limite de pontos de desafios no ranking mensal.</p></div>
-            </CardContent>
-            <CardFooter><Button onClick={handleSaveSettings} disabled={isSaving}>{isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Salvar</Button></CardFooter>
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Cog className="h-5 w-5" /> Configurações de Desafios</CardTitle>
+                <CardDescription>Ajuste regras gerais e comportamentos do sistema de desafios.</CardDescription>
+            </CardHeader>
+            {isLoadingData ? (
+                 <CardContent className="flex justify-center items-center py-10">
+                    <LoadingSpinner text="Carregando configurações..." />
+                 </CardContent>
+            ) : (
+                <>
+                <CardContent className="space-y-6">
+                    <div className="space-y-2">
+                        <Label htmlFor="rankingFactor">Fator no Ranking (Multiplicador)</Label>
+                        <Input id="rankingFactor" type="number" value={settings.rankingFactor} onChange={handleInputChange} step="0.1" min="0" max="2" className="w-[100px]"/>
+                        <p className="text-xs text-muted-foreground">Multiplicador para pontos de desafios ao calcular o ranking. Ex: 0.5, 1.0, 1.5.</p>
+                    </div>
+                    <Separator />
+                    <div className="space-y-2">
+                        <Label htmlFor="defaultParticipationType">Participação Padrão</Label>
+                        <Select value={settings.defaultParticipationType} onValueChange={(val) => handleSelectChange(val, 'defaultParticipationType')}>
+                            <SelectTrigger id="defaultParticipationType" className="w-[180px]">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="Opcional">Opcional</SelectItem>
+                                <SelectItem value="Obrigatório">Obrigatório</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">Tipo de participação padrão ao criar um novo desafio.</p>
+                    </div>
+                    <Separator />
+                    <div className="flex items-center space-x-2">
+                        <Switch id="enableGamificationFeatures" checked={settings.enableGamificationFeatures} onCheckedChange={(val) => handleSwitchChange(val, 'enableGamificationFeatures')} />
+                        <Label htmlFor="enableGamificationFeatures" className="text-sm font-normal">Habilitar Gamificação Avançada</Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground -mt-4 pl-8">Ativa emblemas, conquistas e outros recursos de gamificação (requer implementação adicional).</p>
+                    <Separator />
+                    <div className="space-y-2">
+                        <Label htmlFor="maxMonthlyChallengePointsCap">Teto Mensal de Pontos de Desafios (Opcional)</Label>
+                        <TooltipProvider>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Input id="maxMonthlyChallengePointsCap" type="number" placeholder="Sem limite" value={settings.maxMonthlyChallengePointsCap ?? ''} onChange={handleInputChange} min="0" className="w-[120px]"/>
+                                </TooltipTrigger>
+                                <TooltipContent><p>Deixe em branco ou 0 para não aplicar limite de pontos de desafios no ranking mensal.</p></TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+                        <p className="text-xs text-muted-foreground">Limite máximo de pontos de desafios que contam para o ranking em um mês.</p>
+                    </div>
+                </CardContent>
+                <CardFooter>
+                    <Button onClick={handleSaveSettings} disabled={isSaving || isLoadingData}>
+                        {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4"/>}
+                        Salvar Configurações
+                    </Button>
+                </CardFooter>
+                </>
+            )}
         </Card>
     );
 };

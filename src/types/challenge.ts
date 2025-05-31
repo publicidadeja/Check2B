@@ -8,7 +8,7 @@ export interface Challenge {
   periodEndDate: string; // YYYY-MM-DD
   points: number;
   difficulty: 'Fácil' | 'Médio' | 'Difícil';
-  participationType: 'Obrigatório' | 'Opcional';
+  participationType: 'Opcional' | 'Obrigatório';
   eligibility: {
     type: 'all' | 'department' | 'role' | 'individual';
     entityIds?: string[];
@@ -40,3 +40,17 @@ export interface ChallengeParticipation {
   createdAt?: Date;
   updatedAt?: Date;
 }
+
+// --- Challenge Settings Types ---
+export interface ChallengeSettings {
+  id?: string; // Typically a fixed ID like 'config' for the doc
+  rankingFactor: number;
+  defaultParticipationType: 'Opcional' | 'Obrigatório';
+  enableGamificationFeatures: boolean;
+  maxMonthlyChallengePointsCap: number | null; // null if no cap
+  organizationId: string;
+  updatedAt?: Date;
+}
+
+// Data for saving, can omit id, organizationId, and updatedAt as they are managed by Firestore or service
+export type ChallengeSettingsData = Omit<ChallengeSettings, 'id' | 'organizationId' | 'updatedAt'>;
