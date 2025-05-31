@@ -23,7 +23,7 @@ import {
 } from 'firebase/firestore';
 import type { Firestore } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage"; // Added Storage imports
-import { format, startOfMonth, endOfMonth, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, parseISO, subMonths } from 'date-fns'; // Added subMonths
 import { getEvaluationsForOrganizationInPeriod } from './evaluation-service';
 import { getApprovedChallengeParticipationsForOrganizationInPeriod } from './challenge-service';
 import { getUsersByRoleAndOrganization } from './user-service';
@@ -356,52 +356,42 @@ export const saveRankingSettings = async (organizationId: string, settingsData: 
   }
 };
 
-/**
- * Calculates the monthly ranking for an organization.
- * @param organizationId The ID of the organization.
- * @param period The month/year for which to calculate the ranking.
- * @returns Promise resolving to an array of RankingEntry objects.
- */
-export const calculateMonthlyRanking = async (organizationId: string, period: Date): Promise<RankingEntry[]> => {
+
+// Helper function to calculate ranking for a specific period
+const calculateRankingForPeriod = async (
+    organizationId: string,
+    period: Date,
+    employees: UserProfile[],
+    settings: RankingSettings | null
+): Promise<RankingEntry[]> => {
     const db = getDb();
-    if (!db) {
-        throw new Error('Firestore not initialized for ranking calculation.');
-    }
+    if (!db) throw new Error('Firestore not initialized for ranking calculation.');
 
     const startDate = startOfMonth(period);
     const endDate = endOfMonth(period);
     const startDateString = format(startDate, 'yyyy-MM-dd');
     const endDateString = format(endDate, 'yyyy-MM-dd');
 
-    console.log(`[RankingService] Calculating ranking for org ${organizationId}, period: ${startDateString} to ${endDateString}`);
+    console.log(`[RankingService] Calculating internal ranking for period: ${startDateString} to ${endDateString}`);
 
     try {
-        const [
-            employees,
-            evaluations,
-            challengeParticipations,
-            settings
-        ] = await Promise.all([
-            getUsersByRoleAndOrganization('collaborator', organizationId),
+        const [evaluations, challengeParticipations] = await Promise.all([
             getEvaluationsForOrganizationInPeriod(organizationId, startDateString, endDateString),
             getApprovedChallengeParticipationsForOrganizationInPeriod(organizationId, startDate, endDate),
-            getRankingSettings(organizationId)
         ]);
-
-        console.log(`[RankingService] Data fetched: ${employees.length} employees, ${evaluations.length} evaluations, ${challengeParticipations.length} challenge participations.`);
-        if (settings) {
-            console.log("[RankingService] Settings loaded:", settings);
-        } else {
-            console.warn("[RankingService] Ranking settings not found, using defaults.");
-        }
-
 
         const rankingEntries: Omit<RankingEntry, 'rank' | 'trend'>[] = employees
             .filter(emp => {
                 if (settings?.includeProbation === false && emp.admissionDate) {
-                    const admission = parseISO(emp.admissionDate + 'T00:00:00Z');
-                    const ninetyDaysAfterAdmission = new Date(admission.setDate(admission.getDate() + 90));
-                    return period >= ninetyDaysAfterAdmission;
+                     try {
+                        const admission = parseISO(emp.admissionDate + 'T00:00:00Z'); // Ensure TZ for correct parsing
+                        const ninetyDaysAfterAdmission = new Date(admission);
+                        ninetyDaysAfterAdmission.setDate(admission.getDate() + 90);
+                        return period >= ninetyDaysAfterAdmission;
+                    } catch (e) {
+                        console.warn(`Invalid admissionDate format for employee ${emp.uid}: ${emp.admissionDate}. Including in ranking by default.`);
+                        return true;
+                    }
                 }
                 return true;
             })
@@ -449,24 +439,82 @@ export const calculateMonthlyRanking = async (organizationId: string, period: Da
                  try {
                     const dateA = parseISO(a.admissionDate + 'T00:00:00Z');
                     const dateB = parseISO(b.admissionDate + 'T00:00:00Z');
-                    return dateA.getTime() - dateB.getTime();
+                    return dateA.getTime() - dateB.getTime(); // Older admission date ranks higher
                 } catch (e) {
                     console.warn("Error parsing admission dates for tie-breaking:", a.admissionDate, b.admissionDate, e);
                 }
             }
             return a.employeeName.localeCompare(b.employeeName);
         });
-
-        console.log(`[RankingService] ${rankingEntries.length} entries after filtering and sorting.`);
-
+        
         return rankingEntries.map((entry, index) => ({
             ...entry,
             rank: index + 1,
+            // trend will be calculated later
         })) as RankingEntry[];
 
     } catch (error) {
-        console.error(`[RankingService] Error calculating monthly ranking for org ${organizationId}:`, error);
+        console.error(`[RankingService] Error calculating internal ranking for period ${format(period, 'yyyy-MM')}:`, error);
         throw error;
     }
 };
 
+
+/**
+ * Calculates the monthly ranking for an organization, including trend.
+ * @param organizationId The ID of the organization.
+ * @param currentPeriodDate The month/year for which to calculate the ranking.
+ * @returns Promise resolving to an array of RankingEntry objects with trend.
+ */
+export const calculateMonthlyRanking = async (organizationId: string, currentPeriodDate: Date): Promise<RankingEntry[]> => {
+    const db = getDb();
+    if (!db) throw new Error('Firestore not initialized for ranking calculation.');
+
+    console.log(`[RankingService] Calculating ranking for org ${organizationId}, current period: ${format(currentPeriodDate, 'yyyy-MM')}`);
+
+    try {
+        const employees = await getUsersByRoleAndOrganization('collaborator', organizationId);
+        const settings = await getRankingSettings(organizationId);
+
+        const currentRanking = await calculateRankingForPeriod(organizationId, currentPeriodDate, employees, settings);
+
+        // Calculate previous month's ranking for trend
+        const previousPeriodDate = subMonths(currentPeriodDate, 1);
+        let previousRanking: RankingEntry[] = [];
+        try {
+            // Check if the previous month is not before a certain system start date if needed
+            // For simplicity, we just attempt to calculate it.
+            previousRanking = await calculateRankingForPeriod(organizationId, previousPeriodDate, employees, settings);
+        } catch (prevError) {
+            console.warn(`[RankingService] Could not calculate ranking for previous period (${format(previousPeriodDate, 'yyyy-MM')}):`, prevError);
+            // Proceed without previous ranking if it fails (e.g., first month of data)
+        }
+
+        const previousRankingMap = new Map(previousRanking.map(entry => [entry.employeeId, entry]));
+
+        const finalRankingWithTrend = currentRanking.map(currentEntry => {
+            const previousEntry = previousRankingMap.get(currentEntry.employeeId);
+            let trend: 'up' | 'down' | 'stable' = 'stable';
+
+            if (previousEntry) {
+                if (currentEntry.rank < previousEntry.rank) {
+                    trend = 'up';
+                } else if (currentEntry.rank > previousEntry.rank) {
+                    trend = 'down';
+                }
+            } else {
+                // If not in previous ranking, consider as 'up' (new entry or moved up significantly)
+                // Or 'stable' if it's the first month of ranking overall
+                trend = previousRanking.length > 0 ? 'up' : 'stable';
+            }
+            return { ...currentEntry, trend };
+        });
+        
+        console.log(`[RankingService] Final ranking calculated with trend for ${format(currentPeriodDate, 'yyyy-MM')}. Entries: ${finalRankingWithTrend.length}`);
+        return finalRankingWithTrend;
+
+    } catch (error) {
+        console.error(`[RankingService] Error calculating monthly ranking for org ${organizationId} (current: ${format(currentPeriodDate, 'yyyy-MM')}):`, error);
+        throw error;
+    }
+};
