@@ -189,6 +189,69 @@ export const getEvaluationsForOrganizationInPeriod = async (organizationId: stri
   }
 };
 
+/**
+ * Fetches all evaluations for a specific employee within an organization and date range.
+ * @param organizationId The ID of the organization.
+ * @param employeeId The ID of the employee.
+ * @param startDateString The start date string in 'yyyy-MM-dd' format.
+ * @param endDateString The end date string in 'yyyy-MM-dd' format.
+ * @returns Promise resolving to an array of Evaluation objects.
+ */
+export const getEvaluationsForEmployeeInPeriod = async (
+  organizationId: string,
+  employeeId: string,
+  startDateString: string,
+  endDateString: string
+): Promise<Evaluation[]> => {
+  const db = getDb();
+  if (!db || !organizationId || !employeeId) {
+    console.error(
+      "[EvaluationService] Firestore not initialized or missing IDs for getEvaluationsForEmployeeInPeriod."
+    );
+    return [];
+  }
+
+  const evaluationsPath = `organizations/${organizationId}/evaluations`;
+  const evaluationsCollectionRef = collection(db, evaluationsPath);
+  const q = query(
+    evaluationsCollectionRef,
+    where("employeeId", "==", employeeId),
+    where("evaluationDate", ">=", startDateString),
+    where("evaluationDate", "<=", endDateString),
+    orderBy("evaluationDate", "asc") // Or desc if preferred
+  );
+
+  try {
+    const evaluationsSnapshot = await getDocs(q);
+    return evaluationsSnapshot.docs.map((docSnapshot) => {
+      const data = docSnapshot.data();
+      return {
+        id: docSnapshot.id,
+        ...data,
+        organizationId, 
+        createdAt:
+          data.createdAt instanceof Timestamp
+            ? data.createdAt.toDate()
+            : data.createdAt
+            ? new Date(data.createdAt)
+            : undefined,
+        updatedAt:
+          data.updatedAt instanceof Timestamp
+            ? data.updatedAt.toDate()
+            : data.updatedAt
+            ? new Date(data.updatedAt)
+            : undefined,
+      } as Evaluation;
+    });
+  } catch (error) {
+    console.error(
+      `Error fetching evaluations for employee ${employeeId} in org ${organizationId} between ${startDateString} and ${endDateString}:`,
+      error
+    );
+    throw error; 
+  }
+};
+
 
 interface TaskEvaluationStateForSave {
     taskId: string;
@@ -392,3 +455,4 @@ export const countRecentEvaluations = async (hoursAgo: number): Promise<number> 
         return 0; // Return 0 on error to prevent breaking the dashboard
     }
 };
+
