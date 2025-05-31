@@ -2,7 +2,7 @@
  'use client';
 
  import * as React from 'react';
- import { User, Edit, Save, Loader2, ShieldCheck, Bell, EyeOff, Eye, Image as ImageIcon, Camera, LogOut, Settings, CheckCircle } from 'lucide-react'; // Added CheckCircle
+ import { User, Edit, Save, Loader2, ShieldCheck, Bell, EyeOff, Eye, Image as ImageIcon, Camera, LogOut, Settings, CheckCircle } from 'lucide-react';
  import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
  import { Button } from "@/components/ui/button";
  import { Input } from "@/components/ui/input";
@@ -15,28 +15,22 @@
  import * as z from 'zod';
  import { useForm } from 'react-hook-form';
  import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
- import { format, parseISO } from 'date-fns';
+ import { format, parseISO, isValid } from 'date-fns';
  import { ptBR } from 'date-fns/locale';
- import { useRouter } from 'next/navigation'; // Import useRouter for logout redirect
- import { logoutUser } from '@/lib/auth'; // Import logout function
+ import { useRouter } from 'next/navigation';
 
- // Import types
- import type { Employee } from '@/types/employee';
- import { mockEmployees } from '@/lib/mockData/employees'; // Updated import path
+ import { useAuth } from '@/hooks/use-auth';
+ import { getUserProfileData, changeUserPassword, logoutUser } from '@/lib/auth';
+ import { saveUser, uploadProfilePhoto, getNotificationSettings, saveNotificationSettings } from '@/lib/user-service';
+ import type { UserProfile } from '@/types/user';
 
- // Mock Employee ID
- const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
-
- // --- Zod Schemas ---
  const profileSchema = z.object({
-     // name: z.string().min(2, 'Nome muito curto').optional(), // Admins usually edit name
      phone: z.string().optional().or(z.literal('')),
-     photoUrl: z.string().url('URL inválida').optional().or(z.literal('')),
-     // photoFile: z.instanceof(File).optional(), // For file upload (handled separately)
+     photoUrl: z.string().url('URL inválida. Use http:// ou https://').optional().or(z.literal('')),
  });
 
  const passwordSchema = z.object({
-     currentPassword: z.string().min(1, 'Senha atual é obrigatória'), // Changed min to 1 as validation happens on submit
+     currentPassword: z.string().min(1, 'Senha atual é obrigatória'),
      newPassword: z.string().min(8, 'Nova senha deve ter pelo menos 8 caracteres'),
      confirmPassword: z.string(),
  }).refine(data => data.newPassword === data.confirmPassword, {
@@ -47,76 +41,30 @@
  const notificationSchema = z.object({
      newEvaluation: z.boolean().default(true),
      challengeUpdates: z.boolean().default(true),
-     rankingChanges: z.boolean().default(false), // Default off for ranking
+     rankingChanges: z.boolean().default(false),
      systemAnnouncements: z.boolean().default(true),
-     browserNotifications: z.boolean().default(false), // Add setting for browser notifications
+     browserNotifications: z.boolean().default(false),
  });
 
  type ProfileFormData = z.infer<typeof profileSchema>;
  type PasswordFormData = z.infer<typeof passwordSchema>;
- type NotificationFormData = z.infer<typeof notificationSchema>;
+ export type NotificationFormData = z.infer<typeof notificationSchema>; // Export for service
 
- // --- Mock API Functions ---
- const fetchEmployeeProfile = async (employeeId: string): Promise<Employee> => {
-     await new Promise(resolve => setTimeout(resolve, 400)); // Shorter delay
-     const employee = mockEmployees.find(e => e.id === employeeId);
-     if (!employee) throw new Error("Colaborador não encontrado.");
-     return { ...employee }; // Return a copy
- }
-
- const updateEmployeeProfile = async (employeeId: string, data: Partial<ProfileFormData & { photoFile?: File }>): Promise<Employee> => {
-     await new Promise(resolve => setTimeout(resolve, 600));
-     const index = mockEmployees.findIndex(e => e.id === employeeId);
-     if (index === -1) throw new Error("Colaborador não encontrado.");
-
-     if (data.phone !== undefined) mockEmployees[index].phone = data.phone;
-
-     if (data.photoFile) {
-         mockEmployees[index].photoUrl = `https://picsum.photos/seed/${employeeId}${Date.now()}/100/100`; // New mock URL
-         console.log("Simulating photo upload for file:", data.photoFile.name);
-     } else if (data.photoUrl !== undefined) {
-         // Only update URL if file wasn't provided and URL field has changed
-         mockEmployees[index].photoUrl = data.photoUrl;
-     }
-
-
-     console.log("Perfil atualizado (simulado):", mockEmployees[index]);
-     return { ...mockEmployees[index] };
- }
-
-
- const changePassword = async (employeeId: string, data: PasswordFormData): Promise<void> => {
-     await new Promise(resolve => setTimeout(resolve, 800));
-     console.log("Senha alterada (simulado) para colaborador:", employeeId);
-      // Simulate incorrect password
-     if (data.currentPassword === 'senhaerrada') {
-         throw new Error("Senha atual incorreta.");
-     }
-     // Simulate success otherwise
- }
-
- const updateNotificationSettings = async (employeeId: string, data: NotificationFormData): Promise<void> => {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      console.log("Configurações de notificação salvas (simulado):", employeeId, data);
-      // In a real app, store these preferences in Firebase or your backend
-      // Also, use data.browserNotifications to enable/disable browser push notifications (requires service worker etc.)
- }
-
-
- // --- Helper Function ---
- const getInitials = (name: string) => {
+ const getInitials = (name: string | undefined) => {
+     if (!name) return '??';
      return name
-         ?.split(' ')
+         .split(' ')
          .map((n) => n[0])
          .slice(0, 2)
          .join('')
-         .toUpperCase() || '??';
+         .toUpperCase();
  };
 
  export default function EmployeeProfilePage() {
      const router = useRouter();
-     const [employee, setEmployee] = React.useState<Employee | null>(null);
-     const [isLoading, setIsLoading] = React.useState(true);
+     const { user: authUser, isLoading: authLoading, isGuest, logout: authLogout } = useAuth();
+     const [employeeProfile, setEmployeeProfile] = React.useState<UserProfile | null>(null);
+     const [isLoadingProfile, setIsLoadingProfile] = React.useState(true);
      const [isEditingProfile, setIsEditingProfile] = React.useState(false);
      const [isSavingProfile, setIsSavingProfile] = React.useState(false);
      const [isChangingPassword, setIsChangingPassword] = React.useState(false);
@@ -124,192 +72,200 @@
      const [showCurrentPassword, setShowCurrentPassword] = React.useState(false);
      const [showNewPassword, setShowNewPassword] = React.useState(false);
      const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
-     const [photoPreview, setPhotoPreview] = React.useState<string | undefined>(); // For file preview
-     const [selectedFile, setSelectedFile] = React.useState<File | null>(null); // Store the selected file
-     const fileInputRef = React.useRef<HTMLInputElement>(null); // Ref for file input
+     const [photoPreview, setPhotoPreview] = React.useState<string | undefined>();
+     const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
+     const fileInputRef = React.useRef<HTMLInputElement>(null);
      const [browserNotificationPermission, setBrowserNotificationPermission] = React.useState<NotificationPermission | null>(null);
 
      const { toast } = useToast();
 
-     // Forms
      const profileForm = useForm<ProfileFormData>({ resolver: zodResolver(profileSchema) });
      const passwordForm = useForm<PasswordFormData>({ resolver: zodResolver(passwordSchema) });
-     const notificationForm = useForm<NotificationFormData>({ resolver: zodResolver(notificationSchema), defaultValues: {
-             newEvaluation: true, challengeUpdates: true, rankingChanges: false, systemAnnouncements: true, browserNotifications: false, // Default browser off
-     }});
+     const notificationForm = useForm<NotificationFormData>({ resolver: zodResolver(notificationSchema) });
 
-     // Fetch Profile Data & Notification Permission
      React.useEffect(() => {
          const loadProfileAndPermissions = async () => {
-             setIsLoading(true);
-             // Check browser notification permission
+            if (authLoading || !authUser?.uid) {
+                if(!authLoading && !authUser?.uid && !isGuest) { // Only set loading false if auth is done, no user, and not guest
+                    setIsLoadingProfile(false);
+                }
+                 return;
+             }
+             setIsLoadingProfile(true);
+
              if (typeof window !== 'undefined' && "Notification" in window) {
                  setBrowserNotificationPermission(Notification.permission);
-                 notificationForm.setValue('browserNotifications', Notification.permission === 'granted');
              }
 
              try {
-                 // Simulate guest mode or fetch based on actual auth state
-                 const isGuest = false; // Replace with actual check
-                 if (!isGuest) {
-                     const data = await fetchEmployeeProfile(CURRENT_EMPLOYEE_ID);
-                     setEmployee(data);
+                 const profileData = await getUserProfileData(authUser.uid);
+                 setEmployeeProfile(profileData);
+                 if (profileData) {
                      profileForm.reset({
-                         phone: data.phone || '',
-                         photoUrl: data.photoUrl || '',
+                         phone: profileData.phone || '',
+                         photoUrl: profileData.photoUrl || '',
                      });
-                     setPhotoPreview(data.photoUrl);
-                     // Load saved notification prefs (mocked here, fetch from backend in real app)
+                     setPhotoPreview(profileData.photoUrl);
+
+                     const notifySettings = await getNotificationSettings(authUser.uid);
                      notificationForm.reset({
-                         newEvaluation: true, // Replace with fetched value
-                         challengeUpdates: true, // Replace with fetched value
-                         rankingChanges: false, // Replace with fetched value
-                         systemAnnouncements: true, // Replace with fetched value
-                         browserNotifications: Notification.permission === 'granted', // Set based on actual permission
-                      });
-                 } else {
-                     // Handle guest view
-                      setEmployee({
-                         id: 'guest', name: 'Convidado', email: '', department: '', role: 'Colaborador', admissionDate: format(new Date(), 'yyyy-MM-dd'), isActive: true, organizationId: 'org_default'
+                         newEvaluation: notifySettings?.newEvaluation ?? true,
+                         challengeUpdates: notifySettings?.challengeUpdates ?? true,
+                         rankingChanges: notifySettings?.rankingChanges ?? false,
+                         systemAnnouncements: notifySettings?.systemAnnouncements ?? true,
+                         browserNotifications: notifySettings?.browserNotifications ?? (Notification.permission === 'granted'),
                      });
-                     setPhotoPreview(undefined);
-                     notificationForm.reset(); // Reset to defaults
+                 } else {
+                     toast({ title: "Erro", description: "Perfil do colaborador não encontrado.", variant: "destructive" });
                  }
              } catch (error) {
-                 console.error("Erro ao carregar perfil:", error);
-                 toast({ title: "Erro", description: "Não foi possível carregar seu perfil.", variant: "destructive" });
+                 console.error("Erro ao carregar perfil ou configurações:", error);
+                 toast({ title: "Erro", description: "Não foi possível carregar seus dados.", variant: "destructive" });
              } finally {
-                 setIsLoading(false);
+                 setIsLoadingProfile(false);
              }
          };
-         loadProfileAndPermissions();
-     }, [profileForm, notificationForm, toast]);
 
+         if (!isGuest) { // Only load if not guest
+            loadProfileAndPermissions();
+         } else {
+            setIsLoadingProfile(false); // Stop loading for guest
+         }
 
-     // Handle Profile Save
+     }, [authUser, authLoading, isGuest, profileForm, notificationForm, toast]);
+
      const onProfileSubmit = async (data: ProfileFormData) => {
+         if (!authUser?.uid || !employeeProfile) return;
          setIsSavingProfile(true);
+         let finalPhotoUrl = data.photoUrl;
+
          try {
-              const updatedProfile = await updateEmployeeProfile(CURRENT_EMPLOYEE_ID, {
-                  phone: data.phone,
-                  photoUrl: data.photoUrl,
-                  photoFile: selectedFile // Pass the file state here
-              });
-              setEmployee(updatedProfile);
-              profileForm.reset({
-                  phone: updatedProfile.phone || '',
-                  photoUrl: updatedProfile.photoUrl || '',
-              });
-              setPhotoPreview(updatedProfile.photoUrl);
-              setSelectedFile(null); // Clear file state after successful save
-              if (fileInputRef.current) fileInputRef.current.value = ''; // Clear file input visually
-              toast({ title: "Sucesso!", description: "Seu perfil foi atualizado." });
-              setIsEditingProfile(false);
+             if (selectedFile) {
+                 finalPhotoUrl = await uploadProfilePhoto(authUser.uid, selectedFile);
+             }
+
+             const updatedProfileData: Partial<UserProfile> = {
+                uid: authUser.uid,
+                phone: data.phone,
+                photoUrl: finalPhotoUrl,
+             };
+
+             // We only update fields that are directly editable by the user in this form.
+             // Name, email, department, role, admissionDate are usually managed by admins.
+             // Status is also usually admin-managed.
+             // So, we pass only the updatable fields to saveUser or ensure saveUser handles partial updates.
+             // For this, we'll construct a minimal UserProfile object with just the changed fields.
+             const profileToSave: UserProfile = {
+                 ...employeeProfile, // Start with existing full profile
+                 phone: data.phone,
+                 photoUrl: finalPhotoUrl,
+                 // Ensure other non-editable fields are not accidentally overwritten if saveUser expects full UserProfile
+             };
+
+
+             await saveUser(profileToSave); // saveUser should handle merging this with existing data
+
+             setEmployeeProfile(prev => prev ? ({ ...prev, ...updatedProfileData }) : null);
+             profileForm.reset({ phone: data.phone, photoUrl: finalPhotoUrl });
+             setPhotoPreview(finalPhotoUrl);
+             setSelectedFile(null);
+             if (fileInputRef.current) fileInputRef.current.value = '';
+             toast({ title: "Sucesso!", description: "Seu perfil foi atualizado." });
+             setIsEditingProfile(false);
          } catch (error) {
-              console.error("Erro ao atualizar perfil:", error);
-              toast({ title: "Erro", description: "Não foi possível atualizar seu perfil.", variant: "destructive" });
+             console.error("Erro ao atualizar perfil:", error);
+             toast({ title: "Erro", description: "Não foi possível atualizar seu perfil.", variant: "destructive" });
          } finally {
              setIsSavingProfile(false);
          }
      };
 
-      // Handle Photo File Change
      const handlePhotoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (file) {
-            // Validate file type/size if needed
-            if (file.size > 5 * 1024 * 1024) { // 5MB limit example
+            if (file.size > 5 * 1024 * 1024) {
                 toast({ title: "Arquivo Grande", description: "A foto não pode exceder 5MB.", variant: "destructive" });
                 return;
             }
-            setSelectedFile(file); // Store the file object
-            profileForm.setValue('photoUrl', ''); // Clear URL field if file is selected
-            // Create a temporary URL for preview
+            setSelectedFile(file);
+            profileForm.setValue('photoUrl', '');
             const reader = new FileReader();
-            reader.onloadend = () => {
-                setPhotoPreview(reader.result as string);
-            };
+            reader.onloadend = () => setPhotoPreview(reader.result as string);
             reader.readAsDataURL(file);
         } else {
             setSelectedFile(null);
-            // Revert preview to original URL if file is deselected
-            setPhotoPreview(employee?.photoUrl);
+            setPhotoPreview(employeeProfile?.photoUrl);
         }
      };
 
-    // Handle Cancel Edit Profile
     const cancelEditProfile = () => {
         setIsEditingProfile(false);
         profileForm.reset({
-            phone: employee?.phone || '',
-            photoUrl: employee?.photoUrl || '',
+            phone: employeeProfile?.phone || '',
+            photoUrl: employeeProfile?.photoUrl || '',
         });
-        setPhotoPreview(employee?.photoUrl);
+        setPhotoPreview(employeeProfile?.photoUrl);
         setSelectedFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
      const handlePhotoUrlChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const url = event.target.value;
-        // Ensure profileForm is accessible here, assuming it's defined in the component scope
         profileForm.setValue('photoUrl', url);
         if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
             setPhotoPreview(url);
-            setSelectedFile(null); // Clear file if URL is manually entered
-             if (fileInputRef.current) fileInputRef.current.value = ''; // Clear file input
+            setSelectedFile(null);
+             if (fileInputRef.current) fileInputRef.current.value = '';
+        } else if (!url) {
+            setPhotoPreview(undefined); // Clear preview if URL is cleared
         } else {
-            setPhotoPreview(employee?.photoUrl); // Revert if invalid URL
+            // Optionally revert to employeeProfile.photoUrl if URL becomes invalid but not empty
+            // For now, let the Zod validation handle it visually
         }
     };
 
-
-     // Handle Password Change
      const onPasswordSubmit = async (data: PasswordFormData) => {
+          if (!authUser?.uid) return;
           setIsChangingPassword(true);
           try {
-             await changePassword(CURRENT_EMPLOYEE_ID, data);
+             await changeUserPassword(data.currentPassword, data.newPassword);
              toast({ title: "Sucesso!", description: "Sua senha foi alterada com sucesso." });
              passwordForm.reset({ currentPassword: '', newPassword: '', confirmPassword: '' });
-              // Reset visibility toggles
              setShowCurrentPassword(false);
              setShowNewPassword(false);
              setShowConfirmPassword(false);
           } catch (error: any) {
              console.error("Erro ao alterar senha:", error);
-              toast({ title: "Erro", description: error.message || "Não foi possível alterar sua senha.", variant: "destructive" });
-              // Optionally clear only the incorrect field: passwordForm.resetField('currentPassword');
+              toast({ title: "Erro de Senha", description: error.message || "Não foi possível alterar sua senha.", variant: "destructive" });
           } finally {
               setIsChangingPassword(false);
           }
      };
 
-     // Handle Notification Save
      const onNotificationSubmit = async (data: NotificationFormData) => {
+         if (!authUser?.uid) return;
          setIsSavingNotifications(true);
-         // Handle browser notification permission change specifically
          if (typeof window !== 'undefined' && "Notification" in window) {
              const currentPermission = Notification.permission;
              if (data.browserNotifications && currentPermission === 'default') {
                  const permission = await Notification.requestPermission();
                  setBrowserNotificationPermission(permission);
-                 data.browserNotifications = permission === 'granted'; // Update form data based on actual permission
+                 data.browserNotifications = permission === 'granted';
                  if (permission === 'denied') {
                      toast({ title: "Permissão Negada", description: "Notificações do navegador foram bloqueadas.", variant: "destructive" });
                  } else if (permission === 'granted') {
                       toast({ title: "Permissão Concedida", description: "Notificações do navegador ativadas." });
                  }
              } else if (!data.browserNotifications && currentPermission === 'granted') {
-                  // User is trying to disable, but this usually requires browser settings change.
-                  // Inform the user.
                  toast({ title: "Ação Necessária", description: "Para desativar notificações do navegador, ajuste as configurações do seu site/navegador.", duration: 5000 });
-                 data.browserNotifications = true; // Keep switch enabled as permission is still granted
+                 data.browserNotifications = true;
              }
          }
 
          try {
-              await updateNotificationSettings(CURRENT_EMPLOYEE_ID, data);
+              await saveNotificationSettings(authUser.uid, data);
               toast({ title: "Sucesso!", description: "Preferências de notificação salvas." });
-              notificationForm.reset(data); // Keep saved values reflecting actual state
+              notificationForm.reset(data);
          } catch (error) {
               console.error("Erro ao salvar notificações:", error);
               toast({ title: "Erro", description: "Não foi possível salvar as preferências.", variant: "destructive" });
@@ -318,51 +274,54 @@
          }
      };
 
-       // Handle Logout
       const handleLogout = async () => {
-        try {
-            await logoutUser();
-            toast({ title: "Logout", description: "Você saiu com sucesso." });
-            router.push('/login'); // Redirect to login
-        } catch (error) {
-            console.error("Erro ao fazer logout:", error);
-            toast({ title: "Erro", description: "Falha ao fazer logout.", variant: "destructive" });
-        }
+        await authLogout(); // Use logout from useAuth context
+        router.push('/login');
       };
 
-
-     if (isLoading) {
+     if (authLoading || isLoadingProfile) {
          return <div className="flex justify-center items-center h-full py-20"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
      }
 
-     if (!employee) {
-         return <div className="text-center text-muted-foreground py-20">Erro ao carregar perfil.</div>;
+      if (isGuest) {
+         return (
+            <div className="space-y-6 p-4 text-center">
+                <Card className="shadow-sm">
+                    <CardHeader>
+                        <CardTitle>Modo Convidado</CardTitle>
+                        <CardDescription>Funcionalidades do perfil estão desabilitadas.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Button onClick={() => router.push('/login')}>Fazer Login</Button>
+                    </CardContent>
+                </Card>
+            </div>
+         );
      }
 
-      // Check if guest mode (replace with actual check if implemented differently)
-      const isGuest = employee.id === 'guest';
+     if (!employeeProfile || !authUser) {
+         return <div className="text-center text-muted-foreground py-20">Erro ao carregar perfil do colaborador.</div>;
+     }
 
      return (
-         <div className="space-y-6 p-4"> {/* Added padding for mobile */}
-             {/* --- Profile Info Card --- */}
+         <div className="space-y-6 p-4">
              <Card className="shadow-sm">
                   <Form {...profileForm}>
                      <form onSubmit={profileForm.handleSubmit(onProfileSubmit)}>
                          <CardHeader className="flex flex-col sm:flex-row items-start justify-between gap-2 p-4">
                              <div>
                                  <CardTitle className="text-lg flex items-center gap-2"><User className="h-5 w-5" /> Suas Informações</CardTitle>
-                                 {!isGuest && <CardDescription className='text-xs'>Visualize e edite seus dados.</CardDescription>}
-                                 {isGuest && <CardDescription className='text-xs'>Você está no modo convidado.</CardDescription>}
+                                 <CardDescription className='text-xs'>Visualize e edite seus dados.</CardDescription>
                              </div>
-                             {!isGuest && !isEditingProfile && (
+                             {!isEditingProfile && (
                                  <Button type="button" variant="ghost" size="sm" onClick={() => setIsEditingProfile(true)} className="text-xs flex-shrink-0 h-7 px-2 mt-2 sm:mt-0">
                                      <Edit className="mr-1 h-3 w-3" /> Editar
                                  </Button>
                               )}
-                              {!isGuest && isEditingProfile && (
+                              {isEditingProfile && (
                                  <div className="flex gap-1 flex-shrink-0 mt-2 sm:mt-0">
                                       <Button type="button" variant="ghost" size="sm" onClick={cancelEditProfile} className="text-xs h-7 px-2">Cancelar</Button>
-                                      <Button type="submit" size="sm" disabled={isSavingProfile} className="text-xs h-7 px-2">
+                                      <Button type="submit" size="sm" disabled={isSavingProfile || !profileForm.formState.isDirty} className="text-xs h-7 px-2">
                                          {isSavingProfile ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Save className="mr-1 h-3 w-3" />}
                                          Salvar
                                      </Button>
@@ -370,264 +329,102 @@
                              )}
                          </CardHeader>
                          <CardContent className="space-y-4 p-4 pt-0">
-                              {/* Avatar and Photo Upload */}
                               <div className="flex flex-col items-center gap-4">
                                  <div className="relative group flex-shrink-0">
                                      <Avatar className="h-28 w-28 border-2 border-primary/20">
-                                         <AvatarImage src={photoPreview || employee.photoUrl} alt={employee.name} />
-                                         <AvatarFallback className="text-4xl">{getInitials(employee.name)}</AvatarFallback>
+                                         <AvatarImage src={photoPreview || employeeProfile.photoUrl} alt={employeeProfile.name} />
+                                         <AvatarFallback className="text-4xl">{getInitials(employeeProfile.name)}</AvatarFallback>
                                      </Avatar>
                                      {isEditingProfile && (
-                                         <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="icon"
-                                            className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-background border-primary text-primary hover:bg-primary/10 shadow-md"
-                                            onClick={() => fileInputRef.current?.click()}
-                                            title="Alterar Foto"
-                                         >
-                                             <Camera className="h-4 w-4" />
-                                             <span className="sr-only">Alterar foto</span>
+                                         <Button type="button" variant="outline" size="icon" className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full bg-background border-primary text-primary hover:bg-primary/10 shadow-md" onClick={() => fileInputRef.current?.click()} title="Alterar Foto">
+                                             <Camera className="h-4 w-4" /><span className="sr-only">Alterar foto</span>
                                          </Button>
                                      )}
-                                     <Input
-                                        ref={fileInputRef}
-                                        type="file"
-                                        accept="image/png, image/jpeg, image/webp"
-                                        className="hidden"
-                                        onChange={handlePhotoFileChange}
-                                        disabled={!isEditingProfile}
-                                     />
+                                     <Input ref={fileInputRef} type="file" accept="image/png, image/jpeg, image/webp" className="hidden" onChange={handlePhotoFileChange} disabled={!isEditingProfile} />
                                  </div>
-                                  {/* Fields Section */}
                                  <div className='w-full space-y-3'>
-                                     {/* Read Only Name/Email */}
-                                      <div className="space-y-1">
-                                         <Label className="text-xs text-muted-foreground">Nome</Label>
-                                         <p className="font-medium text-base">{employee.name}</p>
-                                     </div>
-                                     <div className="space-y-1">
-                                         <Label className="text-xs text-muted-foreground">Email</Label>
-                                         <p className="font-medium break-all text-sm text-foreground/90">{employee.email}</p>
-                                     </div>
-                                      {/* Editable Phone */}
-                                      <FormField
-                                          control={profileForm.control}
-                                          name="phone"
-                                          render={({ field }) => (
-                                              <FormItem>
-                                                  <FormLabel className="text-xs">Telefone</FormLabel>
-                                                  <FormControl>
-                                                     <Input className={`h-9 text-sm ${!isEditingProfile ? 'border-none px-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent pointer-events-none' : 'bg-input/50 dark:bg-input/20'}`} type="tel" placeholder="Não informado" {...field} readOnly={!isEditingProfile || isGuest} value={field.value ?? ''} />
-                                                  </FormControl>
-                                                  <FormMessage className="text-xs"/>
-                                              </FormItem>
-                                          )}
-                                      />
-                                       {/* Optional Photo URL Input (Only visible when editing) */}
+                                      <div className="space-y-1"><Label className="text-xs text-muted-foreground">Nome</Label><p className="font-medium text-base">{employeeProfile.name}</p></div>
+                                     <div className="space-y-1"><Label className="text-xs text-muted-foreground">Email</Label><p className="font-medium break-all text-sm text-foreground/90">{employeeProfile.email}</p></div>
+                                      <FormField control={profileForm.control} name="phone" render={({ field }) => (
+                                          <FormItem><FormLabel className="text-xs">Telefone</FormLabel><FormControl><Input className={`h-9 text-sm ${!isEditingProfile ? 'border-none px-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent pointer-events-none' : 'bg-input/50 dark:bg-input/20'}`} type="tel" placeholder="Não informado" {...field} readOnly={!isEditingProfile} value={field.value ?? ''} /></FormControl><FormMessage className="text-xs"/></FormItem>
+                                      )}/>
                                       {isEditingProfile && (
-                                          <FormField
-                                              control={profileForm.control}
-                                              name="photoUrl"
-                                              render={({ field }) => (
-                                                  <FormItem>
-                                                      <FormLabel className="text-xs">URL da Foto (Alternativa)</FormLabel>
-                                                      <FormControl>
-                                                          <Input className="h-9 text-xs bg-input/50 dark:bg-input/20" placeholder="https://..." {...field} value={field.value ?? ''} onChange={handlePhotoUrlChange} />
-                                                      </FormControl>
-                                                      <FormMessage className="text-xs" />
-                                                  </FormItem>
-                                              )}
-                                           />
+                                          <FormField control={profileForm.control} name="photoUrl" render={({ field }) => (
+                                              <FormItem><FormLabel className="text-xs">URL da Foto (Alternativa)</FormLabel><FormControl><Input className="h-9 text-xs bg-input/50 dark:bg-input/20" placeholder="https://..." {...field} value={field.value ?? ''} onChange={handlePhotoUrlChange} /></FormControl><FormMessage className="text-xs" /></FormItem>
+                                          )}/>
                                       )}
                                  </div>
                              </div>
-                              {/* Read Only Department/Role/Admission */}
                                <Separator className="my-4" />
                               <div className="grid grid-cols-1 gap-y-3 text-sm">
-                                  <div className="flex justify-between items-center">
-                                     <span className="text-xs text-muted-foreground">Departamento</span>
-                                     <span className="font-medium text-right">{employee.department || '-'}</span>
-                                  </div>
-                                  <div className="flex justify-between items-center">
-                                      <span className="text-xs text-muted-foreground">Função</span>
-                                      <span className="font-medium text-right">{employee.role || '-'}</span>
-                                  </div>
-                                   <div className="flex justify-between items-center">
-                                      <span className="text-xs text-muted-foreground">Data de Admissão</span>
-                                      <span className="font-medium text-right">
-                                          {employee.admissionDate && !isGuest ? format(parseISO(employee.admissionDate + 'T00:00:00'), 'dd/MM/yyyy', { locale: ptBR }) : '-'}
-                                      </span>
-                                  </div>
+                                  <div className="flex justify-between items-center"><span className="text-xs text-muted-foreground">Departamento</span><span className="font-medium text-right">{employeeProfile.department || '-'}</span></div>
+                                  <div className="flex justify-between items-center"><span className="text-xs text-muted-foreground">Função</span><span className="font-medium text-right">{employeeProfile.userRole || '-'}</span></div>
+                                   <div className="flex justify-between items-center"><span className="text-xs text-muted-foreground">Data de Admissão</span><span className="font-medium text-right">{employeeProfile.admissionDate && isValid(parseISO(employeeProfile.admissionDate)) ? format(parseISO(employeeProfile.admissionDate), 'dd/MM/yyyy', { locale: ptBR }) : '-'}</span></div>
                               </div>
                          </CardContent>
                      </form>
                   </Form>
              </Card>
 
-             {/* --- Password Change Card --- */}
-             {!isGuest && (
-                 <Card className="shadow-sm">
-                      <Form {...passwordForm}>
-                         <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}>
-                             <CardHeader className="p-4 pb-2">
-                                 <CardTitle className="text-base flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Alterar Senha</CardTitle>
-                             </CardHeader>
-                             <CardContent className="space-y-3 p-4 pt-0">
-                                 <FormField
-                                     control={passwordForm.control}
-                                     name="currentPassword"
-                                     render={({ field }) => (
-                                         <FormItem>
-                                             <FormLabel className="text-xs">Senha Atual</FormLabel>
-                                              <FormControl>
-                                                  <div className="relative">
-                                                      <Input className="h-9 text-sm pr-8" type={showCurrentPassword ? 'text' : 'password'} placeholder="********" {...field} />
-                                                      <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setShowCurrentPassword(!showCurrentPassword)} aria-label={showCurrentPassword ? 'Ocultar senha atual' : 'Mostrar senha atual'}>
-                                                          {showCurrentPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
-                                                      </Button>
-                                                  </div>
-                                              </FormControl>
-                                             <FormMessage className="text-xs"/>
-                                         </FormItem>
-                                     )}
-                                 />
-                                  <FormField
-                                     control={passwordForm.control}
-                                     name="newPassword"
-                                     render={({ field }) => (
-                                         <FormItem>
-                                             <FormLabel className="text-xs">Nova Senha</FormLabel>
-                                              <FormControl>
-                                                  <div className="relative">
-                                                      <Input className="h-9 text-sm pr-8" type={showNewPassword ? 'text' : 'password'} placeholder="Min. 8 caracteres" {...field} />
-                                                      <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setShowNewPassword(!showNewPassword)} aria-label={showNewPassword ? 'Ocultar nova senha' : 'Mostrar nova senha'}>
-                                                          {showNewPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
-                                                      </Button>
-                                                  </div>
-                                              </FormControl>
-                                             <FormMessage className="text-xs"/>
-                                         </FormItem>
-                                     )}
-                                 />
-                                 <FormField
-                                     control={passwordForm.control}
-                                     name="confirmPassword"
-                                     render={({ field }) => (
-                                         <FormItem>
-                                             <FormLabel className="text-xs">Confirmar Nova Senha</FormLabel>
-                                              <FormControl>
-                                                  <div className="relative">
-                                                     <Input className="h-9 text-sm pr-8" type={showConfirmPassword ? 'text' : 'password'} placeholder="Repita a nova senha" {...field} />
-                                                     <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setShowConfirmPassword(!showConfirmPassword)} aria-label={showConfirmPassword ? 'Ocultar confirmação de senha' : 'Mostrar confirmação de senha'}>
-                                                         {showConfirmPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
-                                                     </Button>
-                                                  </div>
-                                              </FormControl>
-                                             <FormMessage className="text-xs"/>
-                                         </FormItem>
-                                     )}
-                                 />
-                             </CardContent>
-                             <CardFooter className="p-4 pt-0">
-                                  <Button type="submit" disabled={isChangingPassword} className="w-full">
-                                     {isChangingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
-                                     {isChangingPassword ? 'Alterando...' : 'Alterar Senha'}
-                                 </Button>
-                             </CardFooter>
-                         </form>
-                      </Form>
-                 </Card>
-             )}
+             <Card className="shadow-sm">
+                  <Form {...passwordForm}>
+                     <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}>
+                         <CardHeader className="p-4 pb-2"><CardTitle className="text-base flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Alterar Senha</CardTitle></CardHeader>
+                         <CardContent className="space-y-3 p-4 pt-0">
+                             <FormField control={passwordForm.control} name="currentPassword" render={({ field }) => (
+                                 <FormItem><FormLabel className="text-xs">Senha Atual</FormLabel><FormControl><div className="relative"><Input className="h-9 text-sm pr-8" type={showCurrentPassword ? 'text' : 'password'} placeholder="********" {...field} /><Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setShowCurrentPassword(!showCurrentPassword)} aria-label={showCurrentPassword ? 'Ocultar senha atual' : 'Mostrar senha atual'}><EyeOff className={showCurrentPassword ? "h-4 w-4" : "hidden"}/><Eye className={!showCurrentPassword ? "h-4 w-4" : "hidden"}/></Button></div></FormControl><FormMessage className="text-xs"/></FormItem>
+                             )}/>
+                              <FormField control={passwordForm.control} name="newPassword" render={({ field }) => (
+                                 <FormItem><FormLabel className="text-xs">Nova Senha</FormLabel><FormControl><div className="relative"><Input className="h-9 text-sm pr-8" type={showNewPassword ? 'text' : 'password'} placeholder="Min. 8 caracteres" {...field} /><Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setShowNewPassword(!showNewPassword)} aria-label={showNewPassword ? 'Ocultar nova senha' : 'Mostrar nova senha'}><EyeOff className={showNewPassword ? "h-4 w-4" : "hidden"}/><Eye className={!showNewPassword ? "h-4 w-4" : "hidden"}/></Button></div></FormControl><FormMessage className="text-xs"/></FormItem>
+                             )}/>
+                             <FormField control={passwordForm.control} name="confirmPassword" render={({ field }) => (
+                                 <FormItem><FormLabel className="text-xs">Confirmar Nova Senha</FormLabel><FormControl><div className="relative"><Input className="h-9 text-sm pr-8" type={showConfirmPassword ? 'text' : 'password'} placeholder="Repita a nova senha" {...field} /><Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setShowConfirmPassword(!showConfirmPassword)} aria-label={showConfirmPassword ? 'Ocultar confirmação de senha' : 'Mostrar confirmação de senha'}><EyeOff className={showConfirmPassword ? "h-4 w-4" : "hidden"}/><Eye className={!showConfirmPassword ? "h-4 w-4" : "hidden"}/></Button></div></FormControl><FormMessage className="text-xs"/></FormItem>
+                             )}/>
+                         </CardContent>
+                         <CardFooter className="p-4 pt-0">
+                              <Button type="submit" disabled={isChangingPassword || !passwordForm.formState.isDirty} className="w-full">
+                                 {isChangingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                                 {isChangingPassword ? 'Alterando...' : 'Alterar Senha'}
+                             </Button>
+                         </CardFooter>
+                     </form>
+                  </Form>
+             </Card>
 
-              {/* --- Notification Settings Card --- */}
-              {!isGuest && (
-                  <Card className="shadow-sm">
-                      <Form {...notificationForm}>
-                          <form onSubmit={notificationForm.handleSubmit(onNotificationSubmit)}>
-                             <CardHeader className="p-4 pb-2">
-                                 <CardTitle className="text-base flex items-center gap-2"><Bell className="h-4 w-4" /> Notificações</CardTitle>
-                                 <CardDescription className='text-xs'>Gerencie como você recebe alertas.</CardDescription>
-                             </CardHeader>
-                             <CardContent className="space-y-3 p-4 pt-0">
-                                <FormField control={notificationForm.control} name="newEvaluation" render={({ field }) => (
-                                     <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                                         <FormLabel className="font-normal text-xs leading-tight pr-2">Receber notificação de novas avaliações</FormLabel>
-                                         <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                     </FormItem>
-                                 )}/>
-                                 <FormField control={notificationForm.control} name="challengeUpdates" render={({ field }) => (
-                                     <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                                         <FormLabel className="font-normal text-xs leading-tight pr-2">Notificações sobre desafios (novos, prazos)</FormLabel>
-                                         <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                     </FormItem>
-                                 )}/>
-                                  <FormField control={notificationForm.control} name="rankingChanges" render={({ field }) => (
-                                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                                         <FormLabel className="font-normal text-xs leading-tight pr-2">Notificações sobre mudanças no ranking</FormLabel>
-                                         <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                     </FormItem>
-                                 )}/>
-                                 <FormField control={notificationForm.control} name="systemAnnouncements" render={({ field }) => (
-                                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                                         <FormLabel className="font-normal text-xs leading-tight pr-2">Anúncios importantes do sistema</FormLabel>
-                                         <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                     </FormItem>
-                                 )}/>
-                                 {/* Browser Notification Toggle */}
-                                 <FormField control={notificationForm.control} name="browserNotifications" render={({ field }) => (
-                                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                                          <div className="space-y-0.5">
-                                              <FormLabel className="font-normal text-xs leading-tight pr-2">Ativar notificações do navegador</FormLabel>
-                                              {browserNotificationPermission === 'denied' && (
-                                                 <FormDescription className="text-xs text-destructive">
-                                                     Permissão bloqueada nas configurações do navegador.
-                                                 </FormDescription>
-                                             )}
-                                             {browserNotificationPermission === 'default' && (
-                                                 <FormDescription className="text-xs text-yellow-600">
-                                                     Permissão necessária. Clique em salvar para solicitar.
-                                                 </FormDescription>
-                                             )}
-                                         </div>
-                                         <FormControl>
-                                              <Switch
-                                                 checked={field.value}
-                                                 onCheckedChange={field.onChange}
-                                                 disabled={browserNotificationPermission === 'denied'}
-                                              />
-                                         </FormControl>
-                                     </FormItem>
-                                 )}/>
-                             </CardContent>
-                             <CardFooter className="p-4 pt-0">
-                                  <Button type="submit" disabled={isSavingNotifications || !notificationForm.formState.isDirty} className="w-full">
-                                     {isSavingNotifications ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />} {/* Changed Icon */}
-                                     {isSavingNotifications ? 'Salvando...' : 'Salvar Preferências'}
-                                 </Button>
-                             </CardFooter>
-                         </form>
-                      </Form>
-                  </Card>
-               )}
+              <Card className="shadow-sm">
+                  <Form {...notificationForm}>
+                      <form onSubmit={notificationForm.handleSubmit(onNotificationSubmit)}>
+                         <CardHeader className="p-4 pb-2"><CardTitle className="text-base flex items-center gap-2"><Bell className="h-4 w-4" /> Notificações</CardTitle><CardDescription className='text-xs'>Gerencie como você recebe alertas.</CardDescription></CardHeader>
+                         <CardContent className="space-y-3 p-4 pt-0">
+                            <FormField control={notificationForm.control} name="newEvaluation" render={({ field }) => (<FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel className="font-normal text-xs leading-tight pr-2">Receber notificação de novas avaliações</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem>)}/>
+                             <FormField control={notificationForm.control} name="challengeUpdates" render={({ field }) => (<FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel className="font-normal text-xs leading-tight pr-2">Notificações sobre desafios (novos, prazos)</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem>)}/>
+                              <FormField control={notificationForm.control} name="rankingChanges" render={({ field }) => (<FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel className="font-normal text-xs leading-tight pr-2">Notificações sobre mudanças no ranking</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem>)}/>
+                             <FormField control={notificationForm.control} name="systemAnnouncements" render={({ field }) => (<FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel className="font-normal text-xs leading-tight pr-2">Anúncios importantes do sistema</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem>)}/>
+                             <FormField control={notificationForm.control} name="browserNotifications" render={({ field }) => (
+                                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                      <div className="space-y-0.5"><FormLabel className="font-normal text-xs leading-tight pr-2">Ativar notificações do navegador</FormLabel>
+                                          {browserNotificationPermission === 'denied' && (<FormDescription className="text-xs text-destructive">Permissão bloqueada nas configurações do navegador.</FormDescription>)}
+                                          {browserNotificationPermission === 'default' && (<FormDescription className="text-xs text-yellow-600">Permissão necessária. Clique em salvar para solicitar.</FormDescription>)}
+                                      </div><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={browserNotificationPermission === 'denied'} /></FormControl>
+                                 </FormItem>
+                             )}/>
+                         </CardContent>
+                         <CardFooter className="p-4 pt-0">
+                              <Button type="submit" disabled={isSavingNotifications || !notificationForm.formState.isDirty} className="w-full">
+                                 {isSavingNotifications ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+                                 {isSavingNotifications ? 'Salvando...' : 'Salvar Preferências'}
+                             </Button>
+                         </CardFooter>
+                     </form>
+                  </Form>
+              </Card>
 
-             {/* --- Logout Button --- */}
-             {!isGuest && (
-                 <div className="mt-6">
-                      <Button variant="destructive" className="w-full" onClick={handleLogout}>
-                         <LogOut className="mr-2 h-4 w-4" /> Sair da Conta
-                     </Button>
-                 </div>
-             )}
-
-             {/* --- Login Button for Guest --- */}
-             {isGuest && (
-                 <div className="mt-6">
-                     <Button variant="default" className="w-full" onClick={() => router.push('/login')}>
-                         Fazer Login
-                     </Button>
-                 </div>
-             )}
+             <div className="mt-6">
+                  <Button variant="destructive" className="w-full" onClick={handleLogout}>
+                     <LogOut className="mr-2 h-4 w-4" /> Sair da Conta
+                 </Button>
+             </div>
          </div>
      );
  }
+    
