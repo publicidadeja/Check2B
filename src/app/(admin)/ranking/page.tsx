@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import * as React from 'react';
@@ -54,15 +55,15 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { getAllAwards, saveAward, deleteAward, getActiveAward, getAwardById, saveAwardHistory, getAwardHistory, getRankingSettings, saveRankingSettings as saveRankingSettingsToFirestore } from '@/lib/ranking-service';
+import { getAllAwards, saveAward, deleteAward, getActiveAward, getAwardById, saveAwardHistory, getAwardHistory, getRankingSettings, saveRankingSettings as saveRankingSettingsToFirestore, calculateMonthlyRanking } from '@/lib/ranking-service';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { getDb } from '@/lib/firebase';
 import type { Firestore } from 'firebase/firestore';
 import { TrendingDown, TrendingUp, Minus } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { mockEmployeesSimple, fetchRankingData as fetchMockRankingData, mockDepartments } from '@/lib/mockData/ranking';
-import { useAuth } from '@/hooks/use-auth'; // Import useAuth
-import type { RankingSettings, RankingSettingsData } from '@/types/ranking'; // Import RankingSettings types
+import { mockEmployeesSimple, mockDepartments } from '@/lib/mockData/ranking'; // Removed fetchRankingData
+import { useAuth } from '@/hooks/use-auth'; 
+import type { RankingSettings, RankingSettingsData } from '@/types/ranking'; 
 
 // --- Type Definitions ---
 export interface Award {
@@ -72,7 +73,7 @@ export interface Award {
     monetaryValue?: number;
     nonMonetaryValue?: string;
     imageUrl?: string;
-    period: string; // 'recorrente' or 'YYYY-MM'
+    period: string; 
     eligibilityCriteria?: boolean;
     winnerCount: number;
     valuesPerPosition?: { [key: number]: { monetary?: number, nonMonetary?: string } };
@@ -88,10 +89,11 @@ export interface RankingEntry {
     employeeName: string;
     employeePhotoUrl?: string;
     department: string;
-    role: string;
+    role: string; // Cargo/Função
     score: number;
     zeros: number;
     trend?: 'up' | 'down' | 'stable';
+    admissionDate?: string; // For tie-breaking
 }
 
 export interface AwardHistoryEntry {
@@ -101,7 +103,7 @@ export interface AwardHistoryEntry {
     winners: { rank: number; employeeName: string; prize: string }[];
     deliveryPhotoUrl?: string;
     notes?: string;
-    createdAt?: Date; // Added for Firestore
+    createdAt?: Date; 
 }
 
 // --- Zod Schema for Award Form ---
@@ -378,13 +380,13 @@ const AwardConfiguration = () => {
 
      const awardColumns: ColumnDef<Award>[] = [
         {
-            id: "title",
+            id: "title_award", // Explicit ID
             accessorKey: "title",
             header: "Título",
             cell: ({ row }) => <span className="font-medium">{row.original.title}</span>,
         },
         {
-            id: "period",
+            id: "period_award", // Explicit ID
             accessorKey: "period",
             header: "Período",
             cell: ({ row }) => (
@@ -394,14 +396,14 @@ const AwardConfiguration = () => {
             ),
         },
         {
-            id: 'winnerCount',
+            id: 'winnerCount_award', // Explicit ID
             accessorKey: "winnerCount",
             header: () => <div className="text-center">Ganhadores</div>,
             cell: ({ row }) => <div className="text-center">{row.original.winnerCount}</div>,
             size: 100,
         },
         {
-            id: 'eligibleDepartments',
+            id: 'eligibleDepartments_award', // Explicit ID
             accessorKey: "eligibleDepartments",
             header: () => <div className="text-center">Elegíveis</div>,
             cell: ({ row }) => (
@@ -414,7 +416,7 @@ const AwardConfiguration = () => {
             size: 120,
         },
         {
-            id: "status",
+            id: "status_award", // Explicit ID
             accessorKey: "status",
             header: "Status",
             cell: ({ row }) => {
@@ -428,7 +430,7 @@ const AwardConfiguration = () => {
             size: 100,
         },
         {
-            id: "actions",
+            id: "actions_award", // Explicit ID
             cell: ({ row }) => {
                 const award = row.original;
                 return (
@@ -735,7 +737,7 @@ const AwardHistory = () => {
         setIsLoading(true);
         try {
             const data = await getAwardHistory(db);
-            setHistory(data); // Firestore data is already sorted by service
+            setHistory(data); 
         } catch (error) {
              console.error("Falha ao carregar histórico:", error);
              toast({ title: "Erro", description: "Não foi possível carregar o histórico de premiações.", variant: "destructive" });
@@ -750,7 +752,7 @@ const AwardHistory = () => {
 
 
      const handleExportHistory = () => {
-        exportData(history.map(h => ({ // Prepare data for CSV
+        exportData(history.map(h => ({ 
             periodo: h.period,
             premiacao: h.awardTitle,
             vencedores: h.winners.map(w => `${w.rank}º: ${w.employeeName} (${w.prize})`).join('; '),
@@ -860,7 +862,6 @@ const AdvancedSettings = () => {
                         notificationLevel: settings.notificationLevel,
                     });
                 } else {
-                    // Use default values if no settings are found
                     form.reset({
                         tieBreaker: 'zeros',
                         includeProbation: false,
@@ -887,7 +888,7 @@ const AdvancedSettings = () => {
         try {
             await saveRankingSettingsToFirestore(organizationId, data);
             toast({ title: "Sucesso", description: "Configurações avançadas salvas." });
-            form.reset(data); // Reset form with saved values to clear dirty state
+            form.reset(data); 
         } catch (error) {
             console.error("Erro ao salvar configurações:", error);
             toast({ title: "Erro", description: "Falha ao salvar configurações.", variant: "destructive" });
@@ -1006,7 +1007,7 @@ const AdvancedSettings = () => {
 
 // --- Ranking Dashboard Component ---
 const RankingDashboard = () => {
-    const { organizationId } = useAuth();
+    const { organizationId, isLoading: authLoading } = useAuth(); // Use auth hook
     const [rankingData, setRankingData] = React.useState<RankingEntry[]>([]);
     const [currentMonth, setCurrentMonth] = React.useState(new Date());
     const [isLoading, setIsLoading] = React.useState(true);
@@ -1019,21 +1020,34 @@ const RankingDashboard = () => {
         setDb(getDb());
     }, []);
 
+    const loadRankingAndAward = React.useCallback(async () => {
+        if (!organizationId || !db) {
+            setIsLoading(false);
+            if (!authLoading && !organizationId) {
+                toast({ title: "Erro", description: "ID da Organização não encontrado.", variant: "destructive"});
+            }
+            return;
+        }
+        setIsLoading(true);
+        try {
+            const [data, award] = await Promise.all([
+                calculateMonthlyRanking(organizationId, currentMonth),
+                getActiveAward(db, currentMonth)
+            ]);
+            setRankingData(data);
+            setActiveAward(award);
+        } catch (error) {
+            console.error("Falha ao carregar ranking ou premiação ativa:", error);
+            toast({ title: "Erro", description: "Não foi possível carregar dados do ranking.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [organizationId, currentMonth, toast, db, authLoading]);
+
+
     React.useEffect(() => {
-        const loadRanking = async () => {
-             setIsLoading(true);
-             try {
-                 const data = await fetchMockRankingData(currentMonth); // MOCK DATA
-                 setRankingData(data);
-             } catch (error) {
-                 console.error("Falha ao carregar ranking:", error);
-                 toast({ title: "Erro", description: "Não foi possível carregar o ranking.", variant: "destructive" });
-             } finally {
-                 setIsLoading(false);
-             }
-        };
-        loadRanking();
-    }, [currentMonth, toast]);
+        loadRankingAndAward();
+    }, [loadRankingAndAward]);
 
     const calculateRemainingDays = () => {
         const today = new Date();
@@ -1047,8 +1061,9 @@ const RankingDashboard = () => {
     };
 
     const remainingDays = calculateRemainingDays();
-    const isCurrentMonth = new Date().getMonth() === currentMonth.getMonth() && new Date().getFullYear() === currentMonth.getFullYear();
-    const canConfirmWinners = !isCurrentMonth && activeAward && rankingData.length > 0;
+    const isCurrentMonthView = new Date().getMonth() === currentMonth.getMonth() && new Date().getFullYear() === currentMonth.getFullYear();
+    const canConfirmWinners = !isCurrentMonthView && activeAward && rankingData.length > 0;
+
 
     const handlePreviousMonth = () => {
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
@@ -1061,23 +1076,8 @@ const RankingDashboard = () => {
          });
     };
 
-    React.useEffect(() => {
-        const loadActiveAward = async () => {
-             if (!db) return;
-            try {
-                const award = await getActiveAward(db, currentMonth);
-                setActiveAward(award);
-            } catch (error) {
-                 console.error("Error fetching active award:", error);
-                 setActiveAward(null);
-            }
-        };
-        if(db) loadActiveAward();
-    }, [currentMonth, db]);
-
-
     const handleConfirmWinners = async () => {
-        if (!canConfirmWinners || !activeAward || !db) return;
+        if (!canConfirmWinners || !activeAward || !db || !organizationId) return;
         setIsConfirmingWinners(true);
         try {
             const periodStr = format(currentMonth, 'yyyy-MM');
@@ -1095,7 +1095,6 @@ const RankingDashboard = () => {
                         ? activeAward.valuesPerPosition[winner.rank]?.nonMonetary ?? ''
                         : activeAward.monetaryValue ? `R$ ${activeAward.monetaryValue.toFixed(2)}` : activeAward.nonMonetaryValue || 'Prêmio Indefinido'
                 })),
-                // deliveryPhotoUrl and notes can be added later if there's a UI for it
             };
             
             await saveAwardHistory(db, historyEntryData);
@@ -1113,6 +1112,16 @@ const RankingDashboard = () => {
          exportData(rankingData, `ranking_${format(currentMonth, 'yyyy-MM')}`);
     }
 
+    if (authLoading) return <div className="flex justify-center py-10"><LoadingSpinner text="Autenticando..." /></div>;
+    if (!organizationId && !authLoading) {
+        return (
+            <Card>
+                <CardHeader><CardTitle>Acesso Bloqueado</CardTitle></CardHeader>
+                <CardContent><p className="text-destructive">Administrador não vinculado a uma organização.</p></CardContent>
+            </Card>
+        );
+    }
+
 
     return (
         <div className="space-y-6">
@@ -1127,7 +1136,7 @@ const RankingDashboard = () => {
                         </div>
                         <div className="flex items-center gap-2">
                              <Button variant="outline" size="sm" onClick={handlePreviousMonth}>Anterior</Button>
-                             <Button variant="outline" size="sm" onClick={handleNextMonth} disabled={isCurrentMonth}>Próximo</Button>
+                             <Button variant="outline" size="sm" onClick={handleNextMonth} disabled={isCurrentMonthView}>Próximo</Button>
                         </div>
                      </div>
                 </CardHeader>
@@ -1174,8 +1183,8 @@ const RankingDashboard = () => {
                 </CardContent>
                 <CardFooter className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                     <div className="text-sm text-muted-foreground space-y-1">
-                        <p><strong>Premiação Vigente:</strong> {activeAward?.title || (isCurrentMonth ? 'Nenhuma ativa' : 'Nenhuma definida para o período')}</p>
-                         {isCurrentMonth && <p><strong>Dias Restantes:</strong> {remainingDays}</p>}
+                        <p><strong>Premiação Vigente:</strong> {activeAward?.title || (isCurrentMonthView ? 'Nenhuma ativa' : 'Nenhuma definida para o período')}</p>
+                         {isCurrentMonthView && <p><strong>Dias Restantes:</strong> {remainingDays}</p>}
                      </div>
                     <div className="flex gap-2">
                          <Button size="sm" variant="outline" onClick={handleExportRanking} disabled={isLoading || rankingData.length === 0}>Exportar Ranking</Button>

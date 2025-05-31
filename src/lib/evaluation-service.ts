@@ -32,7 +32,7 @@ export const getTasksForEmployeeOnDate = (
   date: Date,
   allOrgTasks: Task[]
 ): Task[] => {
-  if (!employee || !employee.isActive) return []; // Check if UserProfile has isActive, or adjust
+  if (!employee || employee.status !== 'active') return []; // Check if UserProfile has isActive, or adjust
   
   // Ensure employee has department and userRole for filtering
   const employeeDepartment = employee.department;
@@ -114,6 +114,48 @@ export const getEvaluationsForDay = async (organizationId: string, dateString: s
   }
 };
 
+/**
+ * Fetches all evaluations for a specific organization within a given date range.
+ * @param organizationId The ID of the organization.
+ * @param startDateString The start date string in 'yyyy-MM-dd' format.
+ * @param endDateString The end date string in 'yyyy-MM-dd' format.
+ * @returns Promise resolving to an array of Evaluation objects.
+ */
+export const getEvaluationsForOrganizationInPeriod = async (organizationId: string, startDateString: string, endDateString: string): Promise<Evaluation[]> => {
+  const db = getDb();
+  if (!db || !organizationId) {
+    console.error('[EvaluationService] Firestore not initialized or organizationId missing.');
+    return [];
+  }
+  const evaluationsPath = `organizations/${organizationId}/evaluations`;
+  const evaluationsCollectionRef = collection(db, evaluationsPath);
+  const q = query(
+    evaluationsCollectionRef,
+    where("evaluationDate", ">=", startDateString),
+    where("evaluationDate", "<=", endDateString),
+    orderBy("evaluationDate", "asc") // Optional: order by date
+  );
+
+  try {
+    const evaluationsSnapshot = await getDocs(q);
+    return evaluationsSnapshot.docs.map(docSnapshot => {
+      const data = docSnapshot.data();
+      return {
+        id: docSnapshot.id,
+        ...data,
+        organizationId,
+        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : undefined),
+        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : undefined),
+      } as Evaluation;
+    });
+  } catch (error) {
+    console.error(`Error fetching evaluations for org ${organizationId} in period ${startDateString} - ${endDateString}:`, error);
+    // Firestore might require an index for this query. The error message will usually include a link to create it.
+    throw error;
+  }
+};
+
+
 interface TaskEvaluationStateForSave {
     taskId: string;
     score?: 0 | 10;
@@ -163,24 +205,7 @@ export const saveEmployeeEvaluations = async (
       isDraft: false, // Assuming these are final evaluations
       updatedAt: new Date(), // Will be converted to Timestamp by Firestore
     };
-
-    // Check if document exists to set createdAt only once
-    // For simplicity in batch, we can use set with merge and handle createdAt logic if needed via serverTimestamp() on create
-    // However, to set createdAt only on creation with set(merge:true), it's tricky.
-    // A common pattern is to fetch first, or use serverTimestamp and update.
-    // For now, we'll rely on a more complex update logic if needed or assume new docs get createdAt.
-    // A simpler approach: use a server timestamp for both and differentiate via logic if needed.
-    // For this implementation, we'll assume `set` with `merge: true` and manage createdAt on first write via client logic if necessary.
-    // Or, more robustly, use a transaction or a Cloud Function trigger for createdAt.
-    // Simplified: always set/update updatedAt. createdAt if new.
-
-    // For an upsert behavior where createdAt is only set once:
-    // This would typically be done by fetching the doc first, or using a transaction,
-    // which is more complex with batch writes without reading.
-    // A common workaround is to always set updatedAt, and if a separate 'create' op, set createdAt.
-    // Here, we'll just ensure updatedAt is always fresh.
     
-    // Firestore automatically converts JS Date to Timestamp on write
     batch.set(evalDocRef, { ...evaluationData, createdAt: evaluationData.createdAt || new Date() }, { merge: true });
   });
 

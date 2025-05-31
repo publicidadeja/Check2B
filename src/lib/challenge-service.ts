@@ -104,9 +104,6 @@ export const saveChallenge = async (
   } else {
     // @ts-ignore
     finalDataToSave.createdAt = serverTimestamp();
-    // @ts-ignore 
-    // organizationId is implicitly part of the path, not stored in the doc itself here
-    // finalDataToSave.organizationId = organizationId; 
     docRef = await addDoc(collection(db, challengesPath), finalDataToSave);
   }
 
@@ -118,7 +115,7 @@ export const saveChallenge = async (
   return {
     id: savedDoc.id,
     ...savedData,
-    organizationId, // Add organizationId to the returned object for consistency
+    organizationId, 
     createdAt: savedData?.createdAt instanceof Timestamp ? savedData.createdAt.toDate() : new Date(),
     updatedAt: savedData?.updatedAt instanceof Timestamp ? savedData.updatedAt.toDate() : new Date(),
     eligibility: savedData?.eligibility || { type: 'all' },
@@ -214,6 +211,58 @@ export const getParticipationsForChallenge = async (organizationId: string, chal
     throw error;
   }
 };
+
+/**
+ * Fetches all approved challenge participations for an organization within a given date range (based on evaluation date).
+ * @param organizationId The ID of the organization.
+ * @param startDate The start date of the period.
+ * @param endDate The end date of the period.
+ * @returns Promise resolving to an array of ChallengeParticipation objects.
+ */
+export const getApprovedChallengeParticipationsForOrganizationInPeriod = async (organizationId: string, startDate: Date, endDate: Date): Promise<ChallengeParticipation[]> => {
+  const db = getDb();
+  if (!db || !organizationId) {
+    console.error('[ChallengeService] Firestore not initialized or organizationId missing.');
+    return [];
+  }
+  const participationsPath = `organizations/${organizationId}/${PARTICIPATIONS_COLLECTION}`;
+  const participationsCollectionRef = collection(db, participationsPath);
+
+  // Convert JS Dates to Firestore Timestamps for querying
+  const startTimestamp = Timestamp.fromDate(startDate);
+  const endTimestamp = Timestamp.fromDate(endDate);
+  
+  const q = query(
+    participationsCollectionRef,
+    where("status", "==", "approved"),
+    where("evaluatedAt", ">=", startTimestamp),
+    where("evaluatedAt", "<=", endTimestamp)
+    // Optional: orderBy("evaluatedAt", "desc")
+  );
+
+  try {
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(docSnapshot => {
+      const data = docSnapshot.data();
+      return {
+        id: docSnapshot.id,
+        ...data,
+        organizationId,
+        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : undefined),
+        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : undefined),
+        acceptedAt: data.acceptedAt instanceof Timestamp ? data.acceptedAt.toDate() : (data.acceptedAt ? new Date(data.acceptedAt) : undefined),
+        submittedAt: data.submittedAt instanceof Timestamp ? data.submittedAt.toDate() : (data.submittedAt ? new Date(data.submittedAt) : undefined),
+        evaluatedAt: data.evaluatedAt instanceof Timestamp ? data.evaluatedAt.toDate() : (data.evaluatedAt ? new Date(data.evaluatedAt) : undefined),
+      } as ChallengeParticipation;
+    });
+  } catch (error) {
+    console.error(`[ChallengeService] Error fetching approved participations for org ${organizationId} in period:`, error);
+    // Firestore might require an index for this query. The error message will usually include a link to create it.
+    // Example index: collectionGroup: challengeParticipations, fields: status (ASC), evaluatedAt (ASC/DESC)
+    throw error;
+  }
+};
+
 
 /**
  * Evaluates a challenge submission.
