@@ -17,45 +17,13 @@
  import { ScrollArea } from '@/components/ui/scroll-area'; // Ensure ScrollArea is imported
  import { cn } from '@/lib/utils'; // Import cn utility
  import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
+ import { useAuth } from '@/hooks/use-auth';
+ import { getDb } from '@/lib/firebase';
+ import type { Firestore } from 'firebase/firestore';
+ import { calculateMonthlyRanking, getActiveAward } from '@/lib/ranking-service';
 
  // Import Types
  import type { RankingEntry, Award as AdminAward } from '@/app/(admin)/ranking/page'; // Reuse admin types
-
- // Mock Employee ID
- const CURRENT_EMPLOYEE_ID = '1'; // Alice Silva
-
- // --- Mock Data & Fetching ---
- // Use exported mock data from admin page
- import { mockRanking as allAdminRanking } from '@/lib/mockData/ranking'; // Corrected import path
- import { mockAwards as allAdminAwards } from '@/lib/mockData/awards'; // Update import path
-
- // Function to fetch ranking data for a specific month, adapted for employee view
- const fetchEmployeeRankingData = async (employeeId: string, period: Date): Promise<{ ranking: RankingEntry[], userEntry?: RankingEntry, award?: AdminAward }> => {
-     await new Promise(resolve => setTimeout(resolve, 500)); // Simulate delay
-
-     const monthKey = format(period, 'yyyy-MM');
-
-     // Simulate data fetching/calculation for the given period
-      let fullRanking = allAdminRanking.map(entry => ({
-         ...entry,
-         // Simulate score variation based on month for demo
-         score: entry.score + (period.getMonth() - new Date().getMonth()) * (Math.random() > 0.5 ? 15 : -10),
-         zeros: Math.max(0, entry.zeros + (Math.random() > 0.8 ? (period.getMonth() % 2 === 0 ? 1 : -1) : 0)),
-         // Simulate trend based on random change
-         trend: (['up', 'down', 'stable'] as const)[Math.floor(Math.random() * 3)],
-     })).sort((a, b) => b.score - a.score || a.zeros - b.zeros)
-        .map((entry, index) => ({ ...entry, rank: index + 1 }));
-
-     const userEntry = fullRanking.find(entry => entry.employeeId === employeeId);
-
-      // Find award active for the specific month OR a recurring one
-     const currentAward = allAdminAwards.find(a =>
-         a.status === 'active' &&
-         (a.isRecurring || (a.specificMonth && format(parseISO(a.specificMonth as unknown as string), 'yyyy-MM') === monthKey)) // Ensure date parsing if needed
-     );
-
-     return { ranking: fullRanking, userEntry, award: currentAward };
- }
 
  // Helper: Get Initials
  const getInitials = (name?: string) => {
@@ -69,13 +37,13 @@
          case 'up': return <TrendingUp className="h-4 w-4 text-green-500" />;
          case 'down': return <TrendingDown className="h-4 w-4 text-red-500" />;
          case 'stable': return <Minus className="h-4 w-4 text-muted-foreground" />;
-         default: return <Activity className="h-4 w-4 text-muted-foreground opacity-50"/>; // Default icon if no trend data
+         default: return <Activity className="h-4 w-4 text-muted-foreground opacity-50"/>;
      }
  };
 
 
  // DataTable Columns definition (optimized for mobile)
- const rankingColumns = (currentEmployeeId: string): ColumnDef<RankingEntry>[] => [
+ const rankingColumns = (currentEmployeeId: string | null): ColumnDef<RankingEntry>[] => [
      {
          accessorKey: "rank",
          header: "#",
@@ -87,14 +55,14 @@
                  {row.original.rank > 3 && <span className="text-xs text-muted-foreground">{row.getValue("rank")}</span>}
              </div>
          ),
-         size: 35, // Slightly reduced size
+         size: 35,
      },
      {
          accessorKey: "employeeName",
          header: "Colaborador",
          cell: ({ row }) => (
              <div className="flex items-center gap-2">
-                 <Avatar className="h-7 w-7"> {/* Smaller avatar */}
+                 <Avatar className="h-7 w-7">
                      <AvatarImage src={row.original.employeePhotoUrl} alt={row.original.employeeName} />
                      <AvatarFallback className="text-[10px]">{getInitials(row.original.employeeName)}</AvatarFallback>
                  </Avatar>
@@ -103,44 +71,67 @@
                  </span>
              </div>
          ),
-         minSize: 120, // Allow more shrinking
+         minSize: 120,
      },
      {
          accessorKey: "score",
-         header: () => <div className="text-right text-xs">Pts</div>, // Shorter header
+         header: () => <div className="text-right text-xs">Pts</div>,
          cell: ({ row }) => <div className="text-right font-semibold text-xs">{row.getValue("score")}</div>,
-         size: 45, // Reduced size
+         size: 45,
      },
       {
          accessorKey: "zeros",
-         header: () => <div className="text-center text-xs">Zeros</div>, // Centered header
+         header: () => <div className="text-center text-xs">Zeros</div>,
          cell: ({ row }) => <div className={`text-center text-xs ${Number(row.getValue("zeros")) > 0 ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>{row.getValue("zeros")}</div>,
-         size: 35, // Reduced size
+         size: 35,
      },
       {
          accessorKey: "trend",
-         header: () => <div className="text-center text-xs">Tend.</div>, // Shorter header
+         header: () => <div className="text-center text-xs">Tend.</div>,
          cell: ({ row }) => <div className="flex justify-center">{getTrendIcon(row.original.trend)}</div>,
-         size: 35, // Reduced size
+         size: 35,
      },
  ];
 
 
  export default function EmployeeRankingPage() {
+     const { user, organizationId, isLoading: authIsLoading } = useAuth();
      const [rankingData, setRankingData] = React.useState<RankingEntry[]>([]);
      const [currentUserEntry, setCurrentUserEntry] = React.useState<RankingEntry | undefined>(undefined);
      const [currentAward, setCurrentAward] = React.useState<AdminAward | undefined>(undefined);
      const [currentMonth, setCurrentMonth] = React.useState(new Date());
      const [isLoading, setIsLoading] = React.useState(true);
      const { toast } = useToast();
+     const [db, setDb] = React.useState<Firestore | null>(null);
+     const CURRENT_EMPLOYEE_ID = user?.uid || null;
+
+     React.useEffect(() => {
+        const firestoreDb = getDb();
+        if (firestoreDb) {
+            setDb(firestoreDb);
+        } else {
+            console.error("Failed to initialize Firestore instance for Ranking page.");
+            toast({ title: "Erro de Conexão", description: "Não foi possível conectar ao banco de dados.", variant: "destructive"});
+        }
+    }, [toast]);
 
      React.useEffect(() => {
          const loadRanking = async () => {
+             if (!CURRENT_EMPLOYEE_ID || !organizationId || !db || authIsLoading) {
+                 if (!authIsLoading && (!CURRENT_EMPLOYEE_ID || !organizationId || !db)) {
+                    setIsLoading(false); // Stop loading if prerequisites are missing after auth check
+                    if (!db) console.warn("DB not available for loading ranking.");
+                 }
+                 return;
+             }
              setIsLoading(true);
              try {
-                 const { ranking, userEntry, award } = await fetchEmployeeRankingData(CURRENT_EMPLOYEE_ID, currentMonth);
+                 const [ranking, award] = await Promise.all([
+                     calculateMonthlyRanking(organizationId, currentMonth),
+                     getActiveAward(db, currentMonth)
+                 ]);
                  setRankingData(ranking);
-                 setCurrentUserEntry(userEntry);
+                 setCurrentUserEntry(ranking.find(entry => entry.employeeId === CURRENT_EMPLOYEE_ID));
                  setCurrentAward(award);
              } catch (error) {
                  console.error("Falha ao carregar ranking:", error);
@@ -150,7 +141,7 @@
              }
          };
          loadRanking();
-     }, [currentMonth, toast]);
+     }, [currentMonth, toast, CURRENT_EMPLOYEE_ID, organizationId, db, authIsLoading]);
 
      const handlePreviousMonth = () => {
          setCurrentMonth(prev => subMonths(prev, 1));
@@ -216,19 +207,29 @@
          </div>
      );
 
-
-     if (isLoading) {
+     if (authIsLoading || (isLoading && !rankingData.length)) { // Show skeleton if auth is loading OR data is loading and no data yet
           return renderSkeleton();
      }
+
+     if (!CURRENT_EMPLOYEE_ID || !organizationId) {
+        return (
+            <Card className="m-4 p-4 text-center">
+                <CardHeader><CardTitle>Acesso Negado</CardTitle></CardHeader>
+                <CardContent>
+                    <p className="text-destructive">Informações de usuário ou organização não encontradas. Por favor, faça login novamente.</p>
+                    {/* Avoid direct router usage here if it causes issues during initial render */}
+                    {/* <Button asChild className="mt-4" onClick={() => window.location.href = '/login'}><a>Fazer Login</a></Button> */}
+                </CardContent>
+            </Card>
+        );
+    }
 
 
      return (
           <TooltipProvider>
-              <div className="space-y-4 p-4"> {/* Added padding */}
-                    {/* Header Card - Navigation & User Position */}
+              <div className="space-y-4 p-4">
                    <Card className="shadow-sm overflow-hidden border rounded-lg">
                      <CardHeader className="p-3 bg-muted/30 border-b">
-                         {/* Month Navigation */}
                         <div className="flex items-center justify-between gap-2">
                               <Button variant="ghost" size="icon" onClick={handlePreviousMonth} aria-label="Mês anterior" className="h-8 w-8 text-muted-foreground hover:text-foreground">
                                   <ChevronLeft className="h-5 w-5" />
@@ -241,7 +242,6 @@
                               </Button>
                           </div>
                      </CardHeader>
-                     {/* User's Position */}
                       <CardContent className="p-4">
                          {currentUserEntry ? (
                             <div className="flex items-center gap-4">
@@ -274,7 +274,6 @@
                       </CardContent>
                  </Card>
 
-                  {/* Current Award Card */}
                  {currentAward && (
                      <Card className="shadow-sm border rounded-lg bg-gradient-to-r from-yellow-50 via-amber-50 to-orange-50 dark:from-yellow-900/20 dark:via-amber-900/20 dark:to-orange-900/20">
                          <CardHeader className="p-3 flex flex-row items-start justify-between space-y-0">
@@ -318,13 +317,12 @@
                         </Card>
                    )}
 
-                 {/* Ranking Table Card */}
                  <Card className="flex-grow flex flex-col shadow-sm border rounded-lg overflow-hidden">
                      <CardHeader className="p-3 border-b bg-muted/30">
                          <CardTitle className="text-sm font-medium flex items-center gap-1.5"><BarChartHorizontal className="h-4 w-4"/> Classificação Geral</CardTitle>
                      </CardHeader>
                       <CardContent className="flex-grow p-0">
-                          {isLoading ? (
+                          {isLoading && rankingData.length === 0 ? ( // Show skeleton only if truly loading and no data yet
                              <div className="p-4 space-y-2">
                                 {Array.from({ length: 5 }).map((_, i) => (
                                     <div key={i} className="flex items-center gap-2">
@@ -336,8 +334,8 @@
                                 ))}
                              </div>
                          ) : (
-                             <div className="overflow-x-auto"> {/* Ensure table scrolls horizontally if needed */}
-                                <DataTable columns={rankingColumns(CURRENT_EMPLOYEE_ID)} data={rankingData} noPagination /> {/* Remove internal pagination */}
+                             <div className="overflow-x-auto">
+                                <DataTable columns={rankingColumns(CURRENT_EMPLOYEE_ID)} data={rankingData} noPagination />
                              </div>
                           )}
                      </CardContent>
@@ -348,3 +346,4 @@
      );
  }
 
+    
