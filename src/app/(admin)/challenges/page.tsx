@@ -112,6 +112,17 @@ const getStatusBadgeVariant = (status: Challenge['status']): "default" | "second
     return map[status] || 'outline';
 }
 
+const formatPeriod = (start?: string, end?: string) => {
+    if (!start || !end) return 'N/A';
+    try {
+        // Assuming start and end are already YYYY-MM-DD strings
+        return `${format(parseISO(start), 'dd/MM/yy', { locale: ptBR })} - ${format(parseISO(end), 'dd/MM/yy', { locale: ptBR })}`;
+    } catch (error) {
+        console.error("Error formatting date:", error, start, end);
+        return `${start} - ${end}`;
+    }
+}
+
 const ManageChallenges = () => {
     const { organizationId, user: currentUser, isLoading: authLoading } = useAuth();
     const [challenges, setChallenges] = React.useState<Challenge[]>([]);
@@ -238,23 +249,11 @@ const ManageChallenges = () => {
     const openAddForm = () => { setSelectedChallenge(null); setIsFormOpen(true); };
     React.useEffect(() => { if (selectedChallenge) setIsFormOpen(true); }, [selectedChallenge]);
 
-
-    const formatPeriod = (start?: string, end?: string) => {
-        if (!start || !end) return 'N/A';
-        try {
-            // Assuming start and end are already YYYY-MM-DD strings
-            return `${format(parseISO(start), 'dd/MM/yy', { locale: ptBR })} - ${format(parseISO(end), 'dd/MM/yy', { locale: ptBR })}`;
-        } catch (error) {
-            console.error("Error formatting date:", error, start, end);
-            return `${start} - ${end}`;
-        }
-    }
-
      const columns: ColumnDef<Challenge>[] = [
         { accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
         { accessorKey: "period", header: "Período", cell: ({ row }) => formatPeriod(row.original.periodStartDate, row.original.periodEndDate) },
         { 
-            id: 'points', // Explicit ID
+            id: 'points', 
             accessorKey: "points", 
             header: () => <div className="text-center"><Award className="inline-block mr-1 h-4 w-4"/>Pontos</div>, 
             cell: ({ row }) => <div className="text-center">{row.original.points}</div>, 
@@ -775,7 +774,7 @@ const ChallengeHistory = () => {
         { accessorKey: "title", header: "Título", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
         { accessorKey: "period", header: "Período", cell: ({ row }) => formatPeriod(row.original.periodStartDate, row.original.periodEndDate) },
         { 
-            id: 'historyPoints', // Explicit ID
+            id: 'historyPoints', 
             accessorKey: "points", 
             header: () => <div className="text-center">Pontos</div>, 
             cell: ({ row }) => <div className="text-center">{row.original.points}</div>, 
@@ -783,12 +782,12 @@ const ChallengeHistory = () => {
         },
         { accessorKey: "status", header: "Status", cell: ({ row }) => <Badge variant={getStatusBadgeVariant(row.original.status)}>{getStatusText(row.original.status)}</Badge> },
         { 
-            id: 'historyResults', // Explicit ID
+            id: 'historyResults', 
             header: () => <div className="text-center"><Users className="inline-block mr-1 h-4 w-4"/>Resultados</div>, 
             cell: ({ row }) => <div className="text-center text-xs">{getParticipantSummary(row.original.id)}</div> 
         },
         { 
-            id: "historyDetails", // Explicit ID
+            id: "historyDetails", 
             header: () => <div className="text-right">Detalhes</div>, 
             cell: ({ row }) => (<div className="text-right"><Button variant="outline" size="sm" onClick={() => openDetails(row.original.id)}><Eye className="mr-1 h-3 w-3" /> Ver</Button></div>), 
             size: 120 
