@@ -1,6 +1,6 @@
 
 // src/lib/challenge-service.ts
-import { getDb } from './firebase';
+import { getDb, getFirebaseApp } from './firebase'; // Added getFirebaseApp
 import type { Challenge, ChallengeParticipation } from '@/types/challenge';
 import {
   collection,
@@ -18,8 +18,8 @@ import {
   getDoc,
   writeBatch,
 } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
-import { format } from 'date-fns'; // Removed parseISO as it's not used here directly
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"; // Added Storage imports
+import { format } from 'date-fns';
 
 const CHALLENGES_COLLECTION = 'challenges';
 const PARTICIPATIONS_COLLECTION = 'challengeParticipations';
@@ -115,7 +115,7 @@ export const saveChallenge = async (
   return {
     id: savedDoc.id,
     ...savedData,
-    organizationId, 
+    organizationId,
     createdAt: savedData?.createdAt instanceof Timestamp ? savedData.createdAt.toDate() : new Date(),
     updatedAt: savedData?.updatedAt instanceof Timestamp ? savedData.updatedAt.toDate() : new Date(),
     eligibility: savedData?.eligibility || { type: 'all' },
@@ -131,7 +131,7 @@ export const deleteChallenge = async (organizationId: string, challengeId: strin
   if (!db || !organizationId) {
     throw new Error('[ChallengeService] Firestore not initialized or organizationId missing.');
   }
-  
+
   const batch = writeBatch(db);
 
   const challengeDocRef = doc(db, `organizations/${organizationId}/${CHALLENGES_COLLECTION}`, challengeId);
@@ -139,7 +139,7 @@ export const deleteChallenge = async (organizationId: string, challengeId: strin
 
   const participationsPath = `organizations/${organizationId}/${PARTICIPATIONS_COLLECTION}`;
   const participationsQuery = query(collection(db, participationsPath), where("challengeId", "==", challengeId));
-  
+
   try {
     const participationsSnapshot = await getDocs(participationsQuery);
     participationsSnapshot.forEach(docSnapshot => {
@@ -164,7 +164,7 @@ export const updateChallengeStatus = async (organizationId: string, challengeId:
     }
     const challengeDocRef = doc(db, `organizations/${organizationId}/${CHALLENGES_COLLECTION}`, challengeId);
     await updateDoc(challengeDocRef, { status, updatedAt: serverTimestamp() });
-    
+
     const updatedDoc = await getDoc(challengeDocRef);
     if (!updatedDoc.exists()) throw new Error("[ChallengeService] Challenge not found after status update.");
     const data = updatedDoc.data();
@@ -231,7 +231,7 @@ export const getApprovedChallengeParticipationsForOrganizationInPeriod = async (
   // Convert JS Dates to Firestore Timestamps for querying
   const startTimestamp = Timestamp.fromDate(startDate);
   const endTimestamp = Timestamp.fromDate(endDate);
-  
+
   const q = query(
     participationsCollectionRef,
     where("status", "==", "approved"),
@@ -277,7 +277,7 @@ export const evaluateSubmission = async (
     throw new Error('[ChallengeService] Firestore not initialized or organizationId missing.');
   }
   const participationDocRef = doc(db, `organizations/${organizationId}/${PARTICIPATIONS_COLLECTION}`, participationId);
-  
+
   const dataToUpdate: any = {
     status: evaluationData.status,
     score: evaluationData.score !== undefined ? evaluationData.score : null,
@@ -331,32 +331,54 @@ export const getChallengeDetails = async (organizationId: string, challengeId: s
   return { challenge, participants };
 };
 
-// Helper to upload submission file (example)
-export const uploadChallengeSubmissionFile = async (organizationId: string, challengeId: string, employeeId: string, file: File): Promise<string> => {
-    const storage = getStorage();
-    if (!storage) throw new Error("[ChallengeService] Firebase Storage not initialized.");
+/**
+ * Uploads a submission file for a challenge to Firebase Storage.
+ * @param organizationId The ID of the organization.
+ * @param challengeId The ID of the challenge.
+ * @param employeeId The ID of the employee submitting.
+ * @param file The file to upload.
+ * @returns Promise resolving to the download URL of the uploaded file.
+ */
+export const uploadChallengeSubmissionFile = async (
+  organizationId: string,
+  challengeId: string,
+  employeeId: string,
+  file: File
+): Promise<string> => {
+  const app = getFirebaseApp();
+  if (!app) {
+    throw new Error('[ChallengeService] Firebase App not initialized. Cannot upload file.');
+  }
+  const storage = getStorage(app);
+  if (!storage) {
+    throw new Error('[ChallengeService] Firebase Storage not initialized. Cannot upload file.');
+  }
+  if (!organizationId || !challengeId || !employeeId) {
+    throw new Error('[ChallengeService] Missing organizationId, challengeId, or employeeId for file upload.');
+  }
 
-    const filePath = `organizations/${organizationId}/challenges/${challengeId}/submissions/${employeeId}/${file.name}`;
-    const fileRef = ref(storage, filePath);
+  const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+  const filePath = `organizations/${organizationId}/challenges/${challengeId}/submissions/${employeeId}/${Date.now()}_${sanitizedFileName}`;
+  const fileRef = ref(storage, filePath);
 
-    try {
-        const snapshot = await uploadBytes(fileRef, file);
-        const downloadURL = await getDownloadURL(snapshot.ref);
-        console.log(`[ChallengeService] File uploaded for challenge ${challengeId} by ${employeeId}: ${downloadURL}`);
-        return downloadURL;
-    } catch (error) {
-        console.error(`[ChallengeService] Error uploading file for challenge ${challengeId}:`, error);
-        throw error;
-    }
+  try {
+    const snapshot = await uploadBytes(fileRef, file);
+    const downloadURL = await getDownloadURL(snapshot.ref);
+    console.log(`[ChallengeService] File uploaded for challenge ${challengeId} by ${employeeId}: ${downloadURL}`);
+    return downloadURL;
+  } catch (error) {
+    console.error(`[ChallengeService] Error uploading file for challenge ${challengeId}:`, error);
+    throw error;
+  }
 };
 
 // Helper to delete a submission file (example)
 export const deleteChallengeSubmissionFile = async (fileUrl: string): Promise<void> => {
     const storage = getStorage();
     if (!storage) throw new Error("[ChallengeService] Firebase Storage not initialized.");
-    
+
     try {
-        const fileRef = ref(storage, fileUrl); 
+        const fileRef = ref(storage, fileUrl);
         await deleteObject(fileRef);
         console.log(`[ChallengeService] File deleted: ${fileUrl}`);
     } catch (error) {
@@ -364,7 +386,7 @@ export const deleteChallengeSubmissionFile = async (fileUrl: string): Promise<vo
             console.warn(`[ChallengeService] File not found for deletion (might be already deleted): ${fileUrl}`);
         } else {
             console.error(`[ChallengeService] Error deleting file ${fileUrl}:`, error);
-            throw error; 
+            throw error;
         }
     }
 };
