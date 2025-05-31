@@ -15,9 +15,10 @@ import {
   orderBy,
   writeBatch,
   getCountFromServer,
+  collectionGroup, // Import collectionGroup
 } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage"; // Added Storage imports
-import { format, parseISO, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth, subMonths, subHours } from 'date-fns'; // Added subHours
 import { getAllTasksForOrganization } from './task-service';
 
 /**
@@ -89,7 +90,7 @@ export const getTasksForEmployeeOnDate = (
       case 'specific_days':
         if (Array.isArray(task.specificDays) && task.specificDays.includes(dayOfWeek.toString())) {
              appliesByPeriodicity = true;
-        } else if (task.id === 't6' && dayOfWeek === 5) {
+        } else if (task.id === 't6' && dayOfWeek === 5) { // Example specific logic from mock
             appliesByPeriodicity = true;
         }
         break;
@@ -224,8 +225,6 @@ export const saveEmployeeEvaluations = async (
   for (const taskEval of taskEvaluations) {
     if (taskEval.score === undefined) continue; // Skip tasks not scored
 
-    // Use existing evaluationId if present (for updates), or generate one for storage path uniqueness if new.
-    // The actual Firestore document ID will still be employeeId-taskId-dateString.
     const evaluationIdForStorage = taskEval.evaluationId || `${employeeId}-${taskEval.taskId}-${dateString}-new-${Date.now()}`;
     const firestoreDocId = `${employeeId}-${taskEval.taskId}-${dateString}`;
     const evalDocRef = doc(db, evaluationsPath, firestoreDocId);
@@ -236,12 +235,11 @@ export const saveEmployeeEvaluations = async (
       try {
         evidenceUrlToSave = await uploadEvaluationEvidence(
           organizationId,
-          evaluationIdForStorage, // Use the stable/generated ID for storage path
+          evaluationIdForStorage, 
           taskEval.evidenceFile
         );
       } catch (uploadError) {
         console.error(`[EvaluationService] Failed to upload evidence for task ${taskEval.taskId}, employee ${employeeId}. Skipping evidence for this task.`, uploadError);
-        // Optionally, decide if the whole save operation should fail or just skip this evidence
       }
     }
 
@@ -251,14 +249,13 @@ export const saveEmployeeEvaluations = async (
       evaluationDate: dateString,
       score: taskEval.score,
       justification: taskEval.justification || undefined,
-      evidenceUrl: evidenceUrlToSave, // This will be undefined if upload failed or no file
+      evidenceUrl: evidenceUrlToSave, 
       evaluatorId: evaluatorId,
       organizationId: organizationId,
       isDraft: false, 
       updatedAt: new Date(), 
     };
     
-    // For new evaluations, also set createdAt. For updates, merge will preserve existing createdAt.
     const existingEvalDoc = await getDoc(evalDocRef);
     if (!existingEvalDoc.exists()) {
         evaluationData.createdAt = new Date();
@@ -363,3 +360,35 @@ export const getMonthlyEvaluationStats = async (
   return stats.reverse();
 };
 
+/**
+ * Counts evaluations created or updated in the last N hours across all organizations.
+ * Requires a collection group index on 'evaluations' by 'updatedAt'.
+ * @param hoursAgo Number of hours in the past to check for activity.
+ * @returns Promise resolving to the count of recent evaluations.
+ */
+export const countRecentEvaluations = async (hoursAgo: number): Promise<number> => {
+    const db = getDb();
+    if (!db) {
+        console.error('Firestore not initialized. Cannot count recent evaluations.');
+        return 0;
+    }
+
+    const thresholdDate = subHours(new Date(), hoursAgo);
+    const thresholdTimestamp = Timestamp.fromDate(thresholdDate);
+
+    const evaluationsGroupRef = collectionGroup(db, 'evaluations');
+    const q = query(evaluationsGroupRef, where('updatedAt', '>=', thresholdTimestamp));
+
+    try {
+        const snapshot = await getCountFromServer(q);
+        return snapshot.data().count;
+    } catch (error) {
+        console.error(`Error counting recent evaluations (last ${hoursAgo}h):`, error);
+        // This error might indicate a missing index.
+        // Log a more specific message for the developer if it's a permission or index issue.
+        if ((error as any).code === 'failed-precondition') {
+            console.warn("Firestore query for recent evaluations failed. This might be due to a missing composite index for the 'evaluations' collection group on 'updatedAt'. Please check your Firestore indexes.");
+        }
+        return 0; // Return 0 on error to prevent breaking the dashboard
+    }
+};

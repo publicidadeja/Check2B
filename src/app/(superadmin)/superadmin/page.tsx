@@ -1,3 +1,4 @@
+
 // src/app/(superadmin)/superadmin/page.tsx
 'use client';
 
@@ -5,12 +6,14 @@ import * as React from 'react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Building, Users, BarChart3, DollarSign, Activity, AlertTriangle } from 'lucide-react';
 // Correção: ResponsiveContainer é importado de 'recharts', outros componentes de gráfico de @/components/ui/chart
-import { ChartContainer, BarChart, XAxis, YAxis, Bar, ChartTooltip, ChartTooltipContent, CartesianGrid } from "@/components/ui/chart";
-import { ResponsiveContainer } from "recharts";
+import { ResponsiveContainer, BarChart, XAxis, YAxis, Bar, CartesianGrid } from "recharts";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"; // Added ResponsiveContainer, CartesianGrid
 import type { ChartConfig } from "@/components/ui/chart";
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { getAllOrganizations, type Organization } from '@/lib/organization-service';
 import { getAllUsers, type UserProfile } from '@/lib/user-service';
+import { getAllPlans, type Plan } from '@/lib/plan-service'; // Import plan service and type
+import { countRecentEvaluations } from '@/lib/evaluation-service'; // Import evaluation service
 import { format, subMonths, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -47,8 +50,8 @@ export default function SuperAdminDashboardPage() {
     totalUsers: 0,
     totalAdmins: 0,
     totalCollaborators: 0,
-    monthlyRevenue: 1250.50, // Dado mockado
-    activityLast24h: 350,   // Dado mockado
+    monthlyRevenue: 0, // Initialize with 0
+    activityLast24h: 0,   // Initialize with 0
   });
   const [organizationsChartData, setOrganizationsChartData] = React.useState(initialChartData);
   const [error, setError] = React.useState<string | null>(null);
@@ -59,9 +62,11 @@ export default function SuperAdminDashboardPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const [allOrganizations, allUsers] = await Promise.all([
+        const [allOrganizations, allUsers, allPlans, recentActivityCount] = await Promise.all([
           getAllOrganizations(),
-          getAllUsers()
+          getAllUsers(),
+          getAllPlans(),
+          countRecentEvaluations(24), // Fetch evaluations in the last 24 hours
         ]);
 
         const totalOrganizations = allOrganizations.length;
@@ -71,6 +76,21 @@ export default function SuperAdminDashboardPage() {
         const totalAdmins = allUsers.filter(user => user.role === 'admin').length;
         const totalCollaborators = allUsers.filter(user => user.role === 'collaborator').length;
 
+        // Calculate MRR
+        let calculatedMrr = 0;
+        const plansMap = new Map(allPlans.map(plan => [plan.name, plan.priceMonthly])); // Assuming plan name in Organization matches Plan name
+        
+        allOrganizations.forEach(org => {
+            if (org.status === 'active') {
+                const planPrice = plansMap.get(org.plan); // org.plan stores the plan NAME ('basic', 'premium', etc.)
+                if (planPrice) {
+                    calculatedMrr += planPrice;
+                } else {
+                    console.warn(`Plan price not found for organization ${org.name} with plan name ${org.plan}`);
+                }
+            }
+        });
+        
         setDashboardData(prevData => ({
           ...prevData,
           totalOrganizations,
@@ -78,7 +98,8 @@ export default function SuperAdminDashboardPage() {
           totalUsers,
           totalAdmins,
           totalCollaborators,
-          // monthlyRevenue and activityLast24h permanecem mockados
+          monthlyRevenue: calculatedMrr,
+          activityLast24h: recentActivityCount,
         }));
 
         const orgCreationStats: { [key: string]: number } = {};
@@ -163,7 +184,7 @@ export default function SuperAdminDashboardPage() {
           {isLoading ? <LoadingSpinner size="sm" className="py-2"/> : (
             <>
               <div className="text-2xl font-bold">R$ {dashboardData.monthlyRevenue.toFixed(2)}</div>
-              <p className="text-xs text-muted-foreground">Estimativa (dado mockado)</p>
+              <p className="text-xs text-muted-foreground">Calculado de organizações ativas</p>
             </>
           )}
         </CardContent>
@@ -178,7 +199,7 @@ export default function SuperAdminDashboardPage() {
           {isLoading ? <LoadingSpinner size="sm" className="py-2"/> : (
             <>
               <div className="text-2xl font-bold">{dashboardData.activityLast24h}</div>
-              <p className="text-xs text-muted-foreground">Ações no sistema (dado mockado)</p>
+              <p className="text-xs text-muted-foreground">Avaliações salvas nas últimas 24h</p>
             </>
           )}
         </CardContent>
@@ -197,7 +218,8 @@ export default function SuperAdminDashboardPage() {
             <LoadingSpinner size="md" text="Carregando gráfico..." />
           ) : (
             <ChartContainer config={chartConfig} className="h-full w-full">
-              <ResponsiveContainer width="100%" height="100%">
+              {/* ResponsiveContainer importado diretamente de recharts */}
+              <ResponsiveContainer width="100%" height="100%"> 
                 <BarChart accessibilityLayer data={organizationsChartData} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis
@@ -219,3 +241,4 @@ export default function SuperAdminDashboardPage() {
     </div>
   );
 }
+
