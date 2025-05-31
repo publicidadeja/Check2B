@@ -1,0 +1,42 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Regras para fotos de perfil de usuário
+    // Permite que o usuário autenticado leia e escreva sua própria foto de perfil.
+    match /profile_photos/{userId}/{allPaths=**} {
+      allow read: if request.auth != null; // Ou mais restrito se necessário
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Regras para evidências de avaliação
+    // Permite que administradores da organização escrevam e membros leiam.
+    match /organizations/{orgId}/evaluations_evidence/{evaluationId}/{fileName} {
+      allow read: if request.auth != null && request.auth.token.organizationId == orgId;
+      allow write: if request.auth != null && request.auth.token.organizationId == orgId && request.auth.token.role == 'admin';
+    }
+
+    // Regras para submissões de desafios
+    // Permite que o colaborador que participa escreva, e o admin da organização leia/escreva (para avaliação).
+    match /organizations/{orgId}/challenges/{challengeId}/submissions/{employeeId}/{fileName} {
+      allow read: if request.auth != null && request.auth.token.organizationId == orgId && (request.auth.uid == employeeId || request.auth.token.role == 'admin');
+      allow write: if request.auth != null && request.auth.token.organizationId == orgId && request.auth.uid == employeeId; // Colaborador pode submeter
+      // Admins podem precisar de write para deletar/modificar se necessário, mas geralmente é leitura.
+    }
+
+    // Regras para fotos de entrega de prêmios (CONFORME SOLICITADO)
+    // Permite que administradores da organização correspondente escrevam.
+    // Permite que membros autenticados da organização correspondente leiam.
+    match /organizations/{orgId}/award_deliveries/{historyId}/{fileName} {
+      allow read: if request.auth != null && request.auth.token.organizationId == orgId;
+      allow write: if request.auth != null && request.auth.token.organizationId == orgId && request.auth.token.role == 'admin';
+    }
+
+    // Regra geral mais restritiva: negar todas as outras leituras/escritas por padrão
+    // match /{allPaths=**} {
+    //   allow read, write: if false;
+    // }
+    // Nota: A regra acima pode ser muito restritiva se você tiver outros caminhos que precisam de acesso.
+    // É melhor definir regras explícitas para cada caminho necessário.
+  }
+}

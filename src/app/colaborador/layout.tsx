@@ -223,172 +223,186 @@ export function MobileLayout({ children }: MobileLayoutProps) {
    };
 
   return (
-    <TooltipProvider>
-      <div className="flex flex-col min-h-screen w-full bg-gradient-to-b from-sky-50 via-white to-gray-100 dark:from-slate-900 dark:via-slate-950 dark:to-slate-800">
+  //{<TooltipProvider>
+     // <div className="flex flex-col min-h-screen w-full bg-gradient-to-b from-sky-50 via-white to-gray-100 dark:from-slate-900 dark:via-slate-950 dark:to-slate-800">
 
-        {/* Header */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-             {/* Mobile Menu Trigger */}
-             <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
-                <SheetTrigger asChild>
-                    <Button variant="ghost" size="icon" className="shrink-0">
-                        <Menu className="h-5 w-5" />
-                        <span className="sr-only">Abrir menu</span>
-                    </Button>
-                </SheetTrigger>
-                <SheetContent side="left" className="flex flex-col p-0 w-72">
-                     <VisuallyHidden><SheetTitle>Menu Principal</SheetTitle></VisuallyHidden>
-                     <SheetHeader className='p-4 border-b'>
-                         <SheetTitle className="flex items-center gap-2 text-lg font-semibold">
-                            <Logo className="w-7 h-7 text-primary" />
-                            <span>Check2B</span>
-                       </SheetTitle>
-                       <SheetDescription className="text-xs text-muted-foreground">Menu Colaborador</SheetDescription>
-                     </SheetHeader>
-                     <ScrollArea className="flex-grow">
-                         <nav className="flex flex-col gap-1 p-4 text-base font-medium">
-                            {navItems.map((item) => (
-                                <Link
-                                    key={item.href}
-                                    href={item.href}
-                                    className={cn(
-                                        "flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:bg-muted hover:text-primary",
-                                        (pathname === item.href || (item.href === '/colaborador/dashboard' && pathname === '/colaborador')) ? "bg-muted text-primary font-semibold" : "text-muted-foreground"
-                                    )}
-                                    onClick={() => setIsMobileMenuOpen(false)}
-                                >
-                                    <item.icon className="h-5 w-5" />
-                                    {item.label}
-                                </Link>
-                            ))}
-                         </nav>
-                     </ScrollArea>
-                     <div className="mt-auto border-t p-4">
-                        {!isGuest && user ? ( // Check if user object exists
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 overflow-hidden">
-                                    <Avatar className="h-9 w-9 flex-shrink-0">
-                                        <AvatarImage src={user.photoURL || undefined} alt={user.displayName || undefined} />
-                                        <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
-                                    </Avatar>
-                                    <span className="text-sm font-medium truncate flex-1">{user.displayName || 'Colaborador'}</span>
-                                </div>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}>
-                                    <LogOut className="h-4 w-4" />
-                                    <span className="sr-only">Sair</span>
-                                </Button>
-                            </div>
-                            ) : (
-                            <Button variant="outline" size="sm" className='w-full' onClick={() => { router.push('/login'); setIsMobileMenuOpen(false); }}>
-                                Fazer Login
-                            </Button>
-                         )}
-                     </div>
-                </SheetContent>
-             </Sheet>
+    //    {/* Header - Mobile First */}
+     //   <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    //         {/* Mobile Menu Trigger (Left) */}
+     //        <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+    //            <SheetTrigger asChild>
+     //               <Button variant="ghost" size="icon" className="shrink-0 md:hidden"> {/* Only show on mobile */}
+     //                   <Menu className="h-5 w-5" />
+     //                   <span className="sr-only">Abrir menu</span>
+     //               </Button>
+     //           </SheetTrigger>
+     //           <SheetContent side="left" className="flex flex-col p-0 w-72">
+     //                <SheetHeader className='p-4 border-b'>
+     //                    <SheetTitle className="flex items-center gap-2 text-lg font-semibold">
+     //                        {/* Placeholder Logo */}
+     //                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7 text-primary">
+     //                           <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm13.36-1.814a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z" clipRule="evenodd" />
+     //                        </svg>
+     //                       <span>Check2B</span>
+     //                  </SheetTitle>
+     //                  <SheetDescription>Menu de Navegação</SheetDescription>
+     //                </SheetHeader>
+     //                <nav className="flex flex-col gap-1 p-4 text-base font-medium flex-grow">
+     //                   {navItems.map((item) => (
+     //                       <Link
+     //                           key={item.href}
+     //                           href={item.href}
+     //                           className={cn(
+     //                               "flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:bg-muted hover:text-primary",
+     //                               pathname === item.href ? "bg-muted text-primary" : "text-muted-foreground"
+     //                           )}
+     //                           onClick={() => setIsMobileMenuOpen(false)} // Close sheet on navigation
+     //                       >
+     //                           <item.icon className="h-5 w-5" />
+     //                           {item.label}
+     //                       </Link>
+     //                    ))}
+     //                </nav>
+     //                {/* Mobile Menu Footer - User Info / Login / Logout */}
+     //                <div className="mt-auto border-t p-4">
+     //                   {!isGuest ? (
+     //                       <div className="flex items-center justify-between">
+     //                           <div className="flex items-center gap-2 overflow-hidden">
+     //                               <Avatar className="h-9 w-9 flex-shrink-0">
+     //                                   <AvatarImage src={mockEmployee.photoUrl} alt={mockEmployee.name} />
+     //                                   <AvatarFallback>{getInitials(mockEmployee.name)}</AvatarFallback>
+     //                               </Avatar>
+     //                               <span className="text-sm font-medium truncate flex-1">{mockEmployee.name}</span>
+     //                           </div>
+     //                           <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}>
+     //                               <LogOut className="h-4 w-4" />
+     //                               <span className="sr-only">Sair</span>
+     //                           </Button>
+     //                       </div>
+     //                       ) : (
+     //                       <Button variant="outline" size="sm" className='w-full' onClick={() => { router.push('/login'); setIsMobileMenuOpen(false); }}>
+     //                           Fazer Login
+     //                       </Button>
+     //                    )}
+     //                </div>
+     //           </SheetContent>
+     //        </Sheet>
 
-            {/* Title */}
-            <h1 className="text-base font-semibold text-center flex-1 truncate px-2">
-                {getCurrentTitle()}
-            </h1>
+     //       {/* Title centered on mobile, left-aligned on desktop */}
+     //        <h1 className="text-lg font-semibold text-center md:text-left flex-1 truncate px-2">
+     //          {getCurrentTitle()}
+     //        </h1>
 
-            {/* Notifications */}
-             <div className="flex items-center gap-1">
-                 <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="relative rounded-full h-9 w-9">
-                        <Bell className="h-5 w-5" />
-                        {unreadCount > 0 && !isGuest && (
-                            <Badge
-                            variant="destructive"
-                            className="absolute -top-1 -right-1 h-4 min-w-[1rem] px-1 py-0 text-[10px] flex items-center justify-center rounded-full animate-pulse"
-                            >
-                            {unreadCount > 9 ? '9+' : unreadCount}
-                            </Badge>
-                        )}
-                        <span className="sr-only">Abrir notificações</span>
-                        </Button>
-                    </DropdownMenuTrigger>
-                     <DropdownMenuContent align="end" className="w-80">
-                        <DropdownMenuLabel className="flex justify-between items-center">
-                            Notificações
-                            {unreadCount > 0 && !isGuest && (
-                                <Button variant="link" size="sm" className="h-auto p-0 text-xs text-primary" onClick={handleMarkAllRead}>
-                                    Marcar todas como lidas
-                                </Button>
-                            )}
-                        </DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                         <ScrollArea className="h-[300px]">
-                            {isLoadingNotifications && !isGuest ? (
-                                 <div className="flex justify-center items-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-                            ) : isGuest ? (
-                                 <DropdownMenuItem disabled className="text-center justify-center py-4 text-muted-foreground italic text-xs">Login necessário para ver notificações</DropdownMenuItem>
-                            ) : notifications.length === 0 ? (
-                                <DropdownMenuItem disabled className="text-center justify-center py-4 text-muted-foreground italic text-xs">Nenhuma notificação</DropdownMenuItem>
-                            ) : (
-                                notifications.map((notification) => (
-                                <DropdownMenuItem
-                                    key={notification.id}
-                                    className={cn("flex items-start gap-3 cursor-pointer p-2 data-[highlighted]:bg-muted/50 group min-h-[50px]", !notification.read && "bg-accent/20 dark:bg-accent/10 font-medium")}
-                                    onClick={() => handleNotificationClick(notification)}
-                                    onSelect={(e) => e.preventDefault()}
-                                    style={{whiteSpace: 'normal'}}
-                                >
-                                    <div className="flex-shrink-0 pt-1 text-muted-foreground">
-                                        {getNotificationIcon(notification.type)}
-                                    </div>
-                                    <div className={cn("flex-1 space-y-0.5")}>
-                                        <p className="text-xs leading-tight">{notification.message}</p>
-                                        <p className="text-[10px] text-muted-foreground/80">{notification.timestamp.toLocaleTimeString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
-                                    </div>
-                                     {!notification.read && (
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                 <Button
-                                                     variant="ghost"
-                                                     size="icon"
-                                                     className="h-6 w-6 text-muted-foreground hover:text-primary flex-shrink-0 ml-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                     onClick={(e) => handleMarkRead(notification.id, e)}
-                                                     aria-label="Marcar como lida"
-                                                 >
-                                                     <Check className="h-4 w-4" />
-                                                 </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent side="left"><p>Marcar como lida</p></TooltipContent>
-                                        </Tooltip>
-                                     )}
-                                </DropdownMenuItem>
-                                ))
-                            )}
-                        </ScrollArea>
-                        {process.env.NODE_ENV === 'development' && !isGuest && currentUserId && ( // Only show if not guest and user ID exists
-                            <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="p-1">
-                                 <Button variant="outline" size="sm" className="w-full text-xs" onClick={handleTestNotification}>
-                                    Testar Notificação
-                                 </Button>
-                            </DropdownMenuItem>
-                            </>
-                        )}
-                    </DropdownMenuContent>
-                </DropdownMenu>
-             </div>
-        </header>
+     //        {/* Right side Actions: Notifications Dropdown */}
+     //         <div className="flex items-center gap-1">
+     //            {/* Notification Dropdown */}
+     //            {/* {!isGuest && ( */}
+     //            <DropdownMenu>
+     //               <DropdownMenuTrigger asChild>
+     //                   <Button variant="ghost" size="icon" className="relative rounded-full h-9 w-9"> {/* Increased size slightly */}
+     //                   <Bell className="h-5 w-5" />
+     //                   {unreadCount > 0 && (
+     //                       <Badge
+     //                       variant="destructive"
+     //                       className="absolute -top-1 -right-1 h-4 min-w-[1rem] px-1 py-0 text-[10px] flex items-center justify-center rounded-full animate-pulse"
+     //                       >
+     //                       {unreadCount > 9 ? '9+' : unreadCount}
+     //                      </Badge>
+     //                   )}
+     //                   <span className="sr-only">Abrir notificações</span>
+     //                   </Button>
+     //               </DropdownMenuTrigger>
+     //                <DropdownMenuContent align="end" className="w-80">
+     //                   <DropdownMenuLabel className="flex justify-between items-center">
+     //                       Notificações
+     //                       {unreadCount > 0 && (
+     //                           <Button variant="link" size="sm" className="h-auto p-0 text-xs text-primary" onClick={handleMarkAllRead}>
+     //                               Marcar todas como lidas
+     //                           </Button>
+     //                       )}
+     //                   </DropdownMenuLabel>
+     //                   <DropdownMenuSeparator />
+     //                   <ScrollArea className="h-[300px]">
+     //                       {isLoadingNotifications ? (
+     //                            <div className="flex justify-center items-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+     //                       ) : notifications.length === 0 ? (
+     //                           <DropdownMenuItem disabled className="text-center justify-center py-4 text-muted-foreground italic text-xs">Nenhuma notificação</DropdownMenuItem>
+     //                       ) : (
+     //                           notifications.map((notification) => (
+     //                           <DropdownMenuItem
+     //                               key={notification.id}
+     //                               className={cn("flex items-start gap-3 cursor-pointer p-2 data-[highlighted]:bg-muted/50 group min-h-[50px]", !notification.read && "bg-accent/20 dark:bg-accent/10 font-medium")}
+     //                               onClick={() => handleNotificationClick(notification)}
+     //                               onSelect={(e) => e.preventDefault()} // Prevent auto-close on select
+     //                               style={{whiteSpace: 'normal'}} // Allow text wrapping
+     //                           >
+     //                               <div className="flex-shrink-0 pt-1 text-muted-foreground">
+     //                                   {getNotificationIcon(notification.type)}
+     //                               </div>
+     //                               <div className={cn("flex-1 space-y-0.5")}>
+     //                                   <p className="text-xs leading-tight">{notification.message}</p>
+     //                                   <p className="text-[10px] text-muted-foreground/80">{notification.timestamp.toLocaleTimeString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+     //                               </div>
+     //                                {!notification.read && (
+     //                                   <Tooltip>
+     //                                       <TooltipTrigger asChild>
+     //                                            <Button
+     //                                                variant="ghost"
+     //                                                size="icon"
+     //                                                className="h-6 w-6 text-muted-foreground hover:text-primary flex-shrink-0 ml-1 opacity-0 group-hover:opacity-100 transition-opacity"
+     //                                                onClick={(e) => handleMarkRead(notification.id, e)}
+     //                                                aria-label="Marcar como lida"
+     //                                            >
+     //                                                <Check className="h-4 w-4" />
+     //                                            </Button>
+     //                                       </TooltipTrigger>
+     //                                       <TooltipContent side="left"><p>Marcar como lida</p></TooltipContent>
+     //                                  </Tooltip>
+     //                                )}
+     //                           </DropdownMenuItem>
+     //                           ))
+     //                       )}
+     //                   </ScrollArea>
+     //                    {/* Add Test Button for Development */}
+     //                   {process.env.NODE_ENV === 'development' && (
+     //                       <>
+     //                       <DropdownMenuSeparator />
+     //                       <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="p-1">
+     //                            <Button variant="outline" size="sm" className="w-full text-xs" onClick={handleTestNotification}>
+     //                               Testar Notificação
+     //                            </Button>
+     //                       </DropdownMenuItem>
+     //                       </>
+     //                   )}
+     //               </DropdownMenuContent>
+     //           </DropdownMenu>
+     //           {/* // )} */}
+     //             {/* Guest Button */}
+     //            {/* {isGuest && (
+     //                <Button variant="outline" size="sm" onClick={() => router.push('/login')}>
+     //                   Login
+     //                </Button>
+     //            )} */}
+     //        </div>
+     //   </header>
 
-        <main className="flex-1 overflow-y-auto p-4 pb-20">
-             {children}
-        </main>
+     //   {/* Main Content Area - Padding adjusted for bottom nav */}
+     //   <main className="flex-1 overflow-auto p-4 pb-20"> {/* Add padding-bottom for bottom nav */}
+     //        {children}
+     //   </main>
 
-        {/* Bottom Navigation for Mobile */}
-        {isMobile && <BottomNavigation />}
+     //   {/* Bottom Navigation for Mobile */}
+     //   {isMobile && <BottomNavigation />}
 
-        <Toaster />
-      </div>
-    </TooltipProvider>
+     //   <Toaster />
+     // </div>
+    // </TooltipProvider>}
+    <>
+    {children}
+    </>
   );
 }
+
 
 export default MobileLayout;
 
