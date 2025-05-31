@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, UserPlus, DatabaseBackup, Settings2, UserCog, FileClock, AlertTriangle, Trash2, UserMinus } from 'lucide-react';
+import { Loader2, UserPlus, DatabaseBackup, Settings2, UserCog, FileClock, AlertTriangle, Trash2, UserMinus, PlusCircle } from 'lucide-react'; // Added PlusCircle
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
@@ -24,7 +24,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getFirebaseApp } from '@/lib/firebase';
 import { getUsersByRoleAndOrganization } from '@/lib/user-service';
 import type { UserProfile } from '@/types/user';
-import { AddAdminToOrgForm, type AddAdminFormData } from '@/components/admin/add-admin-to-org-form'; // Import the new form
+import { AddAdminToOrgForm, type AddAdminFormData } from '@/components/admin/add-admin-to-org-form';
 
 const generalSettingsSchema = z.object({
     bonusValue: z.coerce.number().min(0, "Valor não pode ser negativo.").default(100),
@@ -69,8 +69,8 @@ export default function SettingsPage() {
 
     const [isLoadingAdmins, setIsLoadingAdmins] = React.useState(true);
     const [admins, setAdmins] = React.useState<UserProfile[]>([]);
-    const [isAddAdminDialogOpen, setIsAddAdminDialogOpen] = React.useState(false); // State for new dialog
-    const [isProcessingAdminAction, setIsProcessingAdminAction] = React.useState(false); // General processing state for admin actions
+    const [isAddAdminDialogOpen, setIsAddAdminDialogOpen] = React.useState(false);
+    const [isProcessingAdminAction, setIsProcessingAdminAction] = React.useState(false);
 
     const [adminToDemote, setAdminToDemote] = React.useState<UserProfile | null>(null);
     const [isDemotingAdminDialogOpen, setIsDemotingAdminDialogOpen] = React.useState(false);
@@ -93,21 +93,28 @@ export default function SettingsPage() {
 
     React.useEffect(() => {
         const loadInitialData = async () => {
-            if (!organizationId || authLoading) {
-                if (!authLoading) setIsLoadingPageData(false);
+            if (authLoading) { // Wait for auth to resolve first
                 return;
             }
             setIsLoadingPageData(true);
             try {
-                const settings = await getGeneralSettings(organizationId);
-                if (settings) {
-                    form.reset({
-                        bonusValue: settings.bonusValue,
-                        zeroLimit: settings.zeroLimit,
-                    });
+                if (organizationId) {
+                    const settings = await getGeneralSettings(organizationId);
+                    if (settings) {
+                        form.reset({
+                            bonusValue: settings.bonusValue,
+                            zeroLimit: settings.zeroLimit,
+                        });
+                    }
+                    await loadAdmins();
+                    loadBackups(); // This is mock, so no need to await if it's just setting state
+                } else if (adminAuthRole === 'admin' && !organizationId) {
+                     // Admin without org ID, settings form will be disabled, but other sections might load differently
+                    console.warn("[SettingsPage] Admin is not associated with an organization. Settings will be disabled.");
+                    // Mock sections can still load for UI consistency if desired
+                    loadBackups();
+                    setIsLoadingAdmins(false); // No admins to load if no org ID
                 }
-                await loadAdmins();
-                loadBackups();
             } catch (error) {
                 console.error("Erro ao carregar configurações gerais ou admins:", error);
                 toast({ title: "Erro", description: "Não foi possível carregar dados da página.", variant: "destructive" });
@@ -116,7 +123,7 @@ export default function SettingsPage() {
             }
         };
         loadInitialData();
-    }, [organizationId, authLoading, form, toast]);
+    }, [organizationId, authLoading, adminAuthRole, form, toast]);
 
 
     const handleSaveGeneralSettings = async (data: z.infer<typeof generalSettingsSchema>) => {
@@ -131,7 +138,7 @@ export default function SettingsPage() {
                 title: "Sucesso!",
                 description: "Configurações gerais salvas.",
             });
-            form.reset(data); 
+            form.reset(data);
         } catch (error) {
             console.error("Erro ao salvar config geral:", error);
             toast({ title: "Erro", description: "Falha ao salvar configurações gerais.", variant: "destructive" });
@@ -141,13 +148,18 @@ export default function SettingsPage() {
     };
 
     const loadAdmins = React.useCallback(async () => {
-        if (!organizationId) return;
+        if (!organizationId) {
+            setAdmins([]);
+            setIsLoadingAdmins(false);
+            return;
+        }
         setIsLoadingAdmins(true);
         try {
             const data = await getUsersByRoleAndOrganization('admin', organizationId);
-            setAdmins(data.filter(admin => admin.uid !== adminUser?.uid));
+            setAdmins(data.filter(admin => admin.uid !== adminUser?.uid)); // Exclude self
         } catch (error) {
             toast({ title: "Erro", description: "Falha ao carregar lista de administradores.", variant: "destructive" });
+            setAdmins([]);
         } finally {
             setIsLoadingAdmins(false);
         }
@@ -161,12 +173,12 @@ export default function SettingsPage() {
         setIsProcessingAdminAction(true);
         const functions = getFunctions(firebaseApp);
         const addAdminFunction = httpsCallable(functions, 'addAdminToMyOrg');
-        
+
         try {
              await addAdminFunction({ name: data.name, email: data.email, password: data.password });
              toast({ title: "Sucesso", description: `Administrador ${data.name} adicionado com sucesso.` });
              await loadAdmins();
-             // setIsAddAdminDialogOpen(false); // Form will close itself via onOpenChange
+             setIsAddAdminDialogOpen(false); // Close dialog on success
         } catch (error: any) {
              console.error("Erro ao adicionar admin via CF:", error);
              toast({ title: "Erro ao Adicionar Admin", description: error.message || "Falha ao adicionar administrador.", variant: "destructive" });
@@ -291,6 +303,7 @@ export default function SettingsPage() {
                                       step="0.01"
                                       min="0"
                                       {...field}
+                                      disabled={!organizationId}
                                     />
                                   </FormControl>
                                    <FormDescription>
@@ -314,6 +327,7 @@ export default function SettingsPage() {
                                       step="1"
                                       min="0"
                                       {...field}
+                                      disabled={!organizationId}
                                      />
                                    </FormControl>
                                    <FormDescription>
@@ -352,6 +366,8 @@ export default function SettingsPage() {
                              <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Email</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
                              <TableBody>
                                 {isLoadingAdmins ? (<TableRow><TableCell colSpan={3} className="text-center py-4"><Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                                ) : !organizationId ? (
+                                     <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-4">Nenhuma organização selecionada.</TableCell></TableRow>
                                 ) : admins.length === 0 ? (<TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-4">Nenhum outro administrador encontrado.</TableCell></TableRow>
                                 ) : (admins.map(admin => (
                                         <TableRow key={admin.uid}><TableCell className="font-medium">{admin.name}</TableCell><TableCell>{admin.email}</TableCell><TableCell className="text-right">
