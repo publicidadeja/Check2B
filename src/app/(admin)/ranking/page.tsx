@@ -6,7 +6,7 @@ import { format, parseISO, subMonths, addMonths, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
-import { Trophy, Cog, History, Award as AwardIcon, Crown, Medal, BarChartHorizontal, Loader2, ListFilter, PlusCircle, Edit, Trash2, MoreHorizontal, FileClock, User, Activity, AlertTriangle, Eye } from "lucide-react";
+import { Trophy, Cog, History, Award as AwardIcon, Crown, Medal, BarChartHorizontal, Loader2, ListFilter, PlusCircle, Edit, Trash2, MoreHorizontal, FileClock, User, Activity, AlertTriangle, Eye, CheckCircle } from "lucide-react";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -54,12 +54,13 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { getAllAwards, saveAward, deleteAward, getActiveAward, getAwardById } from '@/lib/ranking-service'; // Import Firestore service functions
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'; // Ensure Tooltip components are imported
-import { getDb } from '@/lib/firebase'; // Import getDb
-import { TrendingDown, TrendingUp, Minus } from 'lucide-react'; // Import trend icons
+import { getAllAwards, saveAward, deleteAward, getActiveAward, getAwardById, saveAwardHistory, getAwardHistory } from '@/lib/ranking-service'; // Import Firestore service functions
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { getDb } from '@/lib/firebase';
+import type { Firestore } from 'firebase/firestore';
+import { TrendingDown, TrendingUp, Minus } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { mockEmployeesSimple, fetchRankingData as fetchMockRankingData, mockHistory, confirmWinners as confirmMockWinners, mockDepartments } from '@/lib/mockData/ranking'; // Import mock data and functions
+import { mockEmployeesSimple, fetchRankingData as fetchMockRankingData, mockDepartments } from '@/lib/mockData/ranking';
 
 // --- Type Definitions ---
 export interface Award {
@@ -70,13 +71,13 @@ export interface Award {
     nonMonetaryValue?: string;
     imageUrl?: string;
     period: string; // 'recorrente' or 'YYYY-MM'
-    eligibilityCriteria?: boolean; // New: Added for excelence requirement
+    eligibilityCriteria?: boolean;
     winnerCount: number;
-    valuesPerPosition?: { [key: number]: { monetary?: number, nonMonetary?: string } }; // New: Added for position-specific values
-    eligibleDepartments: string[]; // 'all' or list of department names
-    status: 'active' | 'inactive' | 'draft'; // Added status
-    isRecurring: boolean; // Explicit flag for recurrence
-    specificMonth?: Date; // Date object for specific month
+    valuesPerPosition?: { [key: number]: { monetary?: number, nonMonetary?: string } };
+    eligibleDepartments: string[];
+    status: 'active' | 'inactive' | 'draft';
+    isRecurring: boolean;
+    specificMonth?: Date;
 }
 
 export interface RankingEntry {
@@ -88,16 +89,17 @@ export interface RankingEntry {
     role: string;
     score: number;
     zeros: number;
-    trend?: 'up' | 'down' | 'stable'; // Added trend
+    trend?: 'up' | 'down' | 'stable';
 }
 
-interface AwardHistoryEntry {
+export interface AwardHistoryEntry {
     id: string;
     period: string; // YYYY-MM
     awardTitle: string;
     winners: { rank: number; employeeName: string; prize: string }[];
     deliveryPhotoUrl?: string;
     notes?: string;
+    createdAt?: Date; // Added for Firestore
 }
 
 // --- Zod Schema for Award Form ---
@@ -111,7 +113,7 @@ const awardSchema = z.object({
     specificMonth: z.date().optional(),
     eligibilityCriteria: z.boolean().default(false),
     winnerCount: z.coerce.number().int("Número de ganhadores deve ser inteiro.").min(1, "Deve haver pelo menos 1 ganhador.").default(1),
-    valuesPerPosition: z.record(z.object({ monetary: z.number().optional(), nonMonetary: z.string().optional() })).optional(), // Added validation for per-position values
+    valuesPerPosition: z.record(z.object({ monetary: z.number().optional(), nonMonetary: z.string().optional() })).optional(),
     eligibleDepartments: z.array(z.string()).min(1, "Selecione pelo menos um departamento ou 'Todos'."),
     status: z.enum(['active', 'inactive', 'draft']).default('draft'),
 }).refine(data => data.isRecurring || data.specificMonth, {
@@ -125,10 +127,6 @@ const awardSchema = z.object({
 
 type AwardFormData = z.infer<typeof awardSchema>;
 
-
-// --- Mock Data Moved to lib/mockData/ranking.ts ---
-
-// --- Mock API Functions (moved to lib/mockData/ranking.ts) ---
 
 // --- Utility Functions ---
 const exportData = (data: any[], filename: string) => {
@@ -160,14 +158,14 @@ const getTrendIcon = (trend?: 'up' | 'down' | 'stable') => {
          case 'up': return <TrendingUp className="h-4 w-4 text-green-500" />;
          case 'down': return <TrendingDown className="h-4 w-4 text-red-500" />;
          case 'stable': return <Minus className="h-4 w-4 text-muted-foreground" />;
-         default: return <Activity className="h-4 w-4 text-muted-foreground opacity-50"/>; // Default icon if no trend data
+         default: return <Activity className="h-4 w-4 text-muted-foreground opacity-50"/>;
      }
  };
 
 // --- Ranking Table Columns ---
 const rankingColumns: ColumnDef<RankingEntry>[] = [
      {
-        id: 'rank', // Explicit ID
+        id: 'rank',
         accessorKey: "rank",
         header: () => <div className="text-center w-8">#</div>,
         cell: ({ row }) => (
@@ -196,21 +194,21 @@ const rankingColumns: ColumnDef<RankingEntry>[] = [
     { accessorKey: "department", header: "Departamento" },
     { accessorKey: "role", header: "Função" },
     {
-        id: 'score', // Explicit ID
+        id: 'score',
         accessorKey: "score",
         header: () => <div className="text-right">Pontuação</div>,
         cell: ({ row }) => <div className="text-right font-semibold">{row.getValue("score")}</div>,
         size: 100,
     },
      {
-        id: 'zeros', // Explicit ID
+        id: 'zeros',
         accessorKey: "zeros",
         header: () => <div className="text-right">Zeros</div>,
         cell: ({ row }) => <div className={`text-right ${Number(row.getValue("zeros")) > 0 ? 'text-destructive font-semibold' : ''}`}>{row.getValue("zeros")}</div>,
         size: 80,
     },
       {
-         id: 'trend', // Explicit ID
+         id: 'trend',
          accessorKey: "trend",
          header: () => <div className="text-center">Tendência</div>,
          cell: ({ row }) => <div className="flex justify-center">{getTrendIcon(row.original.trend)}</div>,
@@ -236,11 +234,15 @@ const AwardConfiguration = () => {
     const [awardToDelete, setAwardToDelete] = React.useState<Award | null>(null);
     const [isDeleting, setIsDeleting] = React.useState(false);
     const { toast } = useToast();
-    const db = getDb(); // Get Firestore instance
+    const [db, setDb] = React.useState<Firestore | null>(null);
+
+    React.useEffect(() => {
+        setDb(getDb());
+    }, []);
 
     const loadAwards = React.useCallback(async () => {
         if (!db) {
-            toast({ title: "Erro", description: "Erro na conexão com banco de dados.", variant: "destructive" });
+            toast({ title: "Erro de Conexão", description: "Não foi possível conectar ao banco de dados para carregar premiações.", variant: "destructive" });
             setIsLoading(false);
             return;
         }
@@ -257,8 +259,8 @@ const AwardConfiguration = () => {
     }, [toast, db]);
 
     React.useEffect(() => {
-        loadAwards();
-    }, [loadAwards]);
+        if(db) loadAwards();
+    }, [loadAwards, db]);
 
     const form = useForm<AwardFormData>({
         resolver: zodResolver(awardSchema),
@@ -292,7 +294,6 @@ const AwardConfiguration = () => {
             nonMonetaryValue: award.nonMonetaryValue || '',
             imageUrl: award.imageUrl || '',
             isRecurring: award.isRecurring,
-            // Handle potential string date from Firestore (though saved as Date)
              specificMonth: award.specificMonth ? (award.specificMonth instanceof Date ? award.specificMonth : parseISO(award.specificMonth as unknown as string)) : undefined,
             eligibilityCriteria: award.eligibilityCriteria || false,
             winnerCount: award.winnerCount,
@@ -305,7 +306,7 @@ const AwardConfiguration = () => {
 
     const handleSaveAward = async (data: AwardFormData) => {
         if (!db) {
-             toast({ title: "Erro", description: "Erro na conexão com banco de dados.", variant: "destructive" });
+             toast({ title: "Erro de Conexão", description: "Não foi possível conectar ao banco de dados para salvar.", variant: "destructive" });
              return;
         }
         setIsSaving(true);
@@ -329,8 +330,8 @@ const AwardConfiguration = () => {
             eligibleDepartments: data.eligibleDepartments,
             status: data.status,
             isRecurring: data.isRecurring,
-             specificMonth: data.isRecurring ? undefined : data.specificMonth, // Store as Date object or Timestamp
-            valuesPerPosition: data.winnerCount > 1 ? data.valuesPerPosition : undefined // Save per-position only if multiple winners
+             specificMonth: data.isRecurring ? undefined : data.specificMonth,
+            valuesPerPosition: data.winnerCount > 1 ? data.valuesPerPosition : undefined
         };
 
         try {
@@ -366,7 +367,7 @@ const AwardConfiguration = () => {
                 setAwardToDelete(null);
             }
         } else if (!db) {
-              toast({ title: "Erro", description: "Erro na conexão com banco de dados.", variant: "destructive" });
+              toast({ title: "Erro de Conexão", description: "Não foi possível conectar ao banco de dados para remover.", variant: "destructive" });
                setIsDeleting(false);
                setAwardToDelete(null);
         }
@@ -374,11 +375,13 @@ const AwardConfiguration = () => {
 
      const awardColumns: ColumnDef<Award>[] = [
         {
+            id: "title",
             accessorKey: "title",
             header: "Título",
             cell: ({ row }) => <span className="font-medium">{row.original.title}</span>,
         },
         {
+            id: "period",
             accessorKey: "period",
             header: "Período",
             cell: ({ row }) => (
@@ -388,14 +391,14 @@ const AwardConfiguration = () => {
             ),
         },
         {
-            id: 'winnerCount', // Explicit ID
+            id: 'winnerCount',
             accessorKey: "winnerCount",
             header: () => <div className="text-center">Ganhadores</div>,
             cell: ({ row }) => <div className="text-center">{row.original.winnerCount}</div>,
             size: 100,
         },
         {
-            id: 'eligibleDepartments', // Explicit ID
+            id: 'eligibleDepartments',
             accessorKey: "eligibleDepartments",
             header: () => <div className="text-center">Elegíveis</div>,
             cell: ({ row }) => (
@@ -408,6 +411,7 @@ const AwardConfiguration = () => {
             size: 120,
         },
         {
+            id: "status",
             accessorKey: "status",
             header: "Status",
             cell: ({ row }) => {
@@ -481,7 +485,6 @@ const AwardConfiguration = () => {
                     </CardContent>
                 </Card>
 
-                 {/* Award Form Dialog */}
                  <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                      <DialogContent className="sm:max-w-[600px]">
                          <DialogHeader>
@@ -532,7 +535,6 @@ const AwardConfiguration = () => {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                                      <FormField control={control} name="isRecurring" render={({ field }) => (
                                         <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm h-[40px]">
-                                            {/* Adjusted Label */}
                                             <div className="space-y-0.5">
                                                 <Label htmlFor="isRecurringSwitch">É Recorrente Mensal?</Label>
                                             </div>
@@ -566,7 +568,6 @@ const AwardConfiguration = () => {
                                         <FormMessage />
                                     </FormItem>
                                 )}/>
-                                {/* Values per position - Show only if winnerCount > 1 */}
                                 {winnerCount > 1 && (
                                      <div className="space-y-3 border p-3 rounded-md">
                                         <Label>Valores por Posição (Opcional)</Label>
@@ -576,7 +577,7 @@ const AwardConfiguration = () => {
                                                 <div key={`pos-${position}`} className="grid grid-cols-1 md:grid-cols-2 gap-2 items-center">
                                                      <FormField
                                                         control={control}
-                                                        name={`valuesPerPosition.${position}.monetary` as any} // Type assertion might be needed
+                                                        name={`valuesPerPosition.${position}.monetary` as any}
                                                         render={({ field }) => (
                                                             <FormItem>
                                                                 <FormLabel className="text-xs">Monetário ({position}º Lugar)</FormLabel>
@@ -606,7 +607,6 @@ const AwardConfiguration = () => {
                                  <FormField control={control} name="eligibilityCriteria" render={({ field }) => (
                                     <FormItem className="flex flex-row items-center space-x-2 pt-2">
                                         <FormControl><Checkbox id="eligibility" checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                        {/* Adjusted Label */}
                                          <div className="grid gap-1.5 leading-none">
                                             <Label htmlFor="eligibility" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                                                  Exigir avaliação de excelência (sem zeros no mês)?
@@ -649,7 +649,7 @@ const AwardConfiguration = () => {
                                                                         const newSelection = checked
                                                                             ? [...currentSelection, dept]
                                                                             : currentSelection.filter(d => d !== dept);
-                                                                        field.onChange(newSelection.length > 0 ? newSelection : ['all']); // Default to 'all' if empty
+                                                                        field.onChange(newSelection.length > 0 ? newSelection : ['all']);
                                                                     }}
                                                                     disabled={field.value?.includes('all')}
                                                                 />
@@ -717,27 +717,42 @@ const AwardHistory = () => {
      const [history, setHistory] = React.useState<AwardHistoryEntry[]>([]);
      const [isLoading, setIsLoading] = React.useState(true);
      const { toast } = useToast();
+     const [db, setDb] = React.useState<Firestore | null>(null);
 
      React.useEffect(() => {
-        const loadHistory = async () => {
-            setIsLoading(true);
-            try {
-                // Replace with actual fetch from Firestore or backend
-                 await new Promise(resolve => setTimeout(resolve, 600));
-                 const data = [...mockHistory].sort((a, b) => parseISO(b.period + '-01').getTime() - parseISO(a.period + '-01').getTime());
-                setHistory(data);
-            } catch (error) {
-                 console.error("Falha ao carregar histórico:", error);
-                 toast({ title: "Erro", description: "Não foi possível carregar o histórico de premiações.", variant: "destructive" });
-            } finally {
-                 setIsLoading(false);
-            }
-        };
-        loadHistory();
-     }, [toast]);
+        setDb(getDb());
+    }, []);
+
+     const loadHistory = React.useCallback(async () => {
+        if (!db) {
+            toast({ title: "Erro de Conexão", description: "Não foi possível conectar ao banco de dados para carregar histórico.", variant: "destructive" });
+            setIsLoading(false);
+            return;
+        }
+        setIsLoading(true);
+        try {
+            const data = await getAwardHistory(db);
+            setHistory(data); // Firestore data is already sorted by service
+        } catch (error) {
+             console.error("Falha ao carregar histórico:", error);
+             toast({ title: "Erro", description: "Não foi possível carregar o histórico de premiações.", variant: "destructive" });
+        } finally {
+             setIsLoading(false);
+        }
+     }, [toast, db]);
+
+      React.useEffect(() => {
+        if(db) loadHistory();
+    }, [loadHistory, db]);
+
 
      const handleExportHistory = () => {
-        exportData(history, 'historico_premiacoes');
+        exportData(history.map(h => ({ // Prepare data for CSV
+            periodo: h.period,
+            premiacao: h.awardTitle,
+            vencedores: h.winners.map(w => `${w.rank}º: ${w.employeeName} (${w.prize})`).join('; '),
+            notas: h.notes || ''
+        })), 'historico_premiacoes');
         toast({ title: "Sucesso", description: "Histórico exportado como CSV." });
      };
 
@@ -762,7 +777,7 @@ const AwardHistory = () => {
                                 {history.map((entry) => (
                                     <Card key={entry.id} className="shadow-sm">
                                         <CardHeader className="pb-3 pt-4 px-4">
-                                            <CardTitle className="text-base">{entry.awardTitle} - {entry.period}</CardTitle>
+                                            <CardTitle className="text-base">{entry.awardTitle} - {format(parseISO(entry.period + "-01"), "MMMM yyyy", {locale: ptBR})}</CardTitle>
                                             <CardDescription>Vencedor(es) e detalhes da entrega.</CardDescription>
                                         </CardHeader>
                                         <CardContent className="text-sm space-y-2 px-4 pb-4">
@@ -804,14 +819,12 @@ const AwardHistory = () => {
 const AdvancedSettings = () => {
      const { toast } = useToast();
      const [isSaving, setIsSaving] = React.useState(false);
-     // State for settings - load initial values from backend
      const [tieBreaker, setTieBreaker] = React.useState('zeros');
      const [includeProbation, setIncludeProbation] = React.useState(false);
      const [publicView, setPublicView] = React.useState(true);
      const [notificationLevel, setNotificationLevel] = React.useState('significant');
 
      React.useEffect(() => {
-         // TODO: Fetch current settings from backend on component mount
          console.log("Fetching advanced settings...");
      }, []);
 
@@ -819,8 +832,7 @@ const AdvancedSettings = () => {
      const handleSaveSettings = async () => {
          setIsSaving(true);
          console.log("Salvando configs:", { tieBreaker, includeProbation, publicView, notificationLevel });
-         // TODO: Send settings to backend API
-         await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
+         await new Promise(resolve => setTimeout(resolve, 1000));
          toast({ title: "Sucesso", description: "Configurações avançadas salvas." });
          setIsSaving(false);
      }
@@ -888,14 +900,18 @@ const RankingDashboard = () => {
     const [isLoading, setIsLoading] = React.useState(true);
     const [isConfirmingWinners, setIsConfirmingWinners] = React.useState(false);
     const { toast } = useToast();
-    const db = getDb(); // Get Firestore instance
+    const [db, setDb] = React.useState<Firestore | null>(null);
+    const [activeAward, setActiveAward] = React.useState<Award | null>(null);
+
+    React.useEffect(() => {
+        setDb(getDb());
+    }, []);
 
     React.useEffect(() => {
         const loadRanking = async () => {
              setIsLoading(true);
              try {
-                 // Replace with actual fetch from Firestore/Backend that calculates ranking
-                 const data = await fetchMockRankingData(currentMonth); // Using mock for now
+                 const data = await fetchMockRankingData(currentMonth);
                  setRankingData(data);
              } catch (error) {
                  console.error("Falha ao carregar ranking:", error);
@@ -910,7 +926,7 @@ const RankingDashboard = () => {
     const calculateRemainingDays = () => {
         const today = new Date();
         if (today.getMonth() !== currentMonth.getMonth() || today.getFullYear() !== currentMonth.getFullYear()) {
-            return 0; // Not the current month
+            return 0;
         }
         const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
         const diffTime = Math.abs(endOfMonth.getTime() - today.getTime());
@@ -919,7 +935,6 @@ const RankingDashboard = () => {
     };
 
     const remainingDays = calculateRemainingDays();
-    const [activeAward, setActiveAward] = React.useState<Award | null>(null);
     const isCurrentMonth = new Date().getMonth() === currentMonth.getMonth() && new Date().getFullYear() === currentMonth.getFullYear();
     const canConfirmWinners = !isCurrentMonth && activeAward && rankingData.length > 0;
 
@@ -930,23 +945,23 @@ const RankingDashboard = () => {
     const handleNextMonth = () => {
          setCurrentMonth(prev => {
              const next = new Date(prev.getFullYear(), prev.getMonth() + 1, 1);
-             return next <= new Date() ? next : prev; // Prevent going to future months
+             return next <= new Date() ? next : prev;
          });
     };
 
     React.useEffect(() => {
         const loadActiveAward = async () => {
-             if (!db) return; // Guard clause if db is not initialized
+             if (!db) return;
             try {
                 const award = await getActiveAward(db, currentMonth);
                 setActiveAward(award);
             } catch (error) {
                  console.error("Error fetching active award:", error);
-                 setActiveAward(null); // Set to null on error
+                 setActiveAward(null);
             }
         };
-        loadActiveAward();
-    }, [currentMonth, db]); // Depend on currentMonth and db
+        if(db) loadActiveAward();
+    }, [currentMonth, db]);
 
 
     const handleConfirmWinners = async () => {
@@ -954,10 +969,28 @@ const RankingDashboard = () => {
         setIsConfirmingWinners(true);
         try {
             const periodStr = format(currentMonth, 'yyyy-MM');
-            // Replace with actual function to confirm winners and save history
-            await confirmMockWinners(periodStr, activeAward.id, rankingData); // Using mock for now
-             toast({ title: "Sucesso!", description: `Vencedores para ${format(currentMonth, 'MMMM yyyy', { locale: ptBR })} confirmados.` });
-             // TODO: Optionally trigger notifications, update award status for the month if needed
+            const winnersToSave = rankingData.slice(0, activeAward.winnerCount);
+
+            const historyEntryData: Omit<AwardHistoryEntry, 'id' | 'createdAt'> = {
+                period: periodStr,
+                awardTitle: activeAward.title,
+                winners: winnersToSave.map(winner => ({
+                    rank: winner.rank,
+                    employeeName: winner.employeeName,
+                    prize: activeAward.valuesPerPosition?.[winner.rank]?.monetary
+                        ? `R$ ${activeAward.valuesPerPosition[winner.rank]?.monetary?.toFixed(2)}`
+                        : activeAward.valuesPerPosition?.[winner.rank]?.nonMonetary
+                        ? activeAward.valuesPerPosition[winner.rank]?.nonMonetary ?? ''
+                        : activeAward.monetaryValue ? `R$ ${activeAward.monetaryValue.toFixed(2)}` : activeAward.nonMonetaryValue || 'Prêmio Indefinido'
+                })),
+                // deliveryPhotoUrl and notes can be added later if there's a UI for it
+            };
+            
+            await saveAwardHistory(db, historyEntryData);
+
+            toast({ title: "Sucesso!", description: `Vencedores para ${format(currentMonth, 'MMMM yyyy', { locale: ptBR })} confirmados.` });
+            // TODO: Optionally trigger notifications, update award status for the month if needed
+            // Could also refresh the AwardHistory tab data if it's visible
         } catch (error) {
             console.error("Erro ao confirmar vencedores:", error);
             toast({ title: "Erro", description: "Falha ao confirmar vencedores.", variant: "destructive" });
@@ -995,7 +1028,6 @@ const RankingDashboard = () => {
                          </div>
                     ) : (
                     <>
-                        {/* Top 3 Highlights */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                             {rankingData.slice(0, 3).map((emp, index) => (
                                 <Card key={emp.employeeId} className={`border-2 ${index === 0 ? 'border-yellow-500 shadow-md' : index === 1 ? 'border-slate-400 shadow' : 'border-yellow-700 shadow-sm'}`}>
@@ -1018,7 +1050,6 @@ const RankingDashboard = () => {
                                     </CardContent>
                                 </Card>
                             ))}
-                             {/* Placeholders if less than 3 employees */}
                              {rankingData.length < 3 && Array(3 - rankingData.length).fill(0).map((_, i) => (
                                 <Card key={`placeholder-${i}`} className="border-dashed border-muted flex items-center justify-center h-full min-h-[100px]">
                                      <p className="text-muted-foreground text-sm">{(rankingData.length + i + 1)}º Lugar</p>
@@ -1026,7 +1057,6 @@ const RankingDashboard = () => {
                              ))}
                         </div>
 
-                        {/* Full Ranking Table */}
                         <DataTable columns={rankingColumns} data={rankingData} filterColumn='employeeName' filterPlaceholder="Filtrar por colaborador..."/>
                         <p className="text-xs text-muted-foreground mt-4">*Ranking baseado nas avaliações diárias e desafios. Zeros impactam negativamente.</p>
                     </>
@@ -1056,7 +1086,7 @@ const RankingDashboard = () => {
 // Main Page Component
 export default function RankingPage() {
   return (
-    <div className="space-y-6"> {/* Main container */}
+    <div className="space-y-6">
         <h1 className="text-3xl font-bold flex items-center gap-2">
              <Trophy className="h-7 w-7" /> Ranking e Premiações
         </h1>
