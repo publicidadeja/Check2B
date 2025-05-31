@@ -1,5 +1,4 @@
-
-// src/app/(superadmin)/page.tsx
+// src/app/(superadmin)/superadmin/page.tsx
 'use client';
 
 import * as React from 'react';
@@ -220,4 +219,3 @@ export default function SuperAdminDashboardPage() {
     </div>
   );
 }
-
