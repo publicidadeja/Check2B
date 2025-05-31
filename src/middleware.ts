@@ -37,7 +37,7 @@ function getUserDataFromCookies(request: NextRequest): { role: UserRole | null, 
 
 export async function middleware(request: NextRequest) {
     const pathname = request.nextUrl.pathname;
-    console.log(`[Middleware] Path: ${pathname} - TEMPORARY AUTH BYPASS ACTIVE`);
+    // Removido: console.log(`[Middleware] Path: ${pathname} - TEMPORARY AUTH BYPASS ACTIVE`);
 
     // Allow direct access to login page
     if (pathname === '/login') {
@@ -48,12 +48,11 @@ export async function middleware(request: NextRequest) {
     // --- TEMPORARY BYPASS FOR DEVELOPMENT/ANALYSIS ---
     // This will allow access to any path without auth checks.
     // Remember to remove or comment this out when testing actual auth flows.
-    console.warn(`[Middleware] TEMPORARY: Bypassing authentication for ${pathname}.`);
-    return NextResponse.next(); // <<<< ESTA LINHA FOI DESCOMENTADA
+    // Removido: console.warn(`[Middleware] TEMPORARY: Bypassing authentication for ${pathname}.`);
+    // return NextResponse.next(); // <<<< ESTA LINHA ESTÁ COMENTADA PARA AUTENTICAÇÃO REAL
     // --- END TEMPORARY BYPASS ---
 
 
-    // The original logic below is now bypassed by the return statement above.
      const { role, organizationId, token, isGuest } = getUserDataFromCookies(request);
      console.log(`[Middleware] Path: ${pathname}, Role: ${role}, OrgID: ${organizationId}, Token: ${!!token}, Guest: ${isGuest}`);
 
