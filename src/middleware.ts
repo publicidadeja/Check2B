@@ -49,11 +49,11 @@ export async function middleware(request: NextRequest) {
     // This will allow access to any path without auth checks.
     // Remember to remove or comment this out when testing actual auth flows.
     console.warn(`[Middleware] TEMPORARY: Bypassing authentication for ${pathname}.`);
-    //return NextResponse.next();
+    return NextResponse.next(); // <<<< THIS LINE IS NOW UNCOMMENTED
     // --- END TEMPORARY BYPASS ---
 
 
-    // The original logic below is now bypassed.
+    // The original logic below is now bypassed by the return statement above.
      const { role, organizationId, token, isGuest } = getUserDataFromCookies(request);
      console.log(`[Middleware] Path: ${pathname}, Role: ${role}, OrgID: ${organizationId}, Token: ${!!token}, Guest: ${isGuest}`);
 
