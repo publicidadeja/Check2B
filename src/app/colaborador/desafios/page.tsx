@@ -37,6 +37,8 @@
  import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
  import { LoadingSpinner } from '@/components/ui/loading-spinner';
  import { useAuth } from '@/hooks/use-auth';
+ import { getUserProfileData } from '@/lib/auth';
+ import type { UserProfile } from '@/types/user';
 
  import type { Challenge, ChallengeParticipation } from '@/types/challenge';
  import {
@@ -46,7 +48,7 @@
     submitChallengeForEmployee,
     uploadChallengeSubmissionFile
  } from '@/lib/challenge-service';
- // Removed: import { mockEmployeesSimple } from '@/lib/mockData/ranking'; // No longer needed here
+
 
  interface ChallengeDetailsModalProps {
      challenge: Challenge | null;
@@ -318,6 +320,7 @@
      const { user, organizationId, isLoading: authIsLoading } = useAuth();
      const CURRENT_EMPLOYEE_ID = user?.uid || null;
      const CURRENT_EMPLOYEE_NAME = user?.displayName || "Colaborador";
+     const [currentUserProfile, setCurrentUserProfile] = React.useState<UserProfile | null>(null);
 
      const participationMap = React.useMemo(() => new Map(participations.map(p => [p.challengeId, p])), [participations]);
 
@@ -328,12 +331,14 @@
          }
          setIsLoading(true);
          try {
-             const [challengesData, participationsData] = await Promise.all([
+             const [challengesData, participationsData, userProfileData] = await Promise.all([
                  getAllChallenges(organizationId),
-                 getChallengeParticipationsByEmployee(organizationId, CURRENT_EMPLOYEE_ID)
+                 getChallengeParticipationsByEmployee(organizationId, CURRENT_EMPLOYEE_ID),
+                 getUserProfileData(CURRENT_EMPLOYEE_ID) // Fetch full user profile
              ]);
              setAllChallenges(challengesData);
              setParticipations(participationsData);
+             setCurrentUserProfile(userProfileData);
          } catch (error) {
              console.error("Erro ao carregar desafios e participações:", error);
              toast({ title: "Erro", description: "Não foi possível carregar seus desafios.", variant: "destructive" });
@@ -386,12 +391,6 @@
         const active: Challenge[] = [];
         const completed: Challenge[] = [];
 
-        const employeeProfileForEligibility = { // Temporary mock until useAuth provides full UserProfile
-            department: user?.photoURL || 'N/A', // Placeholder, replace with actual user.department
-            role: user?.email?.includes('dev') ? 'Desenvolvedor' : 'N/A', // Placeholder, replace with actual user.userRole
-        };
-
-
         allChallenges.forEach(challenge => {
             const participation = getParticipationForChallenge(challenge.id);
             const participationStatus = participation?.status || 'pending';
@@ -406,10 +405,17 @@
             const isChallengeNotStartedYet = isBefore(new Date(), startDate);
 
             let isEligible = false;
-            if (challenge.eligibility.type === 'all') isEligible = true;
-            else if (challenge.eligibility.type === 'department' && challenge.eligibility.entityIds?.includes(employeeProfileForEligibility.department)) isEligible = true;
-            else if (challenge.eligibility.type === 'role' && challenge.eligibility.entityIds?.includes(employeeProfileForEligibility.role)) isEligible = true;
-            else if (challenge.eligibility.type === 'individual' && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID!)) isEligible = true;
+            if (currentUserProfile) { // Check if profile is loaded
+                if (challenge.eligibility.type === 'all') isEligible = true;
+                else if (challenge.eligibility.type === 'department' && currentUserProfile.department && challenge.eligibility.entityIds?.includes(currentUserProfile.department)) isEligible = true;
+                else if (challenge.eligibility.type === 'role' && currentUserProfile.userRole && challenge.eligibility.entityIds?.includes(currentUserProfile.userRole)) isEligible = true;
+                else if (challenge.eligibility.type === 'individual' && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID!)) isEligible = true;
+            } else if (challenge.eligibility.type === 'all' || (challenge.eligibility.type === 'individual' && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID!))) {
+                // Fallback for 'all' or direct individual assignment if profile is not yet loaded
+                // This might show a challenge briefly as available then hide it if profile makes it ineligible
+                isEligible = true; 
+            }
+
 
             if (!isEligible || challenge.status === 'draft' || challenge.status === 'archived') return;
 
@@ -451,7 +457,7 @@
 
 
         return { available, active, completed };
-    }, [allChallenges, participationMap, CURRENT_EMPLOYEE_ID, user]);
+    }, [allChallenges, participationMap, CURRENT_EMPLOYEE_ID, currentUserProfile]);
 
 
       const filterChallenges = (challenges: Challenge[]): Challenge[] => {
