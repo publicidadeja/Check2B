@@ -14,7 +14,8 @@ import {
   serverTimestamp, 
   Timestamp,
   updateDoc,
-  getDoc 
+  getDoc,
+  getCountFromServer
 } from 'firebase/firestore';
 
 /**
@@ -117,7 +118,7 @@ export const saveTask = async (organizationId: string, taskData: Partial<Omit<Ta
     if (formData.assignedEntityId && formData.assignedEntityId.trim() !== '') {
       dataForFirestore.assignedEntityId = formData.assignedEntityId;
     } else {
-      // If assignedTo is set, but assignedEntityId is empty, it's an invalid state.
+      // If assignedTo is set, but assignedEntityId is missing, it's an invalid state.
       // Depending on rules, you might throw an error or clear assignedTo as well.
       // For now, let's clear assignedTo if assignedEntityId is missing for a specific assignment.
       delete dataForFirestore.assignedTo;
@@ -177,3 +178,25 @@ export const deleteTask = async (organizationId: string, taskId: string): Promis
   await deleteDoc(taskDocRef);
 };
 
+/**
+ * Counts total tasks in an organization.
+ * @param organizationId The ID of the organization.
+ * @returns Promise resolving to the count of tasks.
+ */
+export const countTasksByOrganization = async (organizationId: string): Promise<number> => {
+  const db = getDb();
+  if (!db || !organizationId) {
+    console.error('Firestore not initialized or organizationId missing for countTasksByOrganization.');
+    return 0;
+  }
+  const tasksCollectionRef = collection(db, `organizations/${organizationId}/tasks`);
+  const q = query(tasksCollectionRef); // No specific filters needed for total count
+  
+  try {
+    const snapshot = await getCountFromServer(q);
+    return snapshot.data().count;
+  } catch (error) {
+    console.error(`Error counting tasks for org ${organizationId}:`, error);
+    throw error;
+  }
+};

@@ -2,7 +2,7 @@
 // src/lib/user-service.ts
 import { getDb } from './firebase';
 import type { UserProfile } from '@/types/user';
-import { collection, getDocs, query, where, doc, setDoc, deleteDoc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, setDoc, deleteDoc, getDoc, updateDoc, Timestamp,getCountFromServer } from 'firebase/firestore';
 
 /**
  * Fetches all users from the 'users' collection in Firestore.
@@ -159,4 +159,58 @@ export const updateUserStatusInFirestore = async (userId: string, status: 'activ
       createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt,
       updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt,
     } as UserProfile;
+};
+
+/**
+ * Counts total users in an organization, optionally filtered by role.
+ * @param organizationId The ID of the organization.
+ * @param role Optional role to filter by.
+ * @returns Promise resolving to the count of users.
+ */
+export const countTotalUsersByOrganization = async (organizationId: string, role?: 'collaborator' | 'admin'): Promise<number> => {
+  const db = getDb();
+  if (!db || !organizationId) {
+    console.error('Firestore not initialized or organizationId missing for countTotalUsersByOrganization.');
+    return 0;
+  }
+  const usersCollectionRef = collection(db, 'users');
+  let q = query(usersCollectionRef, where('organizationId', '==', organizationId));
+  if (role) {
+    q = query(q, where('role', '==', role));
+  }
+  
+  try {
+    const snapshot = await getCountFromServer(q);
+    return snapshot.data().count;
+  } catch (error) {
+    console.error(`Error counting total users for org ${organizationId} ${role ? `with role ${role}` : ''}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Counts active users in an organization, optionally filtered by role.
+ * @param organizationId The ID of the organization.
+ * @param role Optional role to filter by.
+ * @returns Promise resolving to the count of active users.
+ */
+export const countActiveUsersByOrganization = async (organizationId: string, role?: 'collaborator' | 'admin'): Promise<number> => {
+  const db = getDb();
+  if (!db || !organizationId) {
+    console.error('Firestore not initialized or organizationId missing for countActiveUsersByOrganization.');
+    return 0;
+  }
+  const usersCollectionRef = collection(db, 'users');
+  let q = query(usersCollectionRef, where('organizationId', '==', organizationId), where('status', '==', 'active'));
+  if (role) {
+    q = query(q, where('role', '==', role));
+  }
+
+  try {
+    const snapshot = await getCountFromServer(q);
+    return snapshot.data().count;
+  } catch (error) {
+    console.error(`Error counting active users for org ${organizationId} ${role ? `with role ${role}` : ''}:`, error);
+    throw error;
+  }
 };

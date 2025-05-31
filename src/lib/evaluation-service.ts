@@ -13,9 +13,10 @@ import {
   where,
   Timestamp,
   orderBy,
-  writeBatch
+  writeBatch,
+  getCountFromServer, // Import getCountFromServer
 } from 'firebase/firestore';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth, subMonths } from 'date-fns'; // Added subMonths
 import { getAllTasksForOrganization } from './task-service'; // Assuming this function exists
 
 /**
@@ -216,4 +217,93 @@ export const saveEmployeeEvaluations = async (
     console.error(`[EvaluationService] Error saving batch evaluations for employee ${employeeId}:`, error);
     throw error;
   }
+};
+
+/**
+ * Counts distinct employees who have evaluations on a specific date.
+ * @param organizationId The ID of the organization.
+ * @param dateString The date string in 'yyyy-MM-dd' format.
+ * @returns Promise resolving to the count of distinct evaluated employees.
+ */
+export const countDistinctEvaluatedEmployeesForDate = async (organizationId: string, dateString: string): Promise<number> => {
+  const evaluations = await getEvaluationsForDay(organizationId, dateString);
+  const distinctEmployeeIds = new Set(evaluations.map(ev => ev.employeeId));
+  return distinctEmployeeIds.size;
+};
+
+/**
+ * Counts users who have more than a specified number of zero-score evaluations in a given period.
+ * @param organizationId The ID of the organization.
+ * @param startDateString The start date string 'yyyy-MM-dd'.
+ * @param endDateString The end date string 'yyyy-MM-dd'.
+ * @param zeroThreshold The number of zeros to consider as "excessive".
+ * @returns Promise resolving to the count of users with excessive zeros.
+ */
+export const countUsersWithExcessiveZeros = async (
+  organizationId: string,
+  startDateString: string,
+  endDateString: string,
+  zeroThreshold: number
+): Promise<number> => {
+  const evaluationsInPeriod = await getEvaluationsForOrganizationInPeriod(organizationId, startDateString, endDateString);
+  
+  const zerosByEmployee: Record<string, number> = {};
+  evaluationsInPeriod.forEach(ev => {
+    if (ev.score === 0) {
+      zerosByEmployee[ev.employeeId] = (zerosByEmployee[ev.employeeId] || 0) + 1;
+    }
+  });
+
+  let usersWithExcessiveZeros = 0;
+  for (const employeeId in zerosByEmployee) {
+    if (zerosByEmployee[employeeId] > zeroThreshold) {
+      usersWithExcessiveZeros++;
+    }
+  }
+  return usersWithExcessiveZeros;
+};
+
+/**
+ * Fetches aggregated monthly evaluation statistics for the dashboard chart.
+ * @param organizationId The ID of the organization.
+ * @param numberOfMonths The number of past months to fetch data for (including current).
+ * @returns Promise resolving to an array of objects like { month: "MMM", total: count }.
+ */
+export const getMonthlyEvaluationStats = async (
+  organizationId: string,
+  numberOfMonths: number
+): Promise<{ month: string; total: number }[]> => {
+  const db = getDb();
+  if (!db || !organizationId) {
+    console.error('Firestore not initialized or organizationId missing for getMonthlyEvaluationStats.');
+    return [];
+  }
+  const evaluationsPath = `organizations/${organizationId}/evaluations`;
+  const evaluationsCollectionRef = collection(db, evaluationsPath);
+  const stats: { month: string; total: number }[] = [];
+  const today = new Date();
+
+  for (let i = 0; i < numberOfMonths; i++) {
+    const targetMonthDate = subMonths(today, i);
+    const monthName = format(targetMonthDate, 'MMM', { locale: require('date-fns/locale/pt-BR').default }); // For pt-BR month names
+    const firstDayOfMonth = format(startOfMonth(targetMonthDate), 'yyyy-MM-dd');
+    const lastDayOfMonth = format(endOfMonth(targetMonthDate), 'yyyy-MM-dd');
+
+    const q = query(
+      evaluationsCollectionRef,
+      where("evaluationDate", ">=", firstDayOfMonth),
+      where("evaluationDate", "<=", lastDayOfMonth)
+    );
+    
+    try {
+      // Here we just count all evaluation documents for the month.
+      // If you need to count *distinct completed evaluations per employee day*, the logic would be more complex.
+      const snapshot = await getCountFromServer(q);
+      stats.push({ month: monthName, total: snapshot.data().count });
+    } catch (error) {
+      console.error(`Error fetching evaluation stats for month ${monthName} of org ${organizationId}:`, error);
+      stats.push({ month: monthName, total: 0 }); // Add zero if error
+    }
+  }
+  return stats.reverse(); // Reverse to have oldest month first for chart
 };
