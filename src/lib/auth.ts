@@ -1,3 +1,4 @@
+
 // src/lib/auth.ts
 import {
     signInWithEmailAndPassword,
@@ -9,7 +10,10 @@ import {
     type User,
     createUserWithEmailAndPassword,
     updateProfile,
-    sendPasswordResetEmail
+    sendPasswordResetEmail,
+    EmailAuthProvider, // Import EmailAuthProvider
+    reauthenticateWithCredential, // Import reauthenticateWithCredential
+    updatePassword, // Import updatePassword
 } from "firebase/auth";
 import Cookies from 'js-cookie';
 import { doc, getDoc, setDoc } from "firebase/firestore";
@@ -123,12 +127,14 @@ export const getUserProfileData = async (userId: string): Promise<UserProfile | 
             email: data.email,
             role: data.role || 'collaborator',
             organizationId: data.organizationId || null,
-            createdAt: data.createdAt,
+            createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : new Date()),
             status: data.status || 'pending',
             photoUrl: data.photoUrl || undefined,
             department: data.department || undefined,
-            // phone: data.phone || undefined, // Ensure phone is read correctly
-        } as UserProfile; // Cast to UserProfile
+            userRole: data.userRole || undefined,
+            phone: data.phone || undefined,
+            admissionDate: data.admissionDate || undefined,
+        } as UserProfile;
     } else {
         console.warn(`User profile not found in Firestore for UID: ${userId}`);
         return null;
@@ -160,7 +166,7 @@ export const createUserWithProfile = async (
          email: email,
          role: role,
          organizationId: organizationId,
-         createdAt: new Date(),
+         createdAt: Timestamp.now(), // Use Timestamp for new docs
          status: 'active',
      };
      await setDoc(userDocRef, userProfile);
@@ -188,6 +194,43 @@ export const sendPasswordReset = async (email: string): Promise<void> => {
     }
 };
 
+/**
+ * Changes the current user's password.
+ * Requires re-authentication with the current password.
+ * @param currentPassword The user's current password.
+ * @param newPassword The new password (must be at least 6 characters).
+ * @returns Promise resolving on successful password change.
+ */
+export const changeUserPassword = async (currentPassword: string, newPassword: string): Promise<void> => {
+    if (!auth) {
+        throw new Error("Firebase Auth não inicializado.");
+    }
+    const user = auth.currentUser;
+    if (!user || !user.email) {
+        throw new Error("Nenhum usuário autenticado ou email do usuário não encontrado.");
+    }
+
+    const credential = EmailAuthProvider.credential(user.email, currentPassword);
+
+    try {
+        await reauthenticateWithCredential(user, credential);
+        // User re-authenticated, now change password
+        await updatePassword(user, newPassword);
+        console.log("[Auth] Senha alterada com sucesso.");
+    } catch (error: any) {
+        console.error("[Auth] Erro ao alterar senha:", error);
+        if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+            throw new Error("Senha atual incorreta.");
+        } else if (error.code === 'auth/weak-password') {
+            throw new Error("Nova senha é muito fraca. Use pelo menos 6 caracteres.");
+        } else if (error.code === 'auth/requires-recent-login') {
+             throw new Error("Esta operação é sensível e requer autenticação recente. Faça login novamente e tente outra vez.");
+        }
+        throw new Error("Falha ao alterar senha. Tente novamente.");
+    }
+};
+
+
 export const onAuthChange = (callback: (user: User | null) => void) => {
     if (!auth) {
         console.warn("Firebase Auth not initialized. Cannot attach listener.");
@@ -196,4 +239,4 @@ export const onAuthChange = (callback: (user: User | null) => void) => {
     return onAuthStateChanged(auth, callback);
 };
 
-export { auth, db }; // Export auth and db if they are indeed initialized versions
+export { auth, db };

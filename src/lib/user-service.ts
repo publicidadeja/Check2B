@@ -1,8 +1,10 @@
 
 // src/lib/user-service.ts
-import { getDb } from './firebase';
+import { getDb, getFirebaseApp } from './firebase';
 import type { UserProfile } from '@/types/user';
-import { collection, getDocs, query, where, doc, setDoc, deleteDoc, getDoc, updateDoc, Timestamp,getCountFromServer } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, setDoc, deleteDoc, getDoc, updateDoc, Timestamp, getCountFromServer } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import type { NotificationFormData } from '@/app/colaborador/perfil/page'; // Assuming this type is exported from profile page
 
 /**
  * Fetches all users from the 'users' collection in Firestore.
@@ -78,8 +80,8 @@ export const getUsersByRoleAndOrganization = async (role: 'admin' | 'collaborato
       ...data,
       createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt,
       updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt,
-      department: data.department || undefined, // Garante que o campo exista mesmo que undefined
-      userRole: data.userRole || undefined,   // Garante que o campo exista mesmo que undefined
+      department: data.department || undefined,
+      userRole: data.userRole || undefined,
       photoUrl: data.photoUrl || undefined,
       phone: data.phone || undefined,
       admissionDate: data.admissionDate || undefined,
@@ -103,12 +105,11 @@ export const saveUser = async (userData: UserProfile): Promise<UserProfile> => {
       throw new Error('User UID is required to save user data.');
   }
   const userDocRef = doc(db, 'users', userData.uid);
-  // Convert Date objects back to Timestamps if they exist, or use serverTimestamp
   const dataToSave: any = { ...userData };
   if (dataToSave.createdAt && dataToSave.createdAt instanceof Date) {
     dataToSave.createdAt = Timestamp.fromDate(dataToSave.createdAt);
   } else if (!dataToSave.createdAt) {
-    dataToSave.createdAt = Timestamp.now(); // Use Timestamp.now() for new docs
+    dataToSave.createdAt = Timestamp.now();
   }
   if (dataToSave.updatedAt && dataToSave.updatedAt instanceof Date) {
     dataToSave.updatedAt = Timestamp.fromDate(dataToSave.updatedAt);
@@ -116,9 +117,10 @@ export const saveUser = async (userData: UserProfile): Promise<UserProfile> => {
     dataToSave.updatedAt = Timestamp.now();
   }
 
-
-  await setDoc(userDocRef, dataToSave, { merge: true });
-  return userData;
+  // Remove uid from the data to be saved as it's the document ID
+  const { uid, ...profileDataToSet } = dataToSave;
+  await setDoc(userDocRef, profileDataToSet, { merge: true });
+  return userData; // Return the original userData with uid
 };
 
 /**
@@ -162,6 +164,82 @@ export const updateUserStatusInFirestore = async (userId: string, status: 'activ
 };
 
 /**
+ * Uploads a profile photo for a user to Firebase Storage.
+ * @param userId The ID of the user.
+ * @param file The photo file to upload.
+ * @returns Promise resolving to the download URL of the uploaded photo.
+ */
+export const uploadProfilePhoto = async (userId: string, file: File): Promise<string> => {
+  const app = getFirebaseApp();
+  if (!app) {
+    throw new Error('Firebase App not initialized. Cannot upload profile photo.');
+  }
+  const storage = getStorage(app);
+  if (!storage) {
+    throw new Error('Firebase Storage not initialized. Cannot upload profile photo.');
+  }
+
+  const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const filePath = `profile_photos/${userId}/${Date.now()}_${sanitizedFileName}`;
+  const fileRef = ref(storage, filePath);
+
+  try {
+    const snapshot = await uploadBytes(fileRef, file);
+    const downloadURL = await getDownloadURL(snapshot.ref);
+    console.log(`[UserService] Profile photo uploaded for user ${userId}: ${downloadURL}`);
+    return downloadURL;
+  } catch (error) {
+    console.error(`[UserService] Error uploading profile photo for user ${userId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Fetches notification settings for a user from Firestore.
+ * @param userId The ID of the user.
+ * @returns Promise resolving to NotificationFormData or null if not found.
+ */
+export const getNotificationSettings = async (userId: string): Promise<NotificationFormData | null> => {
+  const db = getDb();
+  if (!db) {
+    console.error('Firestore not initialized. Cannot get notification settings.');
+    return null;
+  }
+  const settingsDocRef = doc(db, `users/${userId}/settings`, 'notifications');
+  try {
+    const docSnap = await getDoc(settingsDocRef);
+    if (docSnap.exists()) {
+      return docSnap.data() as NotificationFormData;
+    }
+    return null; // No settings found, can use defaults in component
+  } catch (error) {
+    console.error(`Error fetching notification settings for user ${userId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Saves notification settings for a user in Firestore.
+ * @param userId The ID of the user.
+ * @param settings The notification settings data to save.
+ * @returns Promise resolving on successful save.
+ */
+export const saveNotificationSettings = async (userId: string, settings: NotificationFormData): Promise<void> => {
+  const db = getDb();
+  if (!db) {
+    throw new Error('Firestore not initialized. Cannot save notification settings.');
+  }
+  const settingsDocRef = doc(db, `users/${userId}/settings`, 'notifications');
+  try {
+    await setDoc(settingsDocRef, settings, { merge: true });
+  } catch (error) {
+    console.error(`Error saving notification settings for user ${userId}:`, error);
+    throw error;
+  }
+};
+
+
+/**
  * Counts total users in an organization, optionally filtered by role.
  * @param organizationId The ID of the organization.
  * @param role Optional role to filter by.
@@ -178,7 +256,7 @@ export const countTotalUsersByOrganization = async (organizationId: string, role
   if (role) {
     q = query(q, where('role', '==', role));
   }
-  
+
   try {
     const snapshot = await getCountFromServer(q);
     return snapshot.data().count;
