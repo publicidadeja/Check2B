@@ -1,36 +1,37 @@
+
 // src/app/(superadmin)/page.tsx
 'use client';
 
 import * as React from 'react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
-import { Building, Users, BarChart3, DollarSign, Activity } from 'lucide-react';
-import { ChartContainer, BarChart, XAxis, YAxis, Bar, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { Building, Users, BarChart3, DollarSign, Activity, AlertTriangle } from 'lucide-react';
+import { ChartContainer, BarChart, XAxis, YAxis, Bar, ChartTooltip, ChartTooltipContent, ResponsiveContainer, CartesianGrid } from "@/components/ui/chart"; // Added ResponsiveContainer, CartesianGrid
 import type { ChartConfig } from "@/components/ui/chart";
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { getAllOrganizations, type Organization } from '@/lib/organization-service'; // type Organization might be defined elsewhere, ensure correct import
+import { getAllUsers, type UserProfile } from '@/lib/user-service';
+import { format, subMonths, startOfMonth } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
-// Mock data for Super Admin dashboard - Replace with actual data fetching
-const mockSuperAdminData = {
-  totalOrganizations: 5,
-  activeOrganizations: 4,
-  totalUsers: 150,
-  totalAdmins: 12,
-  totalCollaborators: 138,
-  monthlyRevenue: 1250.50,
-  activityLast24h: 350, // Example: Number of evaluations or logins
-};
+interface SuperAdminDashboardData {
+  totalOrganizations: number;
+  activeOrganizations: number;
+  totalUsers: number;
+  totalAdmins: number;
+  totalCollaborators: number;
+  monthlyRevenue: number; // Mocked for now
+  activityLast24h: number; // Mocked for now
+}
 
-const chartData = [
-  { month: "Jan", revenue: Math.floor(Math.random() * 1000) + 500 },
-  { month: "Fev", revenue: Math.floor(Math.random() * 1000) + 500 },
-  { month: "Mar", revenue: Math.floor(Math.random() * 1000) + 500 },
-  { month: "Abr", revenue: Math.floor(Math.random() * 1000) + 500 },
-  { month: "Mai", revenue: Math.floor(Math.random() * 1000) + 500 },
-  { month: "Jun", revenue: Math.floor(Math.random() * 1000) + 500 },
-];
+const initialChartData = Array(6).fill(null).map((_, i) => {
+    const month = subMonths(new Date(), 5 - i);
+    return { month: format(month, 'MMM', { locale: ptBR }), organizations: 0 };
+});
+
 
 const chartConfig = {
-  revenue: {
-    label: "Receita",
+  organizations: { // Renamed from revenue to organizations
+    label: "Novas Organizações",
     color: "hsl(var(--chart-1))",
   },
 } satisfies ChartConfig;
@@ -39,19 +40,88 @@ const tickFormatter = (value: string) => value.slice(0, 3);
 
 export default function SuperAdminDashboardPage() {
   const [isLoading, setIsLoading] = React.useState(true);
-  const [data, setData] = React.useState(mockSuperAdminData); // Use mock initially
+  const [dashboardData, setDashboardData] = React.useState<SuperAdminDashboardData>({
+    totalOrganizations: 0,
+    activeOrganizations: 0,
+    totalUsers: 0,
+    totalAdmins: 0,
+    totalCollaborators: 0,
+    monthlyRevenue: 1250.50, // Keep mocked
+    activityLast24h: 350,   // Keep mocked
+  });
+  const [organizationsChartData, setOrganizationsChartData] = React.useState(initialChartData);
+  const [error, setError] = React.useState<string | null>(null);
 
-  // Simulate data fetching
+
   React.useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 800));
-      // Replace with actual API call to fetch super admin data
-      setData(mockSuperAdminData);
-      setIsLoading(false);
+      setError(null);
+      try {
+        const [allOrganizations, allUsers] = await Promise.all([
+          getAllOrganizations(),
+          getAllUsers()
+        ]);
+
+        const totalOrganizations = allOrganizations.length;
+        const activeOrganizations = allOrganizations.filter(org => org.status === 'active').length;
+        
+        const totalUsers = allUsers.length; // Or filter out super_admins if needed for this stat
+        const totalAdmins = allUsers.filter(user => user.role === 'admin').length;
+        const totalCollaborators = allUsers.filter(user => user.role === 'collaborator').length;
+
+        setDashboardData(prevData => ({
+          ...prevData,
+          totalOrganizations,
+          activeOrganizations,
+          totalUsers,
+          totalAdmins,
+          totalCollaborators,
+          // monthlyRevenue and activityLast24h remain mocked
+        }));
+
+        // Prepare chart data for organizations created per month
+        const orgCreationStats: { [key: string]: number } = {};
+        allOrganizations.forEach(org => {
+          if (org.createdAt) {
+            // Ensure createdAt is a Date object before formatting
+            const createdAtDate = org.createdAt instanceof Date ? org.createdAt : new Date(org.createdAt);
+            if (!isNaN(createdAtDate.getTime())) {
+                const monthKey = format(createdAtDate, 'yyyy-MM');
+                orgCreationStats[monthKey] = (orgCreationStats[monthKey] || 0) + 1;
+            } else {
+                console.warn(`Invalid createdAt date for organization ${org.id}:`, org.createdAt);
+            }
+          }
+        });
+
+        const lastSixMonthsChartData = Array(6).fill(null).map((_, i) => {
+          const dateForMonth = subMonths(new Date(), 5 - i);
+          const monthKey = format(dateForMonth, 'yyyy-MM');
+          const monthLabel = format(dateForMonth, 'MMM', { locale: ptBR });
+          return { month: monthLabel, organizations: orgCreationStats[monthKey] || 0 };
+        });
+        setOrganizationsChartData(lastSixMonthsChartData);
+
+      } catch (err) {
+        console.error("Erro ao buscar dados do Super Admin Dashboard:", err);
+        setError("Não foi possível carregar os dados do dashboard.");
+      } finally {
+        setIsLoading(false);
+      }
     };
     fetchData();
   }, []);
+
+  if (error) {
+    return (
+        <div className="flex flex-col items-center justify-center h-full text-center p-4">
+            <AlertTriangle className="h-16 w-16 text-destructive mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Erro ao Carregar Dashboard</h2>
+            <p className="text-muted-foreground">{error}</p>
+        </div>
+    );
+  }
 
   return (
     <div className="grid gap-4 md:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
@@ -63,8 +133,8 @@ export default function SuperAdminDashboardPage() {
         <CardContent>
           {isLoading ? <LoadingSpinner size="sm" className="py-2"/> : (
             <>
-              <div className="text-2xl font-bold">{data.totalOrganizations}</div>
-              <p className="text-xs text-muted-foreground">{data.activeOrganizations} ativas</p>
+              <div className="text-2xl font-bold">{dashboardData.totalOrganizations}</div>
+              <p className="text-xs text-muted-foreground">{dashboardData.activeOrganizations} ativas</p>
             </>
           )}
         </CardContent>
@@ -78,8 +148,8 @@ export default function SuperAdminDashboardPage() {
         <CardContent>
            {isLoading ? <LoadingSpinner size="sm" className="py-2"/> : (
             <>
-              <div className="text-2xl font-bold">{data.totalUsers}</div>
-              <p className="text-xs text-muted-foreground">{data.totalAdmins} Admins / {data.totalCollaborators} Colaboradores</p>
+              <div className="text-2xl font-bold">{dashboardData.totalUsers}</div>
+              <p className="text-xs text-muted-foreground">{dashboardData.totalAdmins} Admins / {dashboardData.totalCollaborators} Colaboradores</p>
             </>
            )}
         </CardContent>
@@ -93,8 +163,8 @@ export default function SuperAdminDashboardPage() {
         <CardContent>
           {isLoading ? <LoadingSpinner size="sm" className="py-2"/> : (
             <>
-              <div className="text-2xl font-bold">R$ {data.monthlyRevenue.toFixed(2)}</div>
-              <p className="text-xs text-muted-foreground">Estimativa atual</p>
+              <div className="text-2xl font-bold">R$ {dashboardData.monthlyRevenue.toFixed(2)}</div>
+              <p className="text-xs text-muted-foreground">Estimativa (dado mockado)</p>
             </>
           )}
         </CardContent>
@@ -108,8 +178,8 @@ export default function SuperAdminDashboardPage() {
         <CardContent>
           {isLoading ? <LoadingSpinner size="sm" className="py-2"/> : (
             <>
-              <div className="text-2xl font-bold">{data.activityLast24h}</div>
-              <p className="text-xs text-muted-foreground">Ações no sistema</p>
+              <div className="text-2xl font-bold">{dashboardData.activityLast24h}</div>
+              <p className="text-xs text-muted-foreground">Ações no sistema (dado mockado)</p>
             </>
           )}
         </CardContent>
@@ -119,27 +189,30 @@ export default function SuperAdminDashboardPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <BarChart3 className="h-5 w-5" />
-            Receita Mensal Recorrente (MRR) - Últimos 6 Meses
+            Organizações Criadas por Mês (Últimos 6 Meses)
           </CardTitle>
-          <CardDescription>Visão geral da receita mensal.</CardDescription>
+          <CardDescription>Novas organizações registradas no sistema.</CardDescription>
         </CardHeader>
         <CardContent className="h-[250px] sm:h-[300px] w-full flex items-center justify-center">
           {isLoading ? (
             <LoadingSpinner size="md" text="Carregando gráfico..." />
           ) : (
             <ChartContainer config={chartConfig} className="h-full w-full">
-              <BarChart accessibilityLayer data={chartData}>
-                <XAxis
-                  dataKey="month"
-                  tickLine={false}
-                  tickMargin={10}
-                  axisLine={false}
-                  tickFormatter={tickFormatter}
-                />
-                <YAxis tickFormatter={(value) => `R$${value / 1000}k`} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="revenue" fill="var(--color-revenue)" radius={4} />
-              </BarChart>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart accessibilityLayer data={organizationsChartData} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="month"
+                    tickLine={false}
+                    tickMargin={10}
+                    axisLine={false}
+                    tickFormatter={tickFormatter}
+                  />
+                  <YAxis allowDecimals={false} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="organizations" fill="var(--color-organizations)" radius={4} />
+                </BarChart>
+              </ResponsiveContainer>
             </ChartContainer>
           )}
         </CardContent>
