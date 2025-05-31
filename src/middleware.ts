@@ -49,7 +49,7 @@ export async function middleware(request: NextRequest) {
     // This will allow access to any path without auth checks.
     // Remember to remove or comment this out when testing actual auth flows.
     console.warn(`[Middleware] TEMPORARY: Bypassing authentication for ${pathname}.`);
-    return NextResponse.next(); // <<<< THIS LINE IS NOW UNCOMMENTED
+    return NextResponse.next(); // <<<< ESTA LINHA FOI DESCOMENTADA
     // --- END TEMPORARY BYPASS ---
 
 
