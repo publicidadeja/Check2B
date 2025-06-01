@@ -1,4 +1,3 @@
-// src/components/layout/mobile-layout.tsx
 'use client';
 
 import type { ReactNode } from 'react';
@@ -25,12 +24,13 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/toaster';
 import { logoutUser } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { BottomNavigation } from '@/components/layout/bottom-navigation';
-import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTrigger, SheetClose, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -89,36 +89,53 @@ export function MobileLayout({ children }: MobileLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
-  const { isGuest } = useAuth(); // Use auth state
+  const { user, isGuest } = useAuth(); // Use auth state, get user object
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [notifications, setNotifications] = React.useState<NotificationType[]>([]);
   const [isLoadingNotifications, setIsLoadingNotifications] = React.useState(true);
+  // const [isGuest, setIsGuest] = React.useState(false); // This is now handled by useAuth
   const [browserNotificationPermission, setBrowserNotificationPermission] = React.useState<NotificationPermission | null>(null);
   const unsubscribeRef = React.useRef<() => void>(() => {});
 
-  // Use mockEmployee.id for now, replace with actual user ID from useAuth() when available
-  const currentUserId = mockEmployee.id;
+  const currentUserId = user?.uid || mockEmployee.id; // Use actual user ID if available, else fallback to mock
+  const currentUserDisplayName = user?.displayName || mockEmployee.name;
+  const currentUserPhotoUrl = user?.photoURL || mockEmployee.photoUrl;
+
+
+  // Check authentication status on mount - This logic should ideally be centralized in useAuth
+  React.useEffect(() => {
+      const checkAuth = () => {
+          const token = Cookies.get('auth-token');
+          const guestModeCookie = Cookies.get('guest-mode');
+          // If guest-mode cookie exists, we are in guest mode regardless of token (middleware handles this usually)
+          // If no token AND not on login page, and no guest-mode cookie, it's effectively a guest session or error
+          const effectiveGuest = !!guestModeCookie || (!token && pathname !== '/login');
+
+          //setIsGuest(effectiveGuest); // No longer needed, useAuth provides isGuest
+          console.log(`[MobileLayout AuthCheck] Guest mode (from useAuth): ${isGuest}. Path: ${pathname}`);
+
+          if (isGuest && pathname !== '/login') {
+              console.log("[MobileLayout AuthCheck] Guest detected and not on login, redirecting to /login is handled by ConditionalLayout or middleware.");
+              // router.replace('/login?reason=guest_mode');
+          }
+      };
+      checkAuth();
+  }, [pathname, isGuest]);
 
   // Request Browser Notification Permission and Setup Listener
   React.useEffect(() => {
     const setupNotifications = async () => {
-        if (isGuest) {
+        if (isGuest || !currentUserId) {
             setIsLoadingNotifications(false);
             setNotifications([]);
-            console.log("[Notifications] Guest mode, skipping setup.");
+            console.log("[MobileLayout Notifications] Guest mode or no user ID, skipping setup.");
             return;
         }
-        if (!currentUserId) {
-            setIsLoadingNotifications(false);
-            console.warn("[Notifications] No user ID available, skipping setup.");
-            return;
-        }
-
-         console.log("[Notifications] Setting up for user ID:", currentUserId);
+         console.log("[MobileLayout Notifications] Setting up for user ID:", currentUserId);
 
         if (typeof window !== 'undefined' && "Notification" in window) {
              if (Notification.permission === "default") {
-                 console.log("[Notifications] Requesting browser permission...");
+                 console.log("[MobileLayout Notifications] Requesting browser permission...");
                  const permission = await requestBrowserNotificationPermission();
                  setBrowserNotificationPermission(permission);
                  if (permission === 'granted') {
@@ -127,26 +144,26 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                     toast({title: "Notificações Bloqueadas", description: "Para receber alertas, ative nas configurações do navegador.", variant: "destructive", duration: 5000});
                  }
              } else {
-                  console.log("[Notifications] Browser permission already set:", Notification.permission);
+                  console.log("[MobileLayout Notifications] Browser permission already set:", Notification.permission);
                   setBrowserNotificationPermission(Notification.permission);
              }
          }
 
         setIsLoadingNotifications(true);
         if (unsubscribeRef.current) {
-            console.log("[Notifications] Unsubscribing previous listener.");
+            console.log("[MobileLayout Notifications] Unsubscribing previous listener.");
             unsubscribeRef.current();
         }
-        console.log("[Notifications] Starting listener...");
+        console.log("[MobileLayout Notifications] Starting listener...");
         unsubscribeRef.current = listenToNotifications(
             currentUserId,
             (newNotifications) => {
-                console.log("[Notifications] Received update:", newNotifications.length, "items");
+                console.log("[MobileLayout Notifications] Received update:", newNotifications.length, "items");
                 setNotifications(newNotifications);
                 setIsLoadingNotifications(false);
             },
             (error) => {
-                console.error("[Notifications] Error listening:", error);
+                console.error("[MobileLayout Notifications] Error listening:", error);
                 toast({ title: "Erro Notificações", description: "Não foi possível carregar as notificações.", variant: "destructive" });
                 setIsLoadingNotifications(false);
             }
@@ -157,12 +174,12 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
     return () => {
          if (unsubscribeRef.current) {
-            console.log("[Notifications] Cleaning up listener.");
+            console.log("[MobileLayout Notifications] Cleaning up listener.");
             unsubscribeRef.current();
             unsubscribeRef.current = () => {};
          }
     };
-  }, [isGuest, toast, currentUserId]); // Add currentUserId dependency
+  }, [isGuest, toast, currentUserId]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -170,7 +187,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     e?.stopPropagation();
     if (isGuest || !currentUserId) return;
     try {
-      console.log(`[Notifications] Marking ${notificationId} as read.`);
+      console.log(`[MobileLayout Notifications] Marking ${notificationId} as read.`);
       await markNotificationAsRead(currentUserId, notificationId);
     } catch (error) {
         console.error("Error marking notification as read:", error);
@@ -182,7 +199,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
      e.stopPropagation();
     if (isGuest || !currentUserId) return;
      try {
-        console.log("[Notifications] Marking all as read.");
+        console.log("[MobileLayout Notifications] Marking all as read.");
         await markAllNotificationsAsRead(currentUserId);
          toast({ title: "Sucesso", description: "Notificações marcadas como lidas.", duration: 2000 });
     } catch (error) {
@@ -211,7 +228,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
   const handleNotificationClick = (notification: NotificationType) => {
       if (isGuest) return;
-      if (!notification.read) {
+      if (!notification.read && currentUserId) {
           handleMarkRead(notification.id);
       }
       if (notification.link) {
@@ -221,7 +238,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
    const handleTestNotification = async () => {
        if (isGuest || !currentUserId) return;
-       console.log("[Notifications] Triggering test notification...");
+       console.log("[MobileLayout Notifications] Triggering test notification...");
        const success = await triggerTestNotification(currentUserId);
        if (success) {
            toast({ title: "Teste Enviado", description: "Notificação de teste enviada." });
@@ -239,7 +256,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
              {/* Mobile Menu Trigger */}
              <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
                 <SheetTrigger asChild>
-                    <Button variant="ghost" size="icon" className="shrink-0"> {/* Always show */}
+                    <Button variant="ghost" size="icon" className="shrink-0">
                         <Menu className="h-5 w-5" />
                         <span className="sr-only">Abrir menu</span>
                     </Button>
@@ -276,10 +293,10 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 overflow-hidden">
                                     <Avatar className="h-9 w-9 flex-shrink-0">
-                                        <AvatarImage src={mockEmployee.photoUrl} alt={mockEmployee.name} />
-                                        <AvatarFallback>{getInitials(mockEmployee.name)}</AvatarFallback>
+                                        <AvatarImage src={currentUserPhotoUrl || undefined} alt={currentUserDisplayName} />
+                                        <AvatarFallback>{getInitials(currentUserDisplayName)}</AvatarFallback>
                                     </Avatar>
-                                    <span className="text-sm font-medium truncate flex-1">{mockEmployee.name}</span>
+                                    <span className="text-sm font-medium truncate flex-1">{currentUserDisplayName}</span>
                                 </div>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}>
                                     <LogOut className="h-4 w-4" />
@@ -370,7 +387,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                                 ))
                             )}
                         </ScrollArea>
-                        {process.env.NODE_ENV === 'development' && !isGuest && (
+                        {process.env.NODE_ENV === 'development' && !isGuest && currentUserId && (
                             <>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="p-1">
