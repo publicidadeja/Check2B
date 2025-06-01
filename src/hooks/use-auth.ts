@@ -37,159 +37,131 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isGuest: false,
   });
 
-  console.log(`[AuthProvider V9 DEBUG] Component RENDER. Path: ${pathname}, isLoading: ${authState.isLoading}, Role: ${authState.role}, isGuest: ${authState.isGuest}, OrgID: ${authState.organizationId}`);
+  console.log(`[AuthProvider V10 DEBUG] Component RENDER. Path: ${pathname}, isLoading: ${authState.isLoading}, Role: ${authState.role}, isGuest: ${authState.isGuest}, OrgID: ${authState.organizationId}`);
 
-  // Effect for Guest Mode Detection
   React.useEffect(() => {
-    console.log(`[AuthProvider V9 DEBUG] Guest Mode useEffect triggered. Pathname: ${pathname}`);
-    const guestModeRoleFromCookie = Cookies.get('guest-mode') as UserRole | undefined;
-
-    if (guestModeRoleFromCookie && pathname !== '/login') {
-      console.log(`[AuthProvider V9 DEBUG] Guest mode DETECTED. Role from cookie: ${guestModeRoleFromCookie}`);
-      const guestOrgId = guestModeRoleFromCookie === 'super_admin' ? null : (Cookies.get('organization-id') || 'org_default');
-      // Only update if state needs to change to guest, or role/orgId mismatch, or still loading
-      if (!authState.isGuest || authState.role !== guestModeRoleFromCookie || authState.organizationId !== guestOrgId || authState.isLoading) {
-        setAuthState({
-          user: null,
-          role: guestModeRoleFromCookie,
-          organizationId: guestOrgId,
-          isLoading: false,
-          isGuest: true,
-        });
-      }
-    } else if (guestModeRoleFromCookie && pathname === '/login') {
-      // On login page with guest cookie. Firebase auth listener should take precedence if user logs in.
-      console.log(`[AuthProvider V9 DEBUG] On login page with guest cookie. Firebase auth may override.`);
-    } else if (!guestModeRoleFromCookie && authState.isGuest && !authState.isLoading) {
-        // No guest cookie, but state is guest (e.g., after logout or cookie cleared).
-        // Reset guest state and trigger loading for Firebase auth to re-evaluate.
-        console.log(`[AuthProvider V9 DEBUG] No guest cookie, but state is guest. Resetting guest state, re-checking Firebase auth.`);
-        setAuthState({ user: null, role: null, organizationId: null, isLoading: true, isGuest: false });
-    }
-  // Removed authState dependencies to avoid potential loops, focusing on pathname and external cookie.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
-
-  // Effect for Firebase Auth State
-  React.useEffect(() => {
-    console.log("[AuthProvider V9 DEBUG] Firebase Auth useEffect - MAIN LISTENER setup");
+    console.log("[AuthProvider V10 DEBUG] Main Auth useEffect - LISTENER setup");
     const auth = getAuthInstance();
-    const db = getDb();
     let isMounted = true;
 
-    if (!auth || !db) {
-      console.error("[AuthProvider V9 DEBUG] Firebase Auth or Firestore is not initialized.");
+    if (!auth) {
+      console.error("[AuthProvider V10 DEBUG] Firebase Auth is not initialized.");
       if (isMounted) {
-        // Ensure isLoading is false if Firebase can't even be initialized
-        setAuthState(prev => ({ ...prev, isLoading: false, user: null, role: null, organizationId: null, isGuest: false }));
+        setAuthState({ user: null, role: null, organizationId: null, isLoading: false, isGuest: false });
       }
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      console.log(`[AuthProvider V10 DEBUG] onAuthStateChanged triggered. User: ${firebaseUser ? firebaseUser.uid : 'null'}`);
       if (!isMounted) {
-        console.log("[AuthProvider V9 DEBUG] onAuthStateChanged: Component unmounted, skipping update.");
+        console.log("[AuthProvider V10 DEBUG] onAuthStateChanged: Component unmounted, skipping update.");
         return;
       }
 
-      const guestModeCookie = Cookies.get('guest-mode');
-      console.log(`[AuthProvider V9 DEBUG] onAuthStateChanged: User ${user ? user.uid : 'null'}. Guest cookie: ${guestModeCookie}`);
+      const guestModeCookie = Cookies.get('guest-mode') as UserRole | undefined;
+      console.log(`[AuthProvider V10 DEBUG] Guest cookie: ${guestModeCookie}`);
 
-      if (user) { // User is signed in
+      if (firebaseUser) {
+        // User is signed in
+        console.log(`[AuthProvider V10 DEBUG] Firebase user ${firebaseUser.uid} detected.`);
         if (guestModeCookie) {
-            console.log("[AuthProvider V9 DEBUG] onAuthStateChanged: User logged in, removing guest-mode cookie.");
-            Cookies.remove('guest-mode'); // Clear guest mode if a real user logs in
+          console.log("[AuthProvider V10 DEBUG] User logged in, removing guest-mode cookie if it exists.");
+          Cookies.remove('guest-mode');
         }
 
-        // If current state is guest, or user changed, or role isn't set yet, set loading true for profile fetch.
-        if (authState.isGuest || authState.user?.uid !== user.uid || !authState.role) {
-             console.log("[AuthProvider V9 DEBUG] onAuthStateChanged: New user, or transitioning from guest, or role not set. Setting user, isLoading: true, isGuest: false.");
-             setAuthState(prev => ({ ...prev, user, isLoading: true, isGuest: false }));
+        // Set isLoading to true while fetching profile, and isGuest to false.
+        // Only update if the user is different, or if role/orgId needs to be fetched.
+        if (authState.user?.uid !== firebaseUser.uid || !authState.role || authState.isGuest) {
+            setAuthState(prev => ({
+                ...prev,
+                user: firebaseUser,
+                isLoading: true, // Important: set loading true for profile fetch
+                isGuest: false,
+                role: null, // Reset role and orgId to ensure fresh fetch
+                organizationId: null,
+            }));
         }
 
 
         try {
-          const profileData = await getUserProfileData(user.uid);
-          console.log("[AuthProvider V9 DEBUG] Fetched profile for UID", user.uid, ":", JSON.stringify(profileData));
+          const profileData = await getUserProfileData(firebaseUser.uid);
+          console.log("[AuthProvider V10 DEBUG] Fetched profile for UID", firebaseUser.uid, ":", JSON.stringify(profileData));
 
           if (!isMounted) return;
 
           if (profileData) {
-            // CRITICAL CHECK: Ensure non-super_admin users have an organizationId
             if (profileData.role !== 'super_admin' && !profileData.organizationId) {
-                console.error(`[AuthProvider V9 CRITICAL] User ${user.uid} (role: ${profileData.role}) is missing organizationId! Logging out.`);
-                await logoutUserHelper(); // This will trigger onAuthStateChanged again with user=null
-                // The subsequent onAuthStateChanged(null) will handle redirecting.
-                return; // Early return to prevent setting broken auth state
+              console.error(`[AuthProvider V10 CRITICAL] User ${firebaseUser.uid} (role: ${profileData.role}) missing organizationId! Logging out.`);
+              await logoutUserHelper(); // This will trigger onAuthStateChanged again with user=null
+              return;
             }
 
-            const idToken = await user.getIdToken(true); // Force refresh for latest claims
+            const idToken = await firebaseUser.getIdToken(true);
             setAuthCookiesLib(idToken, profileData.role, profileData.organizationId);
-            console.log("[AuthProvider V9 DEBUG] Setting auth state DEFINITIVELY: user authenticated, isLoading: false, role:", profileData.role, "orgId:", profileData.organizationId);
-            setAuthState({ // This is the definitive authenticated state
-              user,
+
+            console.log("[AuthProvider V10 DEBUG] Setting AUTHENTICATED state: isLoading: false, role:", profileData.role, "orgId:", profileData.organizationId);
+            setAuthState({
+              user: firebaseUser,
               role: profileData.role,
               organizationId: profileData.organizationId,
               isLoading: false,
-              isGuest: false, // Ensure isGuest is false
+              isGuest: false,
             });
           } else {
-            console.error(`[AuthProvider V9 DEBUG] User profile missing for UID: ${user.uid}. Logging out.`);
+            console.error(`[AuthProvider V10 DEBUG] User profile MISSING for UID: ${firebaseUser.uid}. Logging out.`);
             await logoutUserHelper();
-            // onAuthStateChanged will be called with user=null, leading to redirect if not on /login
           }
         } catch (error) {
           if (!isMounted) return;
-          console.error("[AuthProvider V9 DEBUG] Error fetching profile/token:", error);
+          console.error("[AuthProvider V10 DEBUG] Error fetching profile/token:", error);
           await logoutUserHelper();
-          // onAuthStateChanged will be called with user=null
         }
-      } else { // User is signed out or not yet determined
-        console.log("[AuthProvider V9 DEBUG] onAuthStateChanged: No Firebase user.");
-        // If there's no guest cookie and we are not already in a non-loading guest state, then set to non-guest, no user, not loading.
-        if (!guestModeCookie) {
-            console.log("[AuthProvider V9 DEBUG] onAuthStateChanged: No Firebase user & no guest cookie. Setting to logged out state.");
-            Cookies.remove('auth-token');
-            Cookies.remove('user-role');
-            Cookies.remove('organization-id');
-            // Only update if it's not already in this state or if it was loading
-            if (authState.user || authState.role || authState.isLoading || authState.isGuest) {
-                 setAuthState({ user: null, role: null, organizationId: null, isLoading: false, isGuest: false });
-            }
-             // If not on login page, redirect (handled by ConditionalLayout or middleware more directly)
-             if (pathname !== '/login') {
-                console.log(`[AuthProvider V9 DEBUG] No user, no guest, not on login. Path: ${pathname}. Should redirect via Layout/Middleware.`);
-                // router.replace('/login?reason=authprovider_no_user_no_guest'); // Avoid direct redirect here to let layout handle
-            }
+      } else {
+        // User is signed out or not yet determined
+        console.log("[AuthProvider V10 DEBUG] No Firebase user.");
+        if (guestModeCookie && pathname !== '/login') {
+          console.log(`[AuthProvider V10 DEBUG] Guest mode cookie found (${guestModeCookie}). Setting GUEST state.`);
+          const guestOrgId = guestModeCookie === 'super_admin' ? null : (Cookies.get('organization-id') || 'org_default');
+          // Only update if not already in this specific guest state or was loading
+          if (!authState.isGuest || authState.role !== guestModeCookie || authState.organizationId !== guestOrgId || authState.isLoading) {
+            setAuthState({
+              user: null,
+              role: guestModeCookie,
+              organizationId: guestOrgId,
+              isLoading: false,
+              isGuest: true,
+            });
+          }
         } else {
-            // Has guest cookie, but no Firebase user. The guest useEffect should handle setting isGuest: true and isLoading: false.
-            console.log("[AuthProvider V9 DEBUG] onAuthStateChanged: No Firebase user, but guest cookie exists. Guest useEffect should handle state.");
-            if (authState.isLoading) { // If somehow still loading, ensure it's false for guest
-                 setAuthState(prev => ({ ...prev, isLoading: false }));
-            }
+          console.log("[AuthProvider V10 DEBUG] No Firebase user & no (or irrelevant) guest cookie. Setting LOGGED OUT state.");
+          Cookies.remove('auth-token');
+          Cookies.remove('user-role');
+          Cookies.remove('organization-id');
+          // Cookies.remove('guest-mode'); // Don't remove guest-mode here if on /login and it exists
+
+          // Only update if it's not already in this logged-out state or if it was loading
+          if (authState.user || authState.role || authState.isLoading || authState.isGuest) {
+            setAuthState({ user: null, role: null, organizationId: null, isLoading: false, isGuest: false });
+          }
         }
       }
     });
 
     return () => {
       isMounted = false;
-      console.log("[AuthProvider V9 DEBUG] Firebase Auth useEffect - MAIN LISTENER cleanup");
+      console.log("[AuthProvider V10 DEBUG] Firebase Auth useEffect - MAIN LISTENER cleanup");
       unsubscribe();
     };
-  // Using an empty dependency array for the main auth listener is standard.
-  // Other effects handle guest mode based on pathname changes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [pathname]); // Added pathname dependency
 
   const logout = React.useCallback(async () => {
-    console.log("[AuthProvider V9 DEBUG] Logout initiated by user action.");
-    const currentPath = pathname; // Capture pathname before navigation
-    await logoutUserHelper(); // This clears Firebase auth state & cookies (including guest-mode)
-    // Auth state will be updated by onAuthStateChanged (user becomes null)
-    // Guest useEffect will handle the guest-mode cookie removal if necessary.
-    // Explicitly set a clean logged-out state to avoid lingering guest states if not on login page
+    console.log("[AuthProvider V10 DEBUG] Logout initiated by user action.");
+    await logoutUserHelper(); // This clears Firebase auth state & all relevant cookies
+    // The onAuthStateChanged listener will set the state to user: null, isLoading: false, isGuest: false.
+    // For immediate UI feedback and to prevent issues if onAuthStateChanged is slow:
     setAuthState({ user: null, role: null, organizationId: null, isLoading: false, isGuest: false });
-    if (currentPath !== '/login') {
+    if (pathname !== '/login') {
         router.push('/login');
     }
   }, [router, pathname]);
@@ -205,7 +177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return React.createElement(
     AuthContext.Provider,
-    // @ts-ignore - contextValue matches AuthContextProps
+    // @ts-ignore
     { value: contextValue },
     children
   );
@@ -218,4 +190,3 @@ export function useAuth() {
   }
   return context;
 }
-    

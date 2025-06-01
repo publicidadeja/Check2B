@@ -11,7 +11,7 @@ function getUserDataFromCookies(request: NextRequest): { role: UserRole | null, 
     const guestModeRole = request.cookies.get('guest-mode')?.value as UserRole | undefined;
 
     if (guestModeRole) {
-        console.log(`[Middleware] Guest mode cookie detected: ${guestModeRole}`);
+        console.log(`[Middleware V9] Guest mode cookie detected: ${guestModeRole}`);
         const guestOrgId = guestModeRole === 'super_admin' ? null : (organizationId || 'org_default');
         return { role: guestModeRole, organizationId: guestOrgId, token: null, isGuest: true };
     }
@@ -21,10 +21,14 @@ function getUserDataFromCookies(request: NextRequest): { role: UserRole | null, 
     }
 
     if (!roleFromCookie) {
-        console.warn("[Middleware] Missing role cookie despite token existence.");
+        console.warn("[Middleware V9] Missing role cookie despite token existence.");
+        // Fallback or error handling might be needed here depending on strictness
     }
     if (roleFromCookie !== 'super_admin' && !organizationId) {
-        console.warn(`[Middleware] Missing organizationId cookie for role: ${roleFromCookie}.`);
+        // This is a critical issue for admin/collaborator roles
+        console.warn(`[Middleware V9] Missing organizationId cookie for role: ${roleFromCookie}. This could lead to issues.`);
+        // Depending on policy, could treat as unauthenticated or redirect to error/login.
+        // For now, let it pass but ConditionalLayout or useAuth should ideally catch this.
     }
 
     return {
@@ -37,42 +41,44 @@ function getUserDataFromCookies(request: NextRequest): { role: UserRole | null, 
 
 export async function middleware(request: NextRequest) {
     const pathname = request.nextUrl.pathname;
-    // Removido: console.log(`[Middleware] Path: ${pathname} - TEMPORARY AUTH BYPASS ACTIVE`);
+    console.log(`[Middleware V9] Path: ${pathname}`);
+
 
     // Allow direct access to login page
     if (pathname === '/login') {
-        console.log("[Middleware] Accessing login page, allowing.");
+        console.log("[Middleware V9] Accessing login page, allowing.");
         return NextResponse.next();
     }
 
     // --- TEMPORARY BYPASS FOR DEVELOPMENT/ANALYSIS ---
     // This will allow access to any path without auth checks.
     // Remember to remove or comment this out when testing actual auth flows.
-    // Removido: console.warn(`[Middleware] TEMPORARY: Bypassing authentication for ${pathname}.`);
+    // console.warn(`[Middleware V9] TEMPORARY: Bypassing authentication for ${pathname}.`);
     // return NextResponse.next(); // <<<< ESTA LINHA ESTÁ COMENTADA PARA AUTENTICAÇÃO REAL
     // --- END TEMPORARY BYPASS ---
 
 
      const { role, organizationId, token, isGuest } = getUserDataFromCookies(request);
-     console.log(`[Middleware] Path: ${pathname}, Role: ${role}, OrgID: ${organizationId}, Token: ${!!token}, Guest: ${isGuest}`);
+     console.log(`[Middleware V9] Path: ${pathname}, Role: ${role}, OrgID: ${organizationId}, Token: ${!!token}, Guest: ${isGuest}`);
 
 
-     if (pathname === '/login') {
-         if (token || isGuest) {
-             let redirectPath = '/';
+     if (pathname === '/login') { // This check is somewhat redundant due to the first check, but harmless
+         if (token || isGuest) { // If somehow reached login page while authenticated or guest
+             let redirectPath = '/'; // Default to admin dashboard for admin/unknown
              if (role === 'super_admin') redirectPath = '/superadmin';
              else if (role === 'collaborator') redirectPath = '/colaborador/dashboard';
-             console.log(`[Middleware] User authenticated/guest. Redirecting from /login to ${redirectPath}`);
+             console.log(`[Middleware V9] User authenticated/guest. Redirecting from /login to ${redirectPath}`);
              return NextResponse.redirect(new URL(redirectPath, request.url));
          }
-         console.log("[Middleware] Accessing login page, allowing.");
+         console.log("[Middleware V9] Accessing login page, allowing.");
          return NextResponse.next();
      }
 
+     // If no token and not in guest mode, redirect to login
      if (!token && !isGuest) {
-         console.log(`[Middleware] No token or guest mode. Redirecting to /login from ${pathname}`);
+         console.log(`[Middleware V9] No token or guest mode. Redirecting to /login from ${pathname}`);
          const loginUrl = new URL('/login', request.url);
-         loginUrl.searchParams.set('reason', 'unauthenticated');
+         loginUrl.searchParams.set('reason', 'unauthenticated_mw_v9'); // More specific reason
          loginUrl.searchParams.set('from', pathname);
          return NextResponse.redirect(loginUrl);
      }
@@ -80,37 +86,39 @@ export async function middleware(request: NextRequest) {
      // Super Admin Routing
      if (role === 'super_admin') {
          if (!pathname.startsWith('/superadmin')) {
-             console.log(`[Middleware] Super Admin user redirected from ${pathname} to /superadmin`);
+             console.log(`[Middleware V9] Super Admin user redirected from ${pathname} to /superadmin`);
              return NextResponse.redirect(new URL('/superadmin', request.url));
          }
-         console.log(`[Middleware] Super Admin (Guest: ${isGuest}) accessing allowed path: ${pathname}`);
-         return NextResponse.next();
+         console.log(`[Middleware V9] Super Admin (Guest: ${isGuest}) accessing allowed path: ${pathname}`);
+         return NextResponse.next(); // Allow access to /superadmin/*
      }
 
     // // Admin Routing
      if (role === 'admin') {
-         if (!organizationId && !isGuest) {
-             console.error(`[Middleware] Admin user missing organizationId! Redirecting to login.`);
-              const response = NextResponse.redirect(new URL('/login?reason=no_org', request.url));
+         if (!organizationId && !isGuest) { // Critical check for non-guest admin
+             console.error(`[Middleware V9 CRITICAL] Admin user missing organizationId! Redirecting to login.`);
+              // Clear potentially corrupted auth state and redirect
+              const response = NextResponse.redirect(new URL('/login?reason=no_org_mw_v9', request.url));
               response.cookies.delete('auth-token');
               response.cookies.delete('user-role');
               response.cookies.delete('organization-id');
-              response.cookies.delete('guest-mode');
+              response.cookies.delete('guest-mode'); // Ensure guest mode is also cleared
               return response;
          }
          if (pathname.startsWith('/colaborador') || pathname.startsWith('/superadmin')) {
-             console.log(`[Middleware] Admin user redirected from ${pathname} to /`);
+             console.log(`[Middleware V9] Admin user redirected from ${pathname} to / (admin dashboard)`);
              return NextResponse.redirect(new URL('/', request.url));
          }
-         console.log(`[Middleware] Admin (Guest: ${isGuest}) accessing allowed path: ${pathname}`);
+         // Allow access to admin dashboard (/) and other non-colaborador/superadmin paths
+         console.log(`[Middleware V9] Admin (Guest: ${isGuest}) accessing allowed path: ${pathname}`);
          return NextResponse.next();
      }
 
     // // Collaborator Routing
      if (role === 'collaborator') {
-          if (!organizationId && !isGuest) {
-             console.error(`[Middleware] Collaborator user missing organizationId! Redirecting to login.`);
-              const response = NextResponse.redirect(new URL('/login?reason=no_org', request.url));
+          if (!organizationId && !isGuest) { // Critical check for non-guest collaborator
+             console.error(`[Middleware V9 CRITICAL] Collaborator user missing organizationId! Redirecting to login.`);
+              const response = NextResponse.redirect(new URL('/login?reason=no_org_mw_v9', request.url));
               response.cookies.delete('auth-token');
               response.cookies.delete('user-role');
               response.cookies.delete('organization-id');
@@ -118,15 +126,17 @@ export async function middleware(request: NextRequest) {
               return response;
           }
          if (!pathname.startsWith('/colaborador')) {
-             console.log(`[Middleware] Collaborator user redirected from ${pathname} to /colaborador/dashboard`);
+             console.log(`[Middleware V9] Collaborator user redirected from ${pathname} to /colaborador/dashboard`);
              return NextResponse.redirect(new URL('/colaborador/dashboard', request.url));
          }
-         console.log(`[Middleware] Collaborator (Guest: ${isGuest}) accessing allowed path: ${pathname}`);
-         return NextResponse.next();
+         console.log(`[Middleware V9] Collaborator (Guest: ${isGuest}) accessing allowed path: ${pathname}`);
+         return NextResponse.next(); // Allow access to /colaborador/*
      }
 
-     console.warn(`[Middleware] Unknown role or state reached. Role: ${role}, IsGuest: ${isGuest}. Redirecting to login.`);
-     const response = NextResponse.redirect(new URL('/login?reason=unknown_role', request.url));
+     // If role is null but token exists, or role is unknown, or it's a guest with an unhandled role/path combo
+     console.warn(`[Middleware V9] Unknown role or state reached. Role: ${role}, IsGuest: ${isGuest}, Path: ${pathname}. Redirecting to login.`);
+     const response = NextResponse.redirect(new URL('/login?reason=unknown_role_mw_v9', request.url));
+     // Clear all auth-related cookies as a precaution
      response.cookies.delete('auth-token');
      response.cookies.delete('user-role');
      response.cookies.delete('organization-id');
@@ -134,8 +144,16 @@ export async function middleware(request: NextRequest) {
      return response;
 }
 
+// Match all paths except for API routes, static files, and public assets
 export const config = {
   matcher: [
+    // Match all routes except for:
+    // - /api/ (API routes)
+    // - /_next/static (Next.js static files)
+    // - /_next/image (Next.js image optimization files)
+    // - /favicon.ico (Favicon file)
+    // - /logo.png (Logo file)
+    // - Files with an extension (e.g., .jpg, .css)
     '/((?!api|_next/static|_next/image|favicon.ico|logo.png|.*\\..*).*)',
   ],
 };
