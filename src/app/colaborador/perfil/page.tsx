@@ -48,7 +48,7 @@
 
  type ProfileFormData = z.infer<typeof profileSchema>;
  type PasswordFormData = z.infer<typeof passwordSchema>;
- export type NotificationFormData = z.infer<typeof notificationSchema>; // Export for service
+ export type NotificationFormData = z.infer<typeof notificationSchema>;
 
  const getInitials = (name: string | undefined) => {
      if (!name) return '??';
@@ -65,6 +65,7 @@
      const { user: authUser, isLoading: authLoading, isGuest, logout: authLogout } = useAuth();
      const [employeeProfile, setEmployeeProfile] = React.useState<UserProfile | null>(null);
      const [isLoadingProfile, setIsLoadingProfile] = React.useState(true);
+     const [isLoadingNotifications, setIsLoadingNotifications] = React.useState(true);
      const [isEditingProfile, setIsEditingProfile] = React.useState(false);
      const [isSavingProfile, setIsSavingProfile] = React.useState(false);
      const [isChangingPassword, setIsChangingPassword] = React.useState(false);
@@ -84,14 +85,21 @@
      const notificationForm = useForm<NotificationFormData>({ resolver: zodResolver(notificationSchema) });
 
      React.useEffect(() => {
-         const loadProfileAndPermissions = async () => {
-            if (authLoading || !authUser?.uid) {
-                if(!authLoading && !authUser?.uid && !isGuest) { 
-                    setIsLoadingProfile(false);
-                }
+         const loadInitialData = async () => {
+             if (authLoading || isGuest || !authUser?.uid) {
+                 if (!authLoading) { // Only stop loading if auth is done
+                     setIsLoadingProfile(false);
+                     setIsLoadingNotifications(false);
+                     if (!isGuest && !authUser?.uid) {
+                         console.warn("[EmployeeProfilePage] Auth done, but no authUser.uid. Redirecting or showing error might be needed.");
+                     }
+                 }
                  return;
              }
+
+             console.log("[EmployeeProfilePage] loadInitialData: Starting to load profile for UID:", authUser.uid);
              setIsLoadingProfile(true);
+             setIsLoadingNotifications(true);
 
              if (typeof window !== 'undefined' && "Notification" in window) {
                  setBrowserNotificationPermission(Notification.permission);
@@ -99,15 +107,31 @@
 
              try {
                  const profileData = await getUserProfileData(authUser.uid);
+                 console.log("[EmployeeProfilePage] loadInitialData: Profile data fetched:", profileData);
                  setEmployeeProfile(profileData);
+
                  if (profileData) {
                      profileForm.reset({
                          phone: profileData.phone || '',
                          photoUrl: profileData.photoUrl || '',
                      });
                      setPhotoPreview(profileData.photoUrl);
+                 } else {
+                     toast({ title: "Erro", description: "Perfil do colaborador não encontrado.", variant: "destructive" });
+                 }
+             } catch (error) {
+                 console.error("[EmployeeProfilePage] Erro ao carregar perfil:", error);
+                 toast({ title: "Erro", description: "Não foi possível carregar os dados do seu perfil.", variant: "destructive" });
+             } finally {
+                 setIsLoadingProfile(false);
+             }
 
+             // Fetch notification settings after profile (and ensuring authUser.uid is still valid)
+             if (authUser && authUser.uid) {
+                 console.log("[EmployeeProfilePage] loadInitialData: Attempting to load notification settings for UID:", authUser.uid);
+                 try {
                      const notifySettings = await getNotificationSettings(authUser.uid);
+                     console.log("[EmployeeProfilePage] loadInitialData: Notification settings fetched:", notifySettings);
                      notificationForm.reset({
                          newEvaluation: notifySettings?.newEvaluation ?? true,
                          challengeUpdates: notifySettings?.challengeUpdates ?? true,
@@ -115,24 +139,22 @@
                          systemAnnouncements: notifySettings?.systemAnnouncements ?? true,
                          browserNotifications: notifySettings?.browserNotifications ?? (Notification.permission === 'granted'),
                      });
-                 } else {
-                     toast({ title: "Erro", description: "Perfil do colaborador não encontrado.", variant: "destructive" });
+                 } catch (error) {
+                     console.error("[EmployeeProfilePage] Erro ao carregar configurações de notificação:", error);
+                     // Not showing a toast here for now, as the console already logs it from user-service
+                 } finally {
+                     setIsLoadingNotifications(false);
                  }
-             } catch (error) {
-                 console.error("Erro ao carregar perfil ou configurações:", error);
-                 toast({ title: "Erro", description: "Não foi possível carregar seus dados.", variant: "destructive" });
-             } finally {
-                 setIsLoadingProfile(false);
+             } else {
+                 console.warn("[EmployeeProfilePage] authUser.uid became invalid before fetching notification settings.");
+                 setIsLoadingNotifications(false);
              }
          };
 
-         if (!isGuest) { 
-            loadProfileAndPermissions();
-         } else {
-            setIsLoadingProfile(false); 
-         }
+         loadInitialData();
 
-     }, [authUser, authLoading, isGuest, toast, profileForm, notificationForm]); // Reverted: profileForm, notificationForm in deps
+     }, [authUser, authLoading, isGuest, toast, profileForm, notificationForm]);
+
 
      const onProfileSubmit = async (data: ProfileFormData) => {
          if (!authUser?.uid || !employeeProfile) return;
@@ -144,21 +166,16 @@
                  finalPhotoUrl = await uploadProfilePhoto(authUser.uid, selectedFile);
              }
 
-             const updatedProfileData: Partial<UserProfile> = {
-                uid: authUser.uid,
-                phone: data.phone,
-                photoUrl: finalPhotoUrl,
-             };
              const profileToSave: UserProfile = {
-                 ...employeeProfile, 
+                 ...employeeProfile,
                  phone: data.phone,
                  photoUrl: finalPhotoUrl,
+                 updatedAt: new Date(), // Client-side timestamp, Firestore will use serverTimestamp
              };
 
+             await saveUser(profileToSave);
 
-             await saveUser(profileToSave); 
-
-             setEmployeeProfile(prev => prev ? ({ ...prev, ...updatedProfileData }) : null);
+             setEmployeeProfile(prev => prev ? ({ ...prev, phone: data.phone, photoUrl: finalPhotoUrl }) : null);
              profileForm.reset({ phone: data.phone, photoUrl: finalPhotoUrl });
              setPhotoPreview(finalPhotoUrl);
              setSelectedFile(null);
@@ -193,11 +210,13 @@
 
     const cancelEditProfile = () => {
         setIsEditingProfile(false);
-        profileForm.reset({
-            phone: employeeProfile?.phone || '',
-            photoUrl: employeeProfile?.photoUrl || '',
-        });
-        setPhotoPreview(employeeProfile?.photoUrl);
+        if (employeeProfile) {
+            profileForm.reset({
+                phone: employeeProfile.phone || '',
+                photoUrl: employeeProfile.photoUrl || '',
+            });
+            setPhotoPreview(employeeProfile.photoUrl);
+        }
         setSelectedFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
@@ -210,9 +229,7 @@
             setSelectedFile(null);
              if (fileInputRef.current) fileInputRef.current.value = '';
         } else if (!url) {
-            setPhotoPreview(undefined); 
-        } else {
-            //
+            setPhotoPreview(employeeProfile?.photoUrl || undefined);
         }
     };
 
@@ -237,27 +254,36 @@
      const onNotificationSubmit = async (data: NotificationFormData) => {
          if (!authUser?.uid) return;
          setIsSavingNotifications(true);
+         let finalBrowserNotifications = data.browserNotifications;
+
          if (typeof window !== 'undefined' && "Notification" in window) {
              const currentPermission = Notification.permission;
              if (data.browserNotifications && currentPermission === 'default') {
                  const permission = await Notification.requestPermission();
-                 setBrowserNotificationPermission(permission);
-                 data.browserNotifications = permission === 'granted';
+                 setBrowserNotificationPermission(permission); // Update local state
+                 finalBrowserNotifications = permission === 'granted';
                  if (permission === 'denied') {
                      toast({ title: "Permissão Negada", description: "Notificações do navegador foram bloqueadas.", variant: "destructive" });
                  } else if (permission === 'granted') {
                       toast({ title: "Permissão Concedida", description: "Notificações do navegador ativadas." });
                  }
              } else if (!data.browserNotifications && currentPermission === 'granted') {
-                 toast({ title: "Ação Necessária", description: "Para desativar notificações do navegador, ajuste as configurações do seu site/navegador.", duration: 5000 });
-                 data.browserNotifications = true;
+                 // User is trying to turn OFF browser notifications via app UI, but permission is granted in browser.
+                 // We can't revoke browser permission programmatically.
+                 toast({ title: "Ação Necessária", description: "Para desativar, ajuste nas configurações do seu navegador para este site.", duration: 6000 });
+                 finalBrowserNotifications = true; // Keep it true as we can't change browser setting
+             } else if (data.browserNotifications && currentPermission === 'denied') {
+                 toast({ title: "Permissão Bloqueada", description: "Notificações do navegador estão bloqueadas. Altere nas configurações do navegador.", variant: "destructive" });
+                 finalBrowserNotifications = false; // Reflect that it can't be enabled
              }
          }
 
+         const settingsToSave = { ...data, browserNotifications: finalBrowserNotifications };
+
          try {
-              await saveNotificationSettings(authUser.uid, data);
+              await saveNotificationSettings(authUser.uid, settingsToSave);
               toast({ title: "Sucesso!", description: "Preferências de notificação salvas." });
-              notificationForm.reset(data);
+              notificationForm.reset(settingsToSave);
          } catch (error) {
               console.error("Erro ao salvar notificações:", error);
               toast({ title: "Erro", description: "Não foi possível salvar as preferências.", variant: "destructive" });
@@ -267,7 +293,7 @@
      };
 
       const handleLogout = async () => {
-        await authLogout(); 
+        await authLogout();
         router.push('/login');
       };
 
@@ -292,7 +318,7 @@
      }
 
      if (!employeeProfile || !authUser) {
-         return <div className="text-center text-muted-foreground py-20">Erro ao carregar perfil do colaborador.</div>;
+         return <div className="text-center text-muted-foreground py-20">Erro ao carregar perfil do colaborador. Por favor, tente recarregar a página ou contate o suporte se o problema persistir.</div>;
      }
 
      return (
@@ -338,11 +364,11 @@
                                       <div className="space-y-1"><Label className="text-xs text-muted-foreground">Nome</Label><p className="font-medium text-base">{employeeProfile.name}</p></div>
                                      <div className="space-y-1"><Label className="text-xs text-muted-foreground">Email</Label><p className="font-medium break-all text-sm text-foreground/90">{employeeProfile.email}</p></div>
                                       <FormField control={profileForm.control} name="phone" render={({ field }) => (
-                                          <FormItem><FormLabel className="text-xs">Telefone</FormLabel><FormControl><Input className={`h-9 text-sm ${!isEditingProfile ? 'border-none px-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent pointer-events-none' : 'bg-input/50 dark:bg-input/20'}`} type="tel" placeholder="Não informado" {...field} readOnly={!isEditingProfile} value={field.value ?? ''} /></FormControl><FormMessage className="text-xs"/></FormItem>
+                                          <FormItem><FormLabel className="text-xs">Telefone</FormLabel><FormControl><Input className={`h-9 text-sm ${!isEditingProfile ? 'border-none px-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent pointer-events-none shadow-none' : 'bg-input/50 dark:bg-input/20'}`} type="tel" placeholder="Não informado" {...field} readOnly={!isEditingProfile} value={field.value ?? ''} /></FormControl><FormMessage className="text-xs"/></FormItem>
                                       )}/>
                                       {isEditingProfile && (
                                           <FormField control={profileForm.control} name="photoUrl" render={({ field }) => (
-                                              <FormItem><FormLabel className="text-xs">URL da Foto (Alternativa)</FormLabel><FormControl><Input className="h-9 text-xs bg-input/50 dark:bg-input/20" placeholder="https://..." {...field} value={field.value ?? ''} onChange={handlePhotoUrlChange} /></FormControl><FormMessage className="text-xs" /></FormItem>
+                                              <FormItem><FormLabel className="text-xs">URL da Foto (Alternativa)</FormLabel><FormControl><Input className="h-9 text-xs bg-input/50 dark:bg-input/20" placeholder="https://" {...field} value={field.value ?? ''} onChange={handlePhotoUrlChange} /></FormControl><FormMessage className="text-xs" /></FormItem>
                                           )}/>
                                       )}
                                  </div>
@@ -388,21 +414,27 @@
                       <form onSubmit={notificationForm.handleSubmit(onNotificationSubmit)}>
                          <CardHeader className="p-4 pb-2"><CardTitle className="text-base flex items-center gap-2"><Bell className="h-4 w-4" /> Notificações</CardTitle><CardDescription className='text-xs'>Gerencie como você recebe alertas.</CardDescription></CardHeader>
                          <CardContent className="space-y-3 p-4 pt-0">
-                            <FormField control={notificationForm.control} name="newEvaluation" render={({ field }) => (<FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel className="font-normal text-xs leading-tight pr-2">Receber notificação de novas avaliações</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem>)}/>
-                             <FormField control={notificationForm.control} name="challengeUpdates" render={({ field }) => (<FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel className="font-normal text-xs leading-tight pr-2">Notificações sobre desafios (novos, prazos)</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem>)}/>
-                              <FormField control={notificationForm.control} name="rankingChanges" render={({ field }) => (<FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel className="font-normal text-xs leading-tight pr-2">Notificações sobre mudanças no ranking</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem>)}/>
-                             <FormField control={notificationForm.control} name="systemAnnouncements" render={({ field }) => (<FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel className="font-normal text-xs leading-tight pr-2">Anúncios importantes do sistema</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem>)}/>
-                             <FormField control={notificationForm.control} name="browserNotifications" render={({ field }) => (
-                                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                                      <div className="space-y-0.5"><FormLabel className="font-normal text-xs leading-tight pr-2">Ativar notificações do navegador</FormLabel>
-                                          {browserNotificationPermission === 'denied' && (<FormDescription className="text-xs text-destructive">Permissão bloqueada nas configurações do navegador.</FormDescription>)}
-                                          {browserNotificationPermission === 'default' && (<FormDescription className="text-xs text-yellow-600">Permissão necessária. Clique em salvar para solicitar.</FormDescription>)}
-                                      </div><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={browserNotificationPermission === 'denied'} /></FormControl>
-                                 </FormItem>
-                             )}/>
+                            {isLoadingNotifications ? (
+                                <div className="flex justify-center items-center py-6"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+                            ) : (
+                                <>
+                                    <FormField control={notificationForm.control} name="newEvaluation" render={({ field }) => (<FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel className="font-normal text-xs leading-tight pr-2">Receber notificação de novas avaliações</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem>)}/>
+                                    <FormField control={notificationForm.control} name="challengeUpdates" render={({ field }) => (<FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel className="font-normal text-xs leading-tight pr-2">Notificações sobre desafios (novos, prazos)</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem>)}/>
+                                    <FormField control={notificationForm.control} name="rankingChanges" render={({ field }) => (<FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel className="font-normal text-xs leading-tight pr-2">Notificações sobre mudanças no ranking</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem>)}/>
+                                    <FormField control={notificationForm.control} name="systemAnnouncements" render={({ field }) => (<FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><FormLabel className="font-normal text-xs leading-tight pr-2">Anúncios importantes do sistema</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem>)}/>
+                                    <FormField control={notificationForm.control} name="browserNotifications" render={({ field }) => (
+                                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                            <div className="space-y-0.5"><FormLabel className="font-normal text-xs leading-tight pr-2">Ativar notificações do navegador</FormLabel>
+                                                {browserNotificationPermission === 'denied' && (<FormDescription className="text-xs text-destructive">Permissão bloqueada nas configurações do navegador.</FormDescription>)}
+                                                {browserNotificationPermission === 'default' && (<FormDescription className="text-xs text-yellow-600">Permissão necessária. Clique em salvar para solicitar.</FormDescription>)}
+                                            </div><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={browserNotificationPermission === 'denied'} /></FormControl>
+                                        </FormItem>
+                                    )}/>
+                                </>
+                            )}
                          </CardContent>
                          <CardFooter className="p-4 pt-0">
-                              <Button type="submit" disabled={isSavingNotifications || !notificationForm.formState.isDirty} className="w-full">
+                              <Button type="submit" disabled={isSavingNotifications || !notificationForm.formState.isDirty || isLoadingNotifications} className="w-full">
                                  {isSavingNotifications ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
                                  {isSavingNotifications ? 'Salvando...' : 'Salvar Preferências'}
                              </Button>
@@ -419,3 +451,5 @@
          </div>
      );
  }
+
+    
