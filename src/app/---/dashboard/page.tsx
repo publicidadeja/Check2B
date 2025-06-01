@@ -86,84 +86,83 @@
              setIsLoading(true);
 
              try {
-                 const today = new Date();
-                 const todayStr = format(today, 'yyyy-MM-dd');
-                 const startCurrentMonthStr = format(startOfMonth(today), 'yyyy-MM-dd');
-                 const endCurrentMonthStr = format(endOfMonth(today), 'yyyy-MM-dd');
+                //  const today = new Date();
+                //  const todayStr = format(today, 'yyyy-MM-dd');
+                //  const startCurrentMonthStr = format(startOfMonth(today), 'yyyy-MM-dd');
+                //  const endCurrentMonthStr = format(endOfMonth(today), 'yyyy-MM-dd');
 
-                 // const userProfileData = await getUserProfileData(CURRENT_EMPLOYEE_ID); // Reverted
-                 // if (!userProfileData) { // Reverted
-                 //    throw new Error("Perfil do colaborador não encontrado."); // Reverted
-                 // } // Reverted
+                //  // const userProfileData = await getUserProfileData(CURRENT_EMPLOYEE_ID); // Reverted
+                //  // if (!userProfileData) { // Reverted
+                //  //    throw new Error("Perfil do colaborador não encontrado."); // Reverted
+                //  // } // Reverted
 
-                 const allOrgTasks = await getAllTasksForOrganization(organizationId);
+                //  const allOrgTasks = await getAllTasksForOrganization(organizationId);
                  
-                 // Reverted to use placeholder for task filtering
-                 const employeeProfileForTaskFiltering = { 
-                    uid: CURRENT_EMPLOYEE_ID, 
-                    // These were placeholders, keeping them as per the prior state before my last change
-                    department: user?.photoURL || 'N/A', 
-                    userRole: user?.email?.includes('dev') ? 'Desenvolvedor' : 'N/A', 
-                    status: 'active' 
-                 } as any; 
+                //  // Reverted to use placeholder for task filtering
+                //  const employeeProfileForTaskFiltering = { 
+                //     uid: CURRENT_EMPLOYEE_ID, 
+                //     // These were placeholders, keeping them as per the prior state before my last change
+                //     department: user?.photoURL || 'N/A', 
+                //     userRole: user?.email?.includes('dev') ? 'Desenvolvedor' : 'N/A', 
+                //     status: 'active' 
+                //  } as any; 
 
-                 const tasksToday = getTasksForEmployeeOnDate(employeeProfileForTaskFiltering, today, allOrgTasks);
+                //  const tasksToday = getTasksForEmployeeOnDate(employeeProfileForTaskFiltering, today, allOrgTasks);
                  
-                 const evaluationsToday = await getEvaluationsForDay(organizationId, todayStr); 
-                 const employeeEvaluationsToday = evaluationsToday.filter(ev => ev.employeeId === CURRENT_EMPLOYEE_ID);
+                //  const evaluationsToday = await getEvaluationsForDay(organizationId, todayStr); 
+                //  const employeeEvaluationsToday = evaluationsToday.filter(ev => ev.employeeId === CURRENT_EMPLOYEE_ID);
 
-                 let todayStatus: EmployeeDashboardData['todayStatus'] = 'no_tasks';
-                 if (tasksToday.length > 0) {
-                     const allTasksEvaluated = tasksToday.every(task => 
-                         employeeEvaluationsToday.some(ev => ev.taskId === task.id && ev.score !== undefined)
-                     );
-                     todayStatus = allTasksEvaluated ? 'evaluated' : 'pending';
-                 }
+                //  let todayStatus: EmployeeDashboardData['todayStatus'] = 'no_tasks';
+                //  if (tasksToday.length > 0) {
+                //      const allTasksEvaluated = tasksToday.every(task => 
+                //          employeeEvaluationsToday.some(ev => ev.taskId === task.id && ev.score !== undefined)
+                //      );
+                //      todayStatus = allTasksEvaluated ? 'evaluated' : 'pending';
+                //  }
                  
-                 const evaluationsThisMonth = await getEvaluationsForOrganizationInPeriod(organizationId, startCurrentMonthStr, endCurrentMonthStr);
-                 const employeeEvaluationsThisMonth = evaluationsThisMonth.filter(ev => ev.employeeId === CURRENT_EMPLOYEE_ID);
+                //  const evaluationsThisMonth = await getEvaluationsForOrganizationInPeriod(organizationId, startCurrentMonthStr, endCurrentMonthStr);
+                //  const employeeEvaluationsThisMonth = evaluationsThisMonth.filter(ev => ev.employeeId === CURRENT_EMPLOYEE_ID);
                  
-                 const zerosThisMonth = employeeEvaluationsThisMonth.filter(ev => ev.score === 0).length;
-                 const projectedBonus = zerosThisMonth >= ZERO_LIMIT ? 0 : BASE_BONUS;
+                //  const zerosThisMonth = employeeEvaluationsThisMonth.filter(ev => ev.score === 0).length;
+                //  const projectedBonus = zerosThisMonth >= ZERO_LIMIT ? 0 : BASE_BONUS;
 
-                 const [allOrgChallenges, employeeParticipations] = await Promise.all([
-                     getAllChallenges(organizationId),
-                     getChallengeParticipationsByEmployee(organizationId, CURRENT_EMPLOYEE_ID)
-                 ]);
+                //  const [allOrgChallenges, employeeParticipations] = await Promise.all([
+                //      getAllChallenges(organizationId),
+                //      getChallengeParticipationsByEmployee(organizationId, CURRENT_EMPLOYEE_ID)
+                //  ]);
 
-                 const participationMap = new Map(employeeParticipations.map(p => [p.challengeId, p]));
+                //  const participationMap = new Map(employeeParticipations.map(p => [p.challengeId, p]));
 
-                 const activeChallenges = allOrgChallenges.filter(ch => {
-                     if (ch.status !== 'active' && !(ch.status === 'scheduled' && !isBefore(today, parseISO(ch.periodStartDate)))) {
-                         return false; 
-                     }
-                     if (!ch.periodStartDate || !ch.periodEndDate || !isValid(parseISO(ch.periodStartDate)) || !isValid(parseISO(ch.periodEndDate))) {
-                         return false; 
-                     }
-                     const challengeEndDate = parseISO(ch.periodEndDate + "T23:59:59.999Z");
-                     if (isPast(challengeEndDate) && ch.status !== 'evaluating') return false; 
+                //  const activeChallenges = allOrgChallenges.filter(ch => {
+                //      if (ch.status !== 'active' && !(ch.status === 'scheduled' && !isBefore(today, parseISO(ch.periodStartDate)))) {
+                //          return false; 
+                //      }
+                //      if (!ch.periodStartDate || !ch.periodEndDate || !isValid(parseISO(ch.periodStartDate)) || !isValid(parseISO(ch.periodEndDate))) {
+                //          return false; 
+                //      }
+                //      const challengeEndDate = parseISO(ch.periodEndDate + "T23:59:59.999Z");
+                //      if (isPast(challengeEndDate) && ch.status !== 'evaluating') return false; 
 
-                     let isEligible = false;
-                     if (ch.eligibility.type === 'all') isEligible = true;
-                     else if (ch.eligibility.type === 'department' && employeeProfileForTaskFiltering.department && ch.eligibility.entityIds?.includes(employeeProfileForTaskFiltering.department)) isEligible = true; // Reverted
-                     else if (ch.eligibility.type === 'role' && employeeProfileForTaskFiltering.userRole && ch.eligibility.entityIds?.includes(employeeProfileForTaskFiltering.userRole)) isEligible = true; // Reverted
-                     else if (ch.eligibility.type === 'individual' && ch.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID)) isEligible = true;
+                //      let isEligible = false;
+                //      if (ch.eligibility.type === 'all') isEligible = true;
+                //      else if (ch.eligibility.type === 'department' && employeeProfileForTaskFiltering.department && ch.eligibility.entityIds?.includes(employeeProfileForTaskFiltering.department)) isEligible = true; // Reverted
+                //      else if (ch.eligibility.type === 'role' && employeeProfileForTaskFiltering.userRole && ch.eligibility.entityIds?.includes(employeeProfileForTaskFiltering.userRole)) isEligible = true; // Reverted
+                //      else if (ch.eligibility.type === 'individual' && ch.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID)) isEligible = true;
                      
-                     if (!isEligible) return false;
+                //      if (!isEligible) return false;
 
-                     const participation = participationMap.get(ch.id);
-                     return !participation || participation.status === 'pending' || participation.status === 'accepted';
-                 });
+                //      const participation = participationMap.get(ch.id);
+                //      return !participation || participation.status === 'pending' || participation.status === 'accepted';
+                //  });
                  
                  setData({
-                     todayStatus,
-                     zerosThisMonth,
-                     projectedBonus,
-                     tasksToday,
-                     activeChallenges,
+                     todayStatus: 'no_tasks', // reverted
+                     zerosThisMonth: 0, // reverted
+                     projectedBonus: 0, // reverted
+                     tasksToday: [], // reverted
+                     activeChallenges: [], // reverted
                      monthlyPerformanceTrend: 'stable', 
-                     employeeName: employeeDisplayName, // Reverted, was userProfileData.name
-                     // userProfile: userProfileData // Reverted
+                     employeeName: employeeDisplayName, 
                  });
 
              } catch (error: any) {
@@ -172,6 +171,11 @@
                      title: "Erro ao Carregar",
                      description: error.message || "Não foi possível carregar os dados do dashboard.",
                      variant: "destructive",
+                 });
+                 // Ensure data is set to a non-null state even on error, to avoid infinite loading screen
+                 setData(prev => prev || { 
+                    todayStatus: 'no_tasks', zerosThisMonth: 0, projectedBonus: 0, tasksToday: [], 
+                    activeChallenges: [], employeeName: employeeDisplayName 
                  });
              } finally {
                  setIsLoading(false);
@@ -348,7 +352,7 @@
                                          </div>
                                          <p className="text-xs text-muted-foreground dark:text-slate-400 mb-2 line-clamp-2">{challenge.description}</p>
                                          <div className="flex justify-between items-center text-[10px] text-muted-foreground dark:text-slate-400">
-                                              <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Termina em: {challenge.periodEndDate ? format(parseISO(challenge.periodEndDate), 'dd/MM/yy') : 'N/A'}</span>
+                                              <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Termina em: {challenge.periodEndDate && isValid(parseISO(challenge.periodEndDate)) ? format(parseISO(challenge.periodEndDate), 'dd/MM/yy') : 'N/A'}</span>
                                                <Link href="/colaborador/desafios" passHref>
                                                    <Button variant="link" size="sm" className="p-0 h-auto text-accent text-[10px] font-semibold">Ver Detalhes <ArrowRight className="h-3 w-3 ml-1"/></Button>
                                                </Link>
@@ -372,3 +376,6 @@
          </TooltipProvider>
      );
  }
+
+
+    

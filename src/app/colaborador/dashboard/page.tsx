@@ -38,7 +38,7 @@
  import { ScrollArea } from '@/components/ui/scroll-area';
  import { Separator } from '@/components/ui/separator';
  import { useToast } from '@/hooks/use-toast';
- import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns';
+ import { format, parseISO, startOfMonth, endOfMonth, isBefore, isValid, isPast } from 'date-fns';
  import { ptBR } from 'date-fns/locale';
  import Link from 'next/link';
  import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -47,6 +47,8 @@
  import { Label } from '@/components/ui/label'; 
  import { LoadingSpinner } from '@/components/ui/loading-spinner'; 
  import { useAuth } from '@/hooks/use-auth';
+ import { getUserProfileData } from '@/lib/auth'; // Importar para buscar perfil
+ import type { UserProfile } from '@/types/user';
 
  // Import types
  import type { Evaluation } from '@/types/evaluation';
@@ -66,9 +68,10 @@
      projectedBonus: number;
      tasksToday: Task[];
      activeChallenges: Challenge[];
-     recentNotifications: Notification[]; // Kept for potential future integration
+     recentNotifications: Notification[]; 
      monthlyPerformanceTrend?: 'up' | 'down' | 'stable';
      employeeName: string; 
+     userProfile?: UserProfile | null;
  }
 
 
@@ -81,84 +84,77 @@
      const CURRENT_EMPLOYEE_ID = user?.uid;
      const employeeDisplayName = user?.displayName || "Colaborador";
 
-     // Constants for bonus calculation (could be fetched from org settings later)
      const ZERO_LIMIT = 3; 
      const BASE_BONUS = 100; 
 
      React.useEffect(() => {
          const fetchEmployeeDashboardData = async () => {
-             if (!CURRENT_EMPLOYEE_ID || !organizationId || authIsLoading) {
-                 if (!authIsLoading) setIsLoading(false); // Stop loading if auth done but no IDs
+             if (authIsLoading) { 
+                 return;
+             }
+             if (!CURRENT_EMPLOYEE_ID || !organizationId) {
+                 setIsLoading(false);
+                 console.warn("[Collab Dashboard] User or Org ID missing, cannot fetch data.");
+                 setData({ 
+                    todayStatus: 'no_tasks', zerosThisMonth: 0, projectedBonus: 0, tasksToday: [], 
+                    activeChallenges: [], recentNotifications: [], employeeName: employeeDisplayName, userProfile: null,
+                 });
                  return;
              }
              setIsLoading(true);
 
              try {
+                 const userProfileData = await getUserProfileData(CURRENT_EMPLOYEE_ID);
+                 if (!userProfileData) {
+                    throw new Error("Perfil do colaborador não encontrado no Firestore.");
+                 }
+
                  const today = new Date();
                  const todayStr = format(today, 'yyyy-MM-dd');
                  const startCurrentMonthStr = format(startOfMonth(today), 'yyyy-MM-dd');
                  const endCurrentMonthStr = format(endOfMonth(today), 'yyyy-MM-dd');
 
-                 // 1. Fetch all tasks for the organization
                  const allOrgTasks = await getAllTasksForOrganization(organizationId);
-
-                 // 2. Filter tasks for the current employee and today
-                 // We need user's department and role from their profile for accurate filtering
-                 // For now, this part will be less accurate if UserProfile isn't fully populated in useAuth
-                 // Assuming user object from useAuth has basic profile info (department, userRole)
-                 // This needs to be ensured by AuthProvider fetching full UserProfile.
-                 // For now, let's assume a placeholder or skip strict filtering if not available.
-                 const employeeProfileForTaskFiltering = { 
-                    uid: CURRENT_EMPLOYEE_ID, 
-                    department: user?.photoURL || 'N/A', // Placeholder, replace with actual user.department
-                    userRole: user?.email?.includes('dev') ? 'Desenvolvedor' : 'N/A', // Placeholder, replace with actual user.userRole
-                    status: 'active' // Assuming active for dashboard view
-                 } as any; // Cast to any to bypass strict UserProfile type if not fully available
-
-                 const tasksToday = getTasksForEmployeeOnDate(employeeProfileForTaskFiltering, today, allOrgTasks);
-
-                 // 3. Fetch evaluations for today to determine status
-                 const evaluationsToday = await getEvaluationsForDay(organizationId, todayStr); 
-                 const employeeEvaluationsToday = evaluationsToday.filter(ev => ev.employeeId === CURRENT_EMPLOYEE_ID);
-
+                 
+                 const tasksToday = getTasksForEmployeeOnDate(userProfileData, today, allOrgTasks);
+                 
+                 const evaluationsToday = await getEvaluationsForDay(organizationId, todayStr, CURRENT_EMPLOYEE_ID); 
+                 
                  let todayStatus: EmployeeDashboardData['todayStatus'] = 'no_tasks';
                  if (tasksToday.length > 0) {
                      const allTasksEvaluated = tasksToday.every(task => 
-                         employeeEvaluationsToday.some(ev => ev.taskId === task.id && ev.score !== undefined)
+                         evaluationsToday.some(ev => ev.taskId === task.id && ev.score !== undefined)
                      );
                      todayStatus = allTasksEvaluated ? 'evaluated' : 'pending';
                  }
                  
-                 // 4. Fetch evaluations for the month to count zeros
-                 const evaluationsThisMonth = await getEvaluationsForOrganizationInPeriod(organizationId, startCurrentMonthStr, endCurrentMonthStr);
-                 const employeeEvaluationsThisMonth = evaluationsThisMonth.filter(ev => ev.employeeId === CURRENT_EMPLOYEE_ID);
+                 const evaluationsThisMonth = await getEvaluationsForOrganizationInPeriod(organizationId, startCurrentMonthStr, endCurrentMonthStr, CURRENT_EMPLOYEE_ID);
                  
-                 const zerosThisMonth = employeeEvaluationsThisMonth.filter(ev => ev.score === 0).length;
+                 const zerosThisMonth = evaluationsThisMonth.filter(ev => ev.score === 0).length;
                  const projectedBonus = zerosThisMonth >= ZERO_LIMIT ? 0 : BASE_BONUS;
 
-                 // 5. Fetch active challenges and participations
                  const [allOrgChallenges, employeeParticipations] = await Promise.all([
-                     getAllChallenges(organizationId),
-                     getChallengeParticipationsByEmployee(organizationId, CURRENT_EMPLOYEE_ID)
+                    getAllChallenges(organizationId),
+                    getChallengeParticipationsByEmployee(organizationId, CURRENT_EMPLOYEE_ID)
                  ]);
+
 
                  const participationMap = new Map(employeeParticipations.map(p => [p.challengeId, p]));
 
                  const activeChallenges = allOrgChallenges.filter(ch => {
-                     if (ch.status !== 'active' && !(ch.status === 'scheduled' && !isBefore(today, parseISO(ch.periodStartDate)))) {
-                         return false; // Not active or not yet started (if scheduled)
+                     if (ch.status !== 'active' && !(ch.status === 'scheduled' && ch.periodStartDate && !isBefore(today, parseISO(ch.periodStartDate)))) {
+                         return false; 
                      }
                      if (!ch.periodStartDate || !ch.periodEndDate || !isValid(parseISO(ch.periodStartDate)) || !isValid(parseISO(ch.periodEndDate))) {
-                         return false; // Invalid dates
+                         return false; 
                      }
                      const challengeEndDate = parseISO(ch.periodEndDate + "T23:59:59.999Z");
-                     if (isPast(challengeEndDate) && ch.status !== 'evaluating') return false; // Challenge period over and not in evaluation
+                     if (isPast(challengeEndDate) && ch.status !== 'evaluating') return false; 
 
-                     // Eligibility check (simplified, assuming user has department/role fields)
                      let isEligible = false;
                      if (ch.eligibility.type === 'all') isEligible = true;
-                     else if (ch.eligibility.type === 'department' && ch.eligibility.entityIds?.includes(employeeProfileForTaskFiltering.department)) isEligible = true;
-                     else if (ch.eligibility.type === 'role' && ch.eligibility.entityIds?.includes(employeeProfileForTaskFiltering.userRole)) isEligible = true;
+                     else if (ch.eligibility.type === 'department' && userProfileData.department && ch.eligibility.entityIds?.includes(userProfileData.department)) isEligible = true;
+                     else if (ch.eligibility.type === 'role' && userProfileData.userRole && ch.eligibility.entityIds?.includes(userProfileData.userRole)) isEligible = true;
                      else if (ch.eligibility.type === 'individual' && ch.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID)) isEligible = true;
                      
                      if (!isEligible) return false;
@@ -183,15 +179,20 @@
                      activeChallenges,
                      recentNotifications,
                      monthlyPerformanceTrend: 'stable', 
-                     employeeName: employeeDisplayName,
+                     employeeName: userProfileData.name || employeeDisplayName,
+                     userProfile: userProfileData,
                  });
 
-             } catch (error) {
+             } catch (error: any) {
                  console.error("Erro ao carregar dashboard do colaborador:", error);
                  toast({
-                     title: "Erro ao Carregar",
-                     description: "Não foi possível carregar os dados do dashboard.",
+                     title: "Erro ao Carregar Dados",
+                     description: error.message || "Não foi possível carregar os dados do dashboard.",
                      variant: "destructive",
+                 });
+                 setData(prev => prev ? {...prev, isLoading: false, userProfile: prev.userProfile} : { 
+                    todayStatus: 'no_tasks', zerosThisMonth: 0, projectedBonus: 0, tasksToday: [], 
+                    activeChallenges: [], recentNotifications: [], employeeName: employeeDisplayName, userProfile: null
                  });
              } finally {
                  setIsLoading(false);
@@ -202,14 +203,14 @@
      }, [CURRENT_EMPLOYEE_ID, organizationId, authIsLoading, employeeDisplayName, toast]);
 
 
-     if (authIsLoading || isLoading || !data) {
+     if (authIsLoading || isLoading ) { 
          return (
              <div className="flex justify-center items-center h-full py-20">
                  <LoadingSpinner size="lg" text="Carregando dashboard..." />
              </div>
          );
      }
-      if (!CURRENT_EMPLOYEE_ID || !organizationId) {
+      if (!CURRENT_EMPLOYEE_ID || !organizationId) { 
         return (
             <Card className="m-4">
                 <CardHeader>
@@ -218,6 +219,17 @@
                 <CardContent>
                     <p className="text-destructive">Informações de usuário ou organização não encontradas. Por favor, faça login novamente.</p>
                     <Button asChild className="mt-4"><Link href="/login">Login</Link></Button>
+                </CardContent>
+            </Card>
+        );
+    }
+    
+    if (!data || !data.userProfile) { 
+        return (
+            <Card className="m-4">
+                <CardHeader><CardTitle>Erro ao Carregar Perfil</CardTitle></CardHeader>
+                <CardContent>
+                    <p className="text-destructive">Não foi possível carregar os dados do seu perfil. Tente novamente mais tarde ou contate o suporte.</p>
                 </CardContent>
             </Card>
         );
@@ -368,7 +380,7 @@
                                          </div>
                                          <p className="text-xs text-muted-foreground dark:text-slate-400 mb-2 line-clamp-2">{challenge.description}</p>
                                          <div className="flex justify-between items-center text-[10px] text-muted-foreground dark:text-slate-400">
-                                              <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Termina em: {challenge.periodEndDate ? format(parseISO(challenge.periodEndDate), 'dd/MM/yy') : 'N/A'}</span>
+                                              <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Termina em: {challenge.periodEndDate && isValid(parseISO(challenge.periodEndDate)) ? format(parseISO(challenge.periodEndDate), 'dd/MM/yy') : 'N/A'}</span>
                                                <Link href="/colaborador/desafios" passHref>
                                                    <Button variant="link" size="sm" className="p-0 h-auto text-accent text-[10px] font-semibold">Ver Detalhes <ArrowRight className="h-3 w-3 ml-1"/></Button>
                                                </Link>
@@ -392,3 +404,7 @@
          </TooltipProvider>
      );
  }
+
+    
+
+    
