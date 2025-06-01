@@ -1,140 +1,131 @@
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper Functions
-    function isSignedIn() {
-      return request.auth != null && request.auth.uid != null;
-    }
 
-    function isSuperAdmin() {
-      return isSignedIn() && request.auth.token.role == 'super_admin';
-    }
-
-    // Checks if the authenticated user is an admin of the specified organization.
-    // orgIdFromPath: The organization ID from the document path.
-    function isAdminOfOrg(orgIdFromPath) {
-      return isSignedIn() && request.auth.token.role == 'admin' && request.auth.token.organizationId == orgIdFromPath;
-    }
-
-    // Checks if the authenticated user is a member (admin or collaborator) of the specified organization.
-    // orgIdFromPath: The organization ID from the document path.
-    function isMemberOfOrg(orgIdFromPath) {
-      return isSignedIn() && request.auth.token.organizationId == orgIdFromPath && (request.auth.token.role == 'admin' || request.auth.token.role == 'collaborator');
-    }
-
-    // Checks if the authenticated user is the owner of the resource or self.
-    function isSelf(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+    // Default deny all reads and writes - Boa prática para começar
+    match /{document=**} {
+      allow read, write: if false;
     }
 
     // Users collection
     match /users/{userId} {
-      allow read: if isSelf(userId) || 
-                     (isAdminOfOrg(resource.data.organizationId)) || 
-                     isSuperAdmin();
-      // User creation should primarily be handled by Cloud Functions which have elevated privileges
-      // or specific checks for who can create whom.
-      allow create: if isSuperAdmin(); // Super admins can create users.
-      // Allow self-updates and updates by admins of the same org or super admins.
-      allow update: if isSelf(userId) || 
-                       (isAdminOfOrg(resource.data.organizationId)) || 
-                       isSuperAdmin();
-      // Deleting user profiles should be a controlled process, likely via Cloud Functions.
-      allow delete: if isSuperAdmin(); // Only super_admin can delete user profiles directly
+      // Usuário pode ler seu próprio perfil
+      // Super admin pode ler qualquer perfil
+      // Admin pode ler perfis de usuários da sua organização
+      allow read: if request.auth.uid == userId ||
+                     request.auth.token.role == 'super_admin' ||
+                     (request.auth.token.role == 'admin' && request.auth.token.organizationId == resource.data.organizationId);
+
+      // Usuário pode atualizar campos específicos do seu próprio perfil (ex: phone, photoUrl, notification settings)
+      allow update: if request.auth.uid == userId &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phone', 'photoUrl', 'updatedAt']); // Adicione 'settings.notifications' aqui se precisar que o usuário atualize suas próprias config de notificação via cliente.
+                                                                                                                                  // Se as configurações de notificação estiverem em uma subcoleção, veja a regra para '/users/{userId}/settings/notifications'
+
+      // Admins podem atualizar perfis de usuários dentro de sua organização (ex: status, department, userRole)
+      // Super Admin pode atualizar qualquer perfil.
+      allow update: if (request.auth.token.role == 'admin' && request.auth.token.organizationId == resource.data.organizationId &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'department', 'userRole', 'status', 'phone', 'photoUrl', 'admissionDate', 'updatedAt'])) || // Admins podem atualizar campos específicos
+                       request.auth.token.role == 'super_admin'; // Super admin tem mais flexibilidade
+
+      // Criação de perfil: geralmente feita por Cloud Functions após o registro no Auth.
+      // Se for permitir criação pelo cliente (ex: super_admin criando um usuário diretamente no Firestore):
+      allow create: if request.auth.token.role == 'super_admin';
+      // Ou, se o próprio usuário cria seu doc após o signup (menos comum se o perfil já é criado pelo backend):
+      // allow create: if request.auth.uid == userId;
     }
 
-    // Organizations collection
-    match /organizations/{orgId} {
-      // Members of the org and super admins can read the org document.
-      allow get: if isMemberOfOrg(orgId) || isSuperAdmin();
-      // Only super admins can list all organizations.
-      allow list: if isSuperAdmin();
-      // Only super admins can create, update, or delete organizations.
-      allow create, update, delete: if isSuperAdmin();
+    // User-specific settings subcollection (example: notification preferences)
+    match /users/{userId}/settings/notifications {
+      allow read, write: if request.auth.uid == userId;
+    }
 
-      // Default read access for members within their organization's subcollections
-      match /{subcollection}/{docId} {
-        allow read: if isMemberOfOrg(orgId); // Covers get and list
+    // Organizations collection (documento da organização em si)
+    match /organizations/{organizationId} {
+      // Super admin pode ler/escrever
+      // Membros da organização (admin/colaborador) podem ler o documento da sua própria organização
+      allow read: if request.auth.token.role == 'super_admin' ||
+                     (request.auth.token.organizationId == organizationId && (request.auth.token.role == 'admin' || request.auth.token.role == 'collaborator'));
+      allow write: if request.auth.token.role == 'super_admin';
+
+      // --- Subcollections within an organization ---
+
+      // Helper functions for subcollection rules
+      function isUserInOrg() {
+        return request.auth.token.organizationId == organizationId;
+      }
+      function isAdminOfOrg() {
+        return isUserInOrg() && request.auth.token.role == 'admin';
+      }
+      function isCollaboratorOfOrg() {
+        return isUserInOrg() && request.auth.token.role == 'collaborator';
       }
 
-      // --- Specific rules for subcollections to override or add write permissions ---
-
-      match /tasks/{taskId} {
-        // read is covered by the default rule above.
-        allow create, update, delete: if isAdminOfOrg(orgId);
+      // Regra genérica para a maioria das subcoleções (admin tem R/W, colaborador tem R)
+      match /{subcollectionName}/{docId}
+        where subcollectionName in ['departments', 'roles', 'tasks', 'challenges', 'appSettings', 'rankingManagement', 'challengeManagement'] {
+          allow read: if request.auth.token.role == 'super_admin' || isAdminOfOrg() || isCollaboratorOfOrg();
+          allow write: if request.auth.token.role == 'super_admin' || isAdminOfOrg();
       }
 
-      match /roles/{roleId} {
-        // read is covered by the default rule above.
-        allow create, update, delete: if isAdminOfOrg(orgId);
+      // Permissões mais específicas para Colaboradores (sobrepõem a regra genérica acima se necessário)
+      match /evaluations/{evaluationId} {
+        allow read: if request.auth.token.role == 'super_admin' ||
+                       isAdminOfOrg() ||
+                       (isCollaboratorOfOrg() && resource.data.employeeId == request.auth.uid); // Colaborador lê apenas suas próprias avaliações
+        allow write: if request.auth.token.role == 'super_admin' || isAdminOfOrg(); // Apenas admin/super_admin criam/atualizam avaliações
       }
 
-      match /departments/{deptId} {
-        // read is covered by the default rule above.
-        allow create, update, delete: if isAdminOfOrg(orgId);
-      }
-      
-      match /appSettings/{settingsDoc} {
-        // read is covered by the default rule above.
-        allow create, update: if isAdminOfOrg(orgId);
-      }
+      match /challengeParticipations/{participationId} {
+        // Super admin e admin da org podem ler todas as participações da org
+        // Colaborador pode ler apenas suas próprias participações
+        allow read: if request.auth.token.role == 'super_admin' ||
+                       isAdminOfOrg() ||
+                       (isCollaboratorOfOrg() && resource.data.employeeId == request.auth.uid);
+        // Colaborador pode criar/atualizar (aceitar, submeter) suas próprias participações
+        allow create, update: if isCollaboratorOfOrg() &&
+                                 request.resource.data.employeeId == request.auth.uid &&
+                                 // Verifique se os campos permitidos para atualização pelo colaborador estão corretos
+                                 // Ex: (create) ou (update && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'submissionText', 'submissionFileUrl', 'updatedAt']))
+                                 (request.method == 'create' || (request.method == 'update' && request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'submissionText', 'submissionFileUrl', 'updatedAt', 'acceptedAt', 'submittedAt'])));
 
-      match /rankingManagement/{rankingDoc} {
-        // read is covered by the default rule above.
-        allow create, update: if isAdminOfOrg(orgId);
-      }
 
-      match /challenges/{challengeId} {
-        // read is covered by the default rule above.
-        allow create, update, delete: if isAdminOfOrg(orgId);
-      }
-
-      match /challengeParticipations/{partId} {
-        // Read for specific participation doc: Admin of org OR self
-        allow get: if isMemberOfOrg(orgId) && (isAdminOfOrg(orgId) || request.auth.uid == resource.data.employeeId);
-        // List for participations: Members of org (frontend query must filter by employeeId for collaborators)
-        // Covered by generic subcollection read rule.
-
-        // Employee can create their own participation
-        allow create: if isMemberOfOrg(orgId) && 
-                         request.resource.data.employeeId == request.auth.uid &&
-                         request.resource.data.organizationId == orgId;
-        // Employee can update (submit) their own participation if status is 'accepted'
-        // Admin can update (evaluate) any participation
-        allow update: if isMemberOfOrg(orgId) && 
-                         ( (isSelf(resource.data.employeeId) && resource.data.status == 'accepted' && request.resource.data.status == 'submitted') || 
-                           isAdminOfOrg(orgId) );
-        allow delete: if false; // Generally, participations are not deleted directly
-      }
-
-      match /evaluations/{evalId} {
-        // Read for specific evaluation doc: Admin of org OR self
-        allow get: if isMemberOfOrg(orgId) && (isAdminOfOrg(orgId) || request.auth.uid == resource.data.employeeId);
-        // List for evaluations: Members of org (frontend query for collaborator dashboard lists all then filters - this is covered by generic read)
-        // Covered by generic subcollection read rule.
-
-        // Only admins can create/update evaluations
-        allow create, update: if isAdminOfOrg(orgId);
-        allow delete: if false; // Evaluations are generally not deleted
-      }
-
-      match /awardHistory/{historyId} {
-        // read is covered by default rule
-        allow create, update, delete: if isAdminOfOrg(orgId);
+        // Admin/Super Admin podem avaliar (atualizar status, score, feedback)
+        allow update: if (request.auth.token.role == 'super_admin' || isAdminOfOrg()) &&
+                         request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'score', 'feedback', 'evaluatorId', 'evaluatedAt', 'updatedAt']);
+        // Apenas admin/superadmin podem deletar
+        allow delete: if request.auth.token.role == 'super_admin' || isAdminOfOrg();
       }
     }
 
-    // Global collections
-    match /awards/{awardId} { // Awards managed by super_admin
-      allow read, list: if isSignedIn();
-      allow create, update, delete: if isSuperAdmin();
+    // Coleções Globais (gerenciadas principalmente por super_admin)
+    match /plans/{planId} {
+        allow read: if true; // Planos são publicamente legíveis
+        allow write: if request.auth.token.role == 'super_admin';
+    }
+    match /awards/{awardId} {
+        allow read: if request.auth != null; // Qualquer usuário autenticado pode ver prêmios
+        allow write: if request.auth.token.role == 'super_admin'; // Apenas super_admin gerencia prêmios globais
+    }
+    match /awardHistory/{historyId} {
+        allow read: if request.auth != null; // Qualquer usuário autenticado pode ver histórico de prêmios
+        allow write: if request.auth.token.role == 'super_admin'; // Apenas super_admin gerencia histórico global
     }
 
-    match /plans/{planId} { // Plans managed by super_admin
-      allow read, list: if isSignedIn();
-      allow create, update, delete: if isSuperAdmin();
+    // User notifications (RTDB, não Firestore, mas deixo aqui como referência de estrutura se fosse Firestore)
+    // match /userNotifications/{userId}/{notificationId} {
+    //   allow read, write: if request.auth.uid == userId;
+    // }
+
+
+    // --- Collection Group Queries ---
+    // Para `countRecentEvaluations` que usa uma query collectionGroup em 'evaluations'
+    // Esta regra permite que super_admins (ou quem precisar) realizem leituras em
+    // qualquer documento dentro de qualquer grupo de coleção 'evaluations'.
+    match /{path=**}/evaluations/{evaluationId} {
+      allow read: if request.auth != null && request.auth.token.role == 'super_admin';
+      // Se admins também precisam dessa agregação, adicione: || (request.auth.token.role == 'admin' && request.auth.token.organizationId == resource.data.organizationId)
+      // Se colaboradores precisarem ler (improvável para uma agregação global), ajuste também.
     }
   }
 }

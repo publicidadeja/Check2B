@@ -71,14 +71,14 @@
      recentNotifications: Notification[]; 
      monthlyPerformanceTrend?: 'up' | 'down' | 'stable';
      employeeName: string; 
-     userProfile?: UserProfile | null; // Adicionado para armazenar o perfil
+     userProfile?: UserProfile | null;
  }
 
 
  export default function EmployeeDashboardPage() {
      const { user, organizationId, isLoading: authIsLoading } = useAuth();
      const [data, setData] = React.useState<EmployeeDashboardData | null>(null);
-     const [isLoading, setIsLoading] = React.useState(true); // Estado de carregamento geral da página
+     const [isLoading, setIsLoading] = React.useState(true);
      const { toast } = useToast();
      
      const CURRENT_EMPLOYEE_ID = user?.uid;
@@ -95,7 +95,7 @@
              if (!CURRENT_EMPLOYEE_ID || !organizationId) {
                  setIsLoading(false);
                  console.warn("[Collab Dashboard] User or Org ID missing, cannot fetch data.");
-                 setData({ // Define um estado padrão para exibir mensagem de erro ou acesso negado
+                 setData({ 
                     todayStatus: 'no_tasks', zerosThisMonth: 0, projectedBonus: 0, tasksToday: [], 
                     activeChallenges: [], recentNotifications: [], employeeName: employeeDisplayName, userProfile: null,
                  });
@@ -118,8 +118,9 @@
                  
                  const tasksToday = getTasksForEmployeeOnDate(userProfileData, today, allOrgTasks);
                  
-                 const evaluationsToday = await getEvaluationsForDay(organizationId, todayStr); 
-                 const employeeEvaluationsToday = evaluationsToday.filter(ev => ev.employeeId === CURRENT_EMPLOYEE_ID);
+                 // Passar CURRENT_EMPLOYEE_ID para buscar apenas as avaliações do colaborador logado
+                 const evaluationsToday = await getEvaluationsForDay(organizationId, todayStr, CURRENT_EMPLOYEE_ID); 
+                 const employeeEvaluationsToday = evaluationsToday; // Já está filtrado
 
                  let todayStatus: EmployeeDashboardData['todayStatus'] = 'no_tasks';
                  if (tasksToday.length > 0) {
@@ -129,8 +130,9 @@
                      todayStatus = allTasksEvaluated ? 'evaluated' : 'pending';
                  }
                  
-                 const evaluationsThisMonth = await getEvaluationsForOrganizationInPeriod(organizationId, startCurrentMonthStr, endCurrentMonthStr);
-                 const employeeEvaluationsThisMonth = evaluationsThisMonth.filter(ev => ev.employeeId === CURRENT_EMPLOYEE_ID);
+                 // Passar CURRENT_EMPLOYEE_ID para buscar apenas as avaliações do colaborador logado
+                 const evaluationsThisMonth = await getEvaluationsForOrganizationInPeriod(organizationId, startCurrentMonthStr, endCurrentMonthStr, CURRENT_EMPLOYEE_ID);
+                 const employeeEvaluationsThisMonth = evaluationsThisMonth; // Já está filtrado
                  
                  const zerosThisMonth = employeeEvaluationsThisMonth.filter(ev => ev.score === 0).length;
                  const projectedBonus = zerosThisMonth >= ZERO_LIMIT ? 0 : BASE_BONUS;
@@ -186,7 +188,7 @@
                      description: error.message || "Não foi possível carregar os dados do dashboard.",
                      variant: "destructive",
                  });
-                 setData({ 
+                 setData(prev => prev ? {...prev, isLoading: false} : { // Mantém dados parciais se houver, senão define um estado de erro
                     todayStatus: 'no_tasks', zerosThisMonth: 0, projectedBonus: 0, tasksToday: [], 
                     activeChallenges: [], recentNotifications: [], employeeName: employeeDisplayName, userProfile: null
                  });
@@ -401,3 +403,4 @@
      );
  }
 
+    
