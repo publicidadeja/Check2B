@@ -118,9 +118,8 @@
                  
                  const tasksToday = getTasksForEmployeeOnDate(userProfileData, today, allOrgTasks);
                  
-                 // Passar CURRENT_EMPLOYEE_ID para buscar apenas as avaliações do colaborador logado
                  const evaluationsToday = await getEvaluationsForDay(organizationId, todayStr, CURRENT_EMPLOYEE_ID); 
-                 const employeeEvaluationsToday = evaluationsToday; // Já está filtrado
+                 const employeeEvaluationsToday = evaluationsToday; 
 
                  let todayStatus: EmployeeDashboardData['todayStatus'] = 'no_tasks';
                  if (tasksToday.length > 0) {
@@ -130,9 +129,8 @@
                      todayStatus = allTasksEvaluated ? 'evaluated' : 'pending';
                  }
                  
-                 // Passar CURRENT_EMPLOYEE_ID para buscar apenas as avaliações do colaborador logado
                  const evaluationsThisMonth = await getEvaluationsForOrganizationInPeriod(organizationId, startCurrentMonthStr, endCurrentMonthStr, CURRENT_EMPLOYEE_ID);
-                 const employeeEvaluationsThisMonth = evaluationsThisMonth; // Já está filtrado
+                 const employeeEvaluationsThisMonth = evaluationsThisMonth; 
                  
                  const zerosThisMonth = employeeEvaluationsThisMonth.filter(ev => ev.score === 0).length;
                  const projectedBonus = zerosThisMonth >= ZERO_LIMIT ? 0 : BASE_BONUS;
@@ -188,7 +186,7 @@
                      description: error.message || "Não foi possível carregar os dados do dashboard.",
                      variant: "destructive",
                  });
-                 setData(prev => prev ? {...prev, isLoading: false} : { // Mantém dados parciais se houver, senão define um estado de erro
+                 setData(prev => prev ? {...prev, isLoading: false} : { 
                     todayStatus: 'no_tasks', zerosThisMonth: 0, projectedBonus: 0, tasksToday: [], 
                     activeChallenges: [], recentNotifications: [], employeeName: employeeDisplayName, userProfile: null
                  });
