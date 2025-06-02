@@ -4,8 +4,7 @@ import { getDb, getFirebaseApp } from './firebase'; // Added getFirebaseApp
 import type { Award, AwardHistoryEntry, RankingEntry } from '@/app/(admin)/ranking/page';
 import type { RankingSettings, RankingSettingsData } from '@/types/ranking';
 import type { UserProfile } from '@/types/user';
-import type { Evaluation } from '@/types/evaluation';
-import type { ChallengeParticipation } from '@/types/challenge';
+// Evaluation and ChallengeParticipation types are not directly used here, but their service functions are.
 import {
   collection,
   getDocs,
@@ -19,11 +18,11 @@ import {
   Timestamp,
   addDoc,
   serverTimestamp,
-  updateDoc, // Ensure updateDoc is imported
+  updateDoc,
 } from 'firebase/firestore';
 import type { Firestore } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage"; // Added Storage imports
-import { format, startOfMonth, endOfMonth, parseISO, subMonths } from 'date-fns'; // Added subMonths
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { format, startOfMonth, endOfMonth, parseISO, subMonths } from 'date-fns';
 import { getEvaluationsForOrganizationInPeriod } from './evaluation-service';
 import { getApprovedChallengeParticipationsForOrganizationInPeriod } from './challenge-service';
 import { getUsersByRoleAndOrganization } from './user-service';
@@ -36,10 +35,10 @@ import { getUsersByRoleAndOrganization } from './user-service';
  */
 export const getAllAwards = async (db: Firestore): Promise<Award[]> => {
   if (!db) {
-    console.error('Firestore not initialized. Cannot fetch awards.');
+    console.error('[RankingService] Firestore not initialized. Cannot fetch awards.');
     return [];
   }
-
+  console.log('[RankingService] Fetching all awards.');
   const awardsCollectionRef = collection(db, 'awards');
   const q = query(awardsCollectionRef, orderBy("title"));
   const awardsSnapshot = await getDocs(q);
@@ -62,9 +61,9 @@ export const getAllAwards = async (db: Firestore): Promise<Award[]> => {
  */
 export const saveAward = async (db: Firestore, awardData: Omit<Award, 'id'> | Award): Promise<Award> => {
   if (!db) {
-    throw new Error('Firestore not initialized. Cannot save award.');
+    throw new Error('[RankingService] Firestore not initialized. Cannot save award.');
   }
-
+  console.log('[RankingService] Saving award:', awardData.title);
   const awardsCollectionRef = collection(db, 'awards');
   let docRef;
   let idToSave = 'id' in awardData ? awardData.id : undefined;
@@ -88,7 +87,7 @@ export const saveAward = async (db: Firestore, awardData: Omit<Award, 'id'> | Aw
 
   const savedDoc = await getDoc(docRef);
   if (!savedDoc.exists()) {
-    throw new Error('Failed to retrieve the saved award from Firestore.');
+    throw new Error('[RankingService] Failed to retrieve the saved award from Firestore.');
   }
   const savedData = savedDoc.data();
 
@@ -107,10 +106,10 @@ export const saveAward = async (db: Firestore, awardData: Omit<Award, 'id'> | Aw
  */
 export const getAwardById = async (db: Firestore, awardId: string): Promise<Award | null> => {
   if (!db) {
-    console.error('Firestore not initialized. Cannot fetch award by ID.');
+    console.error('[RankingService] Firestore not initialized. Cannot fetch award by ID.');
     return null;
   }
-
+  console.log(`[RankingService] Fetching award by ID: ${awardId}`);
   const awardDocRef = doc(db, 'awards', awardId);
   const awardSnapshot = await getDoc(awardDocRef);
 
@@ -135,12 +134,13 @@ export const getAwardById = async (db: Firestore, awardId: string): Promise<Awar
  */
 export const getActiveAward = async (db: Firestore, monthDate: Date): Promise<Award | null> => {
   if (!db) {
-    console.error('Firestore not initialized. Cannot fetch active award.');
+    console.error('[RankingService] Firestore not initialized. Cannot fetch active award.');
     return null;
   }
-
-  const awardsCollectionRef = collection(db, 'awards');
   const monthPeriod = format(monthDate, 'yyyy-MM');
+  console.log(`[RankingService] Fetching active award for period: ${monthPeriod}`);
+  const awardsCollectionRef = collection(db, 'awards');
+  
 
   const specificMonthQuery = query(
     awardsCollectionRef,
@@ -151,10 +151,10 @@ export const getActiveAward = async (db: Firestore, monthDate: Date): Promise<Aw
   const specificMonthSnapshot = await getDocs(specificMonthQuery);
 
   if (!specificMonthSnapshot.empty) {
-    const doc = specificMonthSnapshot.docs[0];
-    const data = doc.data();
+    const docData = specificMonthSnapshot.docs[0];
+    const data = docData.data();
     return {
-      id: doc.id,
+      id: docData.id,
       ...data,
       specificMonth: data.specificMonth instanceof Timestamp ? data.specificMonth.toDate() : data.specificMonth,
     } as Award;
@@ -168,10 +168,10 @@ export const getActiveAward = async (db: Firestore, monthDate: Date): Promise<Aw
   const recurringSnapshot = await getDocs(recurringQuery);
 
   if (!recurringSnapshot.empty) {
-    const doc = recurringSnapshot.docs[0];
-    const data = doc.data();
+    const docData = recurringSnapshot.docs[0]; // Assuming only one active recurring award, adjust if multiple are possible
+    const data = docData.data();
     return {
-      id: doc.id,
+      id: docData.id,
       ...data,
       specificMonth: data.specificMonth instanceof Timestamp ? data.specificMonth.toDate() : data.specificMonth,
     } as Award;
@@ -188,8 +188,9 @@ export const getActiveAward = async (db: Firestore, monthDate: Date): Promise<Aw
  */
 export const deleteAward = async (db: Firestore, awardId: string): Promise<void> => {
   if (!db) {
-    throw new Error('Firestore not initialized. Cannot delete award.');
+    throw new Error('[RankingService] Firestore not initialized. Cannot delete award.');
   }
+  console.log(`[RankingService] Deleting award with ID: ${awardId}`);
   await deleteDoc(doc(db, 'awards', awardId));
 };
 
@@ -202,14 +203,15 @@ export const deleteAward = async (db: Firestore, awardId: string): Promise<void>
  */
 export const saveAwardHistory = async (db: Firestore, historyEntryData: Omit<AwardHistoryEntry, 'id'>): Promise<string> => {
     if (!db) {
-        throw new Error('Firestore not initialized. Cannot save award history.');
+        throw new Error('[RankingService] Firestore not initialized. Cannot save award history.');
     }
+    console.log(`[RankingService] Saving award history for period: ${historyEntryData.period}`);
     const historyCollectionRef = collection(db, 'awardHistory');
     const docRef = await addDoc(historyCollectionRef, {
         ...historyEntryData,
         deliveryPhotoUrl: historyEntryData.deliveryPhotoUrl || null,
         notes: historyEntryData.notes || null,
-        createdAt: Timestamp.now(),
+        createdAt: Timestamp.now(), // Use Timestamp for new docs
     });
     return docRef.id;
 };
@@ -221,11 +223,12 @@ export const saveAwardHistory = async (db: Firestore, historyEntryData: Omit<Awa
  */
 export const getAwardHistory = async (db: Firestore): Promise<AwardHistoryEntry[]> => {
     if (!db) {
-        console.error('Firestore not initialized. Cannot fetch award history.');
+        console.error('[RankingService] Firestore not initialized. Cannot fetch award history.');
         return [];
     }
+    console.log('[RankingService] Fetching award history.');
     const historyCollectionRef = collection(db, 'awardHistory');
-    const q = query(historyCollectionRef, orderBy("period", "desc"));
+    const q = query(historyCollectionRef, orderBy("period", "desc")); // Ensure period is in YYYY-MM format for correct sorting
     const snapshot = await getDocs(q);
 
     return snapshot.docs.map(docSnapshot => {
@@ -233,6 +236,8 @@ export const getAwardHistory = async (db: Firestore): Promise<AwardHistoryEntry[
         return {
             id: docSnapshot.id,
             ...data,
+            // Assuming createdAt is stored as Timestamp, convert to Date if needed for frontend
+            createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : undefined),
         } as AwardHistoryEntry;
     });
 };
@@ -245,7 +250,7 @@ export const getAwardHistory = async (db: Firestore): Promise<AwardHistoryEntry[
  * @returns Promise resolving to the download URL of the uploaded photo.
  */
 export const uploadAwardDeliveryPhoto = async (
-  organizationId: string, // Add organizationId for path structuring
+  organizationId: string,
   awardHistoryId: string,
   file: File
 ): Promise<string> => {
@@ -260,7 +265,7 @@ export const uploadAwardDeliveryPhoto = async (
   if (!organizationId || !awardHistoryId) {
     throw new Error('[RankingService] Missing organizationId or awardHistoryId for photo upload.');
   }
-
+  console.log(`[RankingService] Uploading award delivery photo for history ID: ${awardHistoryId}, org: ${organizationId}`);
   const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
   const filePath = `organizations/${organizationId}/award_deliveries/${awardHistoryId}/${Date.now()}_${sanitizedFileName}`;
   const fileRef = ref(storage, filePath);
@@ -285,13 +290,14 @@ export const uploadAwardDeliveryPhoto = async (
  */
 export const updateAwardHistoryPhoto = async (db: Firestore, awardHistoryId: string, photoUrl: string): Promise<void> => {
   if (!db) {
-    throw new Error('Firestore not initialized. Cannot update award history photo.');
+    throw new Error('[RankingService] Firestore not initialized. Cannot update award history photo.');
   }
+  console.log(`[RankingService] Updating award history photo for ID: ${awardHistoryId}`);
   const historyDocRef = doc(db, 'awardHistory', awardHistoryId);
   try {
     await updateDoc(historyDocRef, {
       deliveryPhotoUrl: photoUrl,
-      updatedAt: serverTimestamp(), // Optional: track updates
+      updatedAt: serverTimestamp(),
     });
     console.log(`[RankingService] Updated delivery photo for award history ${awardHistoryId}`);
   } catch (error) {
@@ -302,7 +308,7 @@ export const updateAwardHistoryPhoto = async (db: Firestore, awardHistoryId: str
 
 
 // --- Ranking Settings ---
-const RANKING_CONFIG_DOC_ID = 'mainConfig';
+const RANKING_CONFIG_DOC_ID = 'mainConfig'; // Fixed ID for the settings document within the subcollection
 
 /**
  * Fetches ranking settings for a specific organization.
@@ -312,23 +318,24 @@ const RANKING_CONFIG_DOC_ID = 'mainConfig';
 export const getRankingSettings = async (organizationId: string): Promise<RankingSettings | null> => {
   const db = getDb();
   if (!db || !organizationId) {
-    console.error('Firestore not initialized or organizationId missing. Cannot fetch ranking settings.');
+    console.error('[RankingService] Firestore not initialized or organizationId missing. Cannot fetch ranking settings.');
     return null;
   }
+  console.log(`[RankingService - getRankingSettings] Fetching for org: ${organizationId}`);
   const settingsDocRef = doc(db, `organizations/${organizationId}/rankingManagement`, RANKING_CONFIG_DOC_ID);
   try {
     const docSnap = await getDoc(settingsDocRef);
     if (docSnap.exists()) {
       const data = docSnap.data();
       return {
-        id: docSnap.id,
+        id: docSnap.id, // Should be RANKING_CONFIG_DOC_ID
         ...data,
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : undefined,
       } as RankingSettings;
     }
-    return null;
+    return null; // Return null if not found, component can use defaults
   } catch (error) {
-    console.error(`Error fetching ranking settings for org ${organizationId}:`, error);
+    console.error(`[RankingService - getRankingSettings] Error fetching ranking settings for org ${organizationId}:`, error);
     throw error;
   }
 };
@@ -342,8 +349,9 @@ export const getRankingSettings = async (organizationId: string): Promise<Rankin
 export const saveRankingSettings = async (organizationId: string, settingsData: RankingSettingsData): Promise<void> => {
   const db = getDb();
   if (!db || !organizationId) {
-    throw new Error('Firestore not initialized or organizationId missing. Cannot save ranking settings.');
+    throw new Error('[RankingService] Firestore not initialized or organizationId missing. Cannot save ranking settings.');
   }
+  console.log(`[RankingService - saveRankingSettings] Saving for org: ${organizationId}`, settingsData);
   const settingsDocRef = doc(db, `organizations/${organizationId}/rankingManagement`, RANKING_CONFIG_DOC_ID);
   try {
     await setDoc(settingsDocRef, {
@@ -351,7 +359,7 @@ export const saveRankingSettings = async (organizationId: string, settingsData: 
       updatedAt: serverTimestamp(),
     }, { merge: true });
   } catch (error) {
-    console.error(`Error saving ranking settings for org ${organizationId}:`, error);
+    console.error(`[RankingService - saveRankingSettings] Error saving ranking settings for org ${organizationId}:`, error);
     throw error;
   }
 };
@@ -364,7 +372,7 @@ const calculateRankingForPeriod = async (
     employees: UserProfile[],
     settings: RankingSettings | null
 ): Promise<RankingEntry[]> => {
-    const db = getDb();
+    const db = getDb(); // Ensure db is initialized
     if (!db) throw new Error('Firestore not initialized for ranking calculation.');
 
     const startDate = startOfMonth(period);
@@ -372,24 +380,26 @@ const calculateRankingForPeriod = async (
     const startDateString = format(startDate, 'yyyy-MM-dd');
     const endDateString = format(endDate, 'yyyy-MM-dd');
 
-    console.log(`[RankingService] Calculating internal ranking for period: ${startDateString} to ${endDateString}`);
+    console.log(`[RankingService - calculateRankingForPeriod] Calculating for org: ${organizationId}, period: ${startDateString} to ${endDateString}`);
 
     try {
-        const [evaluations, challengeParticipations] = await Promise.all([
-            getEvaluationsForOrganizationInPeriod(organizationId, startDateString, endDateString),
-            getApprovedChallengeParticipationsForOrganizationInPeriod(organizationId, startDate, endDate),
-        ]);
+        console.log(`[RankingService - calculateRankingForPeriod] Fetching evaluations for org: ${organizationId}, period: ${startDateString}-${endDateString}`);
+        const evaluations = await getEvaluationsForOrganizationInPeriod(organizationId, startDateString, endDateString);
+        
+        console.log(`[RankingService - calculateRankingForPeriod] Fetching approved challenge participations for org: ${organizationId}, period: ${startDateString}-${endDateString}`);
+        const challengeParticipations = await getApprovedChallengeParticipationsForOrganizationInPeriod(organizationId, startDate, endDate);
 
         const rankingEntries: Omit<RankingEntry, 'rank' | 'trend'>[] = employees
             .filter(emp => {
+                if (emp.status !== 'active') return false; // Only include active employees
                 if (settings?.includeProbation === false && emp.admissionDate) {
                      try {
-                        const admission = parseISO(emp.admissionDate + 'T00:00:00Z'); // Ensure TZ for correct parsing
+                        const admission = parseISO(emp.admissionDate + 'T00:00:00Z');
                         const ninetyDaysAfterAdmission = new Date(admission);
                         ninetyDaysAfterAdmission.setDate(admission.getDate() + 90);
                         return period >= ninetyDaysAfterAdmission;
                     } catch (e) {
-                        console.warn(`Invalid admissionDate format for employee ${emp.uid}: ${emp.admissionDate}. Including in ranking by default.`);
+                        console.warn(`[RankingService] Invalid admissionDate format for employee ${emp.uid}: ${emp.admissionDate}. Including in ranking by default.`);
                         return true;
                     }
                 }
@@ -402,7 +412,7 @@ const calculateRankingForPeriod = async (
                 const employeeEvaluations = evaluations.filter(ev => ev.employeeId === employee.uid);
                 employeeEvaluations.forEach(ev => {
                     if (ev.score === 10) {
-                        score += 10;
+                        score += 10; // Base score for evaluations
                     } else if (ev.score === 0) {
                         zeros += 1;
                     }
@@ -411,15 +421,24 @@ const calculateRankingForPeriod = async (
                 const employeeChallengeScores = challengeParticipations
                     .filter(cp => cp.employeeId === employee.uid && cp.score)
                     .reduce((sum, cp) => sum + (cp.score || 0), 0);
+                
+                // Apply ranking factor for challenge points if setting exists
+                const challengeFactor = settings?.rankingFactor ?? 1.0;
+                score += Math.round(employeeChallengeScores * challengeFactor);
+                
+                // Apply cap for challenge points if setting exists and is not null
+                if (settings?.maxMonthlyChallengePointsCap !== null && settings?.maxMonthlyChallengePointsCap !== undefined) {
+                    const cappedChallengeScore = Math.min(Math.round(employeeChallengeScores * challengeFactor), settings.maxMonthlyChallengePointsCap);
+                    score = (score - Math.round(employeeChallengeScores * challengeFactor)) + cappedChallengeScore; // Adjust score with capped challenge points
+                }
 
-                score += employeeChallengeScores;
 
                 return {
                     employeeId: employee.uid,
                     employeeName: employee.name,
                     employeePhotoUrl: employee.photoUrl,
                     department: employee.department || 'N/A',
-                    role: employee.userRole || 'N/A',
+                    role: employee.userRole || 'N/A', // 'Cargo/Função'
                     score,
                     zeros,
                     admissionDate: employee.admissionDate
@@ -439,22 +458,22 @@ const calculateRankingForPeriod = async (
                  try {
                     const dateA = parseISO(a.admissionDate + 'T00:00:00Z');
                     const dateB = parseISO(b.admissionDate + 'T00:00:00Z');
-                    return dateA.getTime() - dateB.getTime(); // Older admission date ranks higher
+                    return dateA.getTime() - dateB.getTime();
                 } catch (e) {
-                    console.warn("Error parsing admission dates for tie-breaking:", a.admissionDate, b.admissionDate, e);
+                     console.warn("[RankingService] Error parsing admission dates for tie-breaking:", a.admissionDate, b.admissionDate, e);
                 }
             }
+            // Fallback tie-breaker: alphabetical by name
             return a.employeeName.localeCompare(b.employeeName);
         });
         
         return rankingEntries.map((entry, index) => ({
             ...entry,
             rank: index + 1,
-            // trend will be calculated later
         })) as RankingEntry[];
 
     } catch (error) {
-        console.error(`[RankingService] Error calculating internal ranking for period ${format(period, 'yyyy-MM')}:`, error);
+        console.error(`[RankingService - calculateRankingForPeriod] Error for org ${organizationId}, period ${format(period, 'yyyy-MM')}:`, error);
         throw error;
     }
 };
@@ -468,26 +487,27 @@ const calculateRankingForPeriod = async (
  */
 export const calculateMonthlyRanking = async (organizationId: string, currentPeriodDate: Date): Promise<RankingEntry[]> => {
     const db = getDb();
-    if (!db) throw new Error('Firestore not initialized for ranking calculation.');
+    if (!db) throw new Error('[RankingService] Firestore not initialized for ranking calculation.');
 
-    console.log(`[RankingService] Calculating ranking for org ${organizationId}, current period: ${format(currentPeriodDate, 'yyyy-MM')}`);
+    console.log(`[RankingService - calculateMonthlyRanking] Calculating for org: ${organizationId}, current period: ${format(currentPeriodDate, 'yyyy-MM')}`);
 
     try {
+        console.log(`[RankingService - calculateMonthlyRanking] Fetching employees for org: ${organizationId}`);
         const employees = await getUsersByRoleAndOrganization('collaborator', organizationId);
+        
+        console.log(`[RankingService - calculateMonthlyRanking] Fetching ranking settings for org: ${organizationId}`);
         const settings = await getRankingSettings(organizationId);
 
+        console.log(`[RankingService - calculateMonthlyRanking] Calculating current period ranking.`);
         const currentRanking = await calculateRankingForPeriod(organizationId, currentPeriodDate, employees, settings);
 
-        // Calculate previous month's ranking for trend
         const previousPeriodDate = subMonths(currentPeriodDate, 1);
         let previousRanking: RankingEntry[] = [];
         try {
-            // Check if the previous month is not before a certain system start date if needed
-            // For simplicity, we just attempt to calculate it.
+            console.log(`[RankingService - calculateMonthlyRanking] Calculating previous period ranking for trend analysis (period: ${format(previousPeriodDate, 'yyyy-MM')}).`);
             previousRanking = await calculateRankingForPeriod(organizationId, previousPeriodDate, employees, settings);
         } catch (prevError) {
-            console.warn(`[RankingService] Could not calculate ranking for previous period (${format(previousPeriodDate, 'yyyy-MM')}):`, prevError);
-            // Proceed without previous ranking if it fails (e.g., first month of data)
+            console.warn(`[RankingService - calculateMonthlyRanking] Could not calculate ranking for previous period (${format(previousPeriodDate, 'yyyy-MM')}):`, prevError);
         }
 
         const previousRankingMap = new Map(previousRanking.map(entry => [entry.employeeId, entry]));
@@ -503,18 +523,19 @@ export const calculateMonthlyRanking = async (organizationId: string, currentPer
                     trend = 'down';
                 }
             } else {
-                // If not in previous ranking, consider as 'up' (new entry or moved up significantly)
-                // Or 'stable' if it's the first month of ranking overall
                 trend = previousRanking.length > 0 ? 'up' : 'stable';
             }
             return { ...currentEntry, trend };
         });
         
-        console.log(`[RankingService] Final ranking calculated with trend for ${format(currentPeriodDate, 'yyyy-MM')}. Entries: ${finalRankingWithTrend.length}`);
+        console.log(`[RankingService - calculateMonthlyRanking] Final ranking calculated for ${format(currentPeriodDate, 'yyyy-MM')}. Entries: ${finalRankingWithTrend.length}`);
         return finalRankingWithTrend;
 
     } catch (error) {
-        console.error(`[RankingService] Error calculating monthly ranking for org ${organizationId} (current: ${format(currentPeriodDate, 'yyyy-MM')}):`, error);
+        console.error(`[RankingService - calculateMonthlyRanking] Error for org ${organizationId} (current: ${format(currentPeriodDate, 'yyyy-MM')}):`, error);
         throw error;
     }
 };
+
+
+    
