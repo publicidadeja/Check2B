@@ -2,9 +2,9 @@
  'use client';
 
  import * as React from 'react';
- import { format, parseISO, subMonths, addMonths, startOfMonth, endOfMonth } from 'date-fns'; // Added endOfMonth
+ import { format, parseISO, subMonths, addMonths, startOfMonth, endOfMonth } from 'date-fns';
  import { ptBR } from 'date-fns/locale';
- import { Trophy, Crown, Medal, ChevronLeft, ChevronRight, HelpCircle, Loader2, BarChartHorizontal, Info, Award as AwardIcon, TrendingUp, TrendingDown, Minus, User, Activity, AlertTriangle, Eye, CheckCircle } from 'lucide-react'; // Added more icons
+ import { Trophy, Crown, Medal, ChevronLeft, ChevronRight, HelpCircle, Loader2, BarChartHorizontal, Info, Award as AwardIcon, TrendingUp, TrendingDown, Minus, User, Activity, AlertTriangle, Eye, CheckCircle } from 'lucide-react';
  import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
  import { Button } from '@/components/ui/button';
  import { Badge } from '@/components/ui/badge';
@@ -14,24 +14,21 @@
  import type { ColumnDef } from "@tanstack/react-table";
  import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
  import { Separator } from '@/components/ui/separator';
- import { ScrollArea } from '@/components/ui/scroll-area'; // Ensure ScrollArea is imported
- import { cn } from '@/lib/utils'; // Import cn utility
- import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
+ import { ScrollArea } from '@/components/ui/scroll-area';
+ import { cn } from '@/lib/utils';
+ import { Skeleton } from "@/components/ui/skeleton";
  import { useAuth } from '@/hooks/use-auth';
  import { getDb } from '@/lib/firebase';
  import type { Firestore } from 'firebase/firestore';
  import { calculateMonthlyRanking, getActiveAward } from '@/lib/ranking-service';
 
- // Import Types
- import type { RankingEntry, Award as AdminAward } from '@/app/(admin)/ranking/page'; // Reuse admin types
+ import type { RankingEntry, Award as AdminAward } from '@/app/(admin)/ranking/page';
 
- // Helper: Get Initials
  const getInitials = (name?: string) => {
      if (!name) return '??';
      return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
  }
 
- // Trend Icon Helper
  const getTrendIcon = (trend?: 'up' | 'down' | 'stable') => {
      switch (trend) {
          case 'up': return <TrendingUp className="h-4 w-4 text-green-500" />;
@@ -41,8 +38,6 @@
      }
  };
 
-
- // DataTable Columns definition (optimized for mobile)
  const rankingColumns = (currentEmployeeId: string | null): ColumnDef<RankingEntry>[] => [
      {
          accessorKey: "rank",
@@ -93,7 +88,6 @@
      },
  ];
 
-
  export default function EmployeeRankingPage() {
      const { user, organizationId, isLoading: authIsLoading } = useAuth();
      const [rankingData, setRankingData] = React.useState<RankingEntry[]>([]);
@@ -102,46 +96,63 @@
      const [currentMonth, setCurrentMonth] = React.useState(new Date());
      const [isLoading, setIsLoading] = React.useState(true);
      const { toast } = useToast();
-     const [db, setDb] = React.useState<Firestore | null>(null);
+     // Inicializa db diretamente ou com null, mas o useEffect abaixo irá gerenciá-lo.
+     const [db, setDb] = React.useState<Firestore | null>(() => getDb());
      const CURRENT_EMPLOYEE_ID = user?.uid || null;
 
      React.useEffect(() => {
-        const firestoreDb = getDb();
-        if (firestoreDb) {
-            setDb(firestoreDb);
-        } else {
-            console.error("Failed to initialize Firestore instance for Ranking page.");
-            toast({ title: "Erro de Conexão", description: "Não foi possível conectar ao banco de dados.", variant: "destructive"});
+        // Garante que db seja definido uma vez no cliente
+        if (!db) {
+            const firestoreDb = getDb();
+            if (firestoreDb) {
+                setDb(firestoreDb);
+            } else {
+                console.error("[RankingPage] Failed to initialize Firestore instance for Ranking page.");
+                toast({ title: "Erro de Conexão", description: "Não foi possível conectar ao banco de dados.", variant: "destructive"});
+            }
         }
-    }, [toast]);
+    }, [db, toast]); // Depende de db para evitar re-runs desnecessários se já definido
 
      React.useEffect(() => {
          const loadRanking = async () => {
-             if (!CURRENT_EMPLOYEE_ID || !organizationId || !db || authIsLoading) {
-                 if (!authIsLoading && (!CURRENT_EMPLOYEE_ID || !organizationId || !db)) {
-                    setIsLoading(false); // Stop loading if prerequisites are missing after auth check
-                    if (!db) console.warn("DB not available for loading ranking.");
-                 }
+             console.log(`[RankingPage] Attempting to load ranking. Auth Loading: ${authIsLoading}, DB Available: ${!!db}, UserID: ${CURRENT_EMPLOYEE_ID}, OrgID: ${organizationId}`);
+             if (authIsLoading) { // Espera a autenticação resolver primeiro
+                 console.log("[RankingPage] Auth is loading, deferring loadRanking.");
                  return;
              }
+             if (!db) { // Espera a instância do DB estar pronta
+                 console.log("[RankingPage] DB not yet available, deferring loadRanking.");
+                 setIsLoading(true); // Mantém o loading até o DB estar pronto
+                 return;
+             }
+             if (!CURRENT_EMPLOYEE_ID || !organizationId) {
+                 console.warn("[RankingPage] User ID or Organization ID missing, cannot load ranking.");
+                 setIsLoading(false);
+                 setRankingData([]); // Limpa dados se não puder carregar
+                 return;
+             }
+
              setIsLoading(true);
              try {
+                 console.log(`[RankingPage] Fetching ranking and award data for org ${organizationId}, period ${format(currentMonth, 'yyyy-MM')}`);
                  const [ranking, award] = await Promise.all([
                      calculateMonthlyRanking(organizationId, currentMonth),
-                     getActiveAward(db, currentMonth)
+                     getActiveAward(db, currentMonth) // db é passado aqui
                  ]);
                  setRankingData(ranking);
                  setCurrentUserEntry(ranking.find(entry => entry.employeeId === CURRENT_EMPLOYEE_ID));
                  setCurrentAward(award);
-             } catch (error) {
-                 console.error("Falha ao carregar ranking:", error);
-                 toast({ title: "Erro", description: "Não foi possível carregar o ranking.", variant: "destructive" });
+                 console.log("[RankingPage] Ranking data loaded successfully.");
+             } catch (error: any) {
+                 console.error("[RankingPage] Falha ao carregar ranking:", error);
+                 toast({ title: "Erro", description: error.message || "Não foi possível carregar o ranking.", variant: "destructive" });
+                 setRankingData([]); // Limpa em caso de erro
              } finally {
                  setIsLoading(false);
              }
          };
          loadRanking();
-     }, [currentMonth, toast, CURRENT_EMPLOYEE_ID, organizationId, db, authIsLoading]);
+     }, [currentMonth, CURRENT_EMPLOYEE_ID, organizationId, db, authIsLoading, toast]); // Adicionado db e authIsLoading às dependências
 
      const handlePreviousMonth = () => {
          setCurrentMonth(prev => subMonths(prev, 1));
@@ -155,7 +166,6 @@
      };
 
      const isCurrentDisplayMonth = startOfMonth(currentMonth).getTime() === startOfMonth(new Date()).getTime();
-
 
      const getPrizeDescription = (award: AdminAward | undefined, rank: number): string => {
           if (!award) return '-';
@@ -207,23 +217,23 @@
          </div>
      );
 
-     if (authIsLoading || (isLoading && !rankingData.length)) { // Show skeleton if auth is loading OR data is loading and no data yet
+     if (authIsLoading || isLoading) {
           return renderSkeleton();
      }
 
-     if (!CURRENT_EMPLOYEE_ID || !organizationId) {
+     if (!CURRENT_EMPLOYEE_ID || !organizationId || !db) {
         return (
             <Card className="m-4 p-4 text-center">
-                <CardHeader><CardTitle>Acesso Negado</CardTitle></CardHeader>
+                <CardHeader><CardTitle>Erro de Configuração</CardTitle></CardHeader>
                 <CardContent>
-                    <p className="text-destructive">Informações de usuário ou organização não encontradas. Por favor, faça login novamente.</p>
-                    {/* Avoid direct router usage here if it causes issues during initial render */}
-                    {/* <Button asChild className="mt-4" onClick={() => window.location.href = '/login'}><a>Fazer Login</a></Button> */}
+                    <p className="text-destructive">
+                        { !db ? "Não foi possível conectar ao banco de dados." : "Informações de usuário ou organização não encontradas."}
+                        Por favor, recarregue a página ou contate o suporte.
+                    </p>
                 </CardContent>
             </Card>
         );
     }
-
 
      return (
           <TooltipProvider>
@@ -322,7 +332,7 @@
                          <CardTitle className="text-sm font-medium flex items-center gap-1.5"><BarChartHorizontal className="h-4 w-4"/> Classificação Geral</CardTitle>
                      </CardHeader>
                       <CardContent className="flex-grow p-0">
-                          {isLoading && rankingData.length === 0 ? ( // Show skeleton only if truly loading and no data yet
+                          {isLoading && rankingData.length === 0 ? (
                              <div className="p-4 space-y-2">
                                 {Array.from({ length: 5 }).map((_, i) => (
                                     <div key={i} className="flex items-center gap-2">
@@ -340,10 +350,7 @@
                           )}
                      </CardContent>
                  </Card>
-
               </div>
           </TooltipProvider>
      );
  }
-
-    
