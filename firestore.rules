@@ -1,3 +1,4 @@
+
 rules_version = '2';
 
 service cloud.firestore {
@@ -19,54 +20,50 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.organizationId == orgIdFromPath && (request.auth.token.role == 'admin' || request.auth.token.role == 'collaborator');
     }
 
-    function isSelf(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+    // Renomeado para clareza do escopo quando usado em regras de subcoleção que referenciam o ID do documento pai.
+    function isSelf(docOwnerId) {
+      return isSignedIn() && request.auth.uid == docOwnerId;
     }
 
-    // Default deny all reads and writes - Boa prática para começar
+    // Default deny all reads and writes
     match /{document=**} {
       allow read, write: if false;
     }
 
     // Users collection
-    match /users/{userId} {
-      // ALTERADO: Adicionado isMemberOfOrg(resource.data.organizationId) para permitir que colaboradores leiam perfis para o ranking.
-      allow read: if isSelf(userId) ||
-                     isAdminOfOrg(resource.data.organizationId) ||
-                     isMemberOfOrg(resource.data.organizationId) || // << ADICIONADO PARA RANKING E DASHBOARD
+    match /users/{userDocId} { // Renomeado {userId} para {userDocId} para clareza
+      allow read: if isSelf(userDocId) || 
+                     isAdminOfOrg(resource.data.organizationId) || 
+                     isMemberOfOrg(resource.data.organizationId) || 
                      isSuperAdmin();
-
       allow create: if isSuperAdmin();
-
-      // ALTERADO: Especificado quais campos o usuário pode auto-atualizar.
-      // Admins da organização e Super Admins podem atualizar mais amplamente.
-      allow update: if (isSelf(userId) &&
-                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phone', 'photoUrl', 'updatedAt' /* Adicione aqui outros campos que o usuário pode atualizar no seu perfil */])) ||
-                       (isAdminOfOrg(resource.data.organizationId) /* Admin pode atualizar usuários em sua org, todos os campos permitidos por padrão aqui, mas pode ser restringido */) ||
+      allow update: if (isSelf(userDocId) &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phone', 'photoUrl', 'updatedAt'])) ||
+                       (isAdminOfOrg(resource.data.organizationId)) || 
                        isSuperAdmin();
-
       allow delete: if isSuperAdmin();
-    }
 
-    // User-specific settings subcollection (example: notification preferences)
-    match /users/{userId}/settings/notifications { // << ADICIONADO PARA FUNCIONALIDADE DO PERFIL
-      allow read, write: if isSelf(userId);
+      // User-specific settings subcollection
+      // CORREÇÃO: Referenciando userDocId do caminho pai explicitamente.
+      match /settings/notifications {
+        allow read, write: if request.auth != null && request.auth.uid == userDocId; 
+      }
     }
 
     // Organizations collection
     match /organizations/{orgId} {
       allow get: if isMemberOfOrg(orgId) || isSuperAdmin();
-      allow list: if isSuperAdmin();
+      allow list: if isSuperAdmin(); // Somente SuperAdmin pode listar todas as organizações
       allow create, update, delete: if isSuperAdmin();
 
       // Default read access for members within their organization's subcollections
-      // Esta regra já permite que colaboradores leiam tarefas, desafios, etc.
-      // e também as avaliações e participações de *toda* a organização, o que é necessário para o cálculo do ranking no cliente.
+      // Também permite que SuperAdmin leia.
       match /{subcollection}/{docId} {
-        allow read: if isMemberOfOrg(orgId) || isSuperAdmin(); // SuperAdmin também pode ler subcoleções
+        allow read: if isMemberOfOrg(orgId) || isSuperAdmin();
       }
 
       // --- Specific write rules for subcollections ---
+      // As regras de leitura para estas já estão cobertas pela regra genérica acima.
 
       match /tasks/{taskId} {
         allow create, update, delete: if isAdminOfOrg(orgId) || isSuperAdmin();
@@ -87,7 +84,8 @@ service cloud.firestore {
       match /rankingManagement/{rankingDoc} {
         allow create, update: if isAdminOfOrg(orgId) || isSuperAdmin();
       }
-       match /challengeManagement/{settingsDoc} { // << ADICIONADO PARA CONSISTÊNCIA
+
+      match /challengeManagement/{settingsDoc} {
         allow create, update: if isAdminOfOrg(orgId) || isSuperAdmin();
       }
 
@@ -96,39 +94,32 @@ service cloud.firestore {
       }
 
       match /challengeParticipations/{partId} {
-        // A leitura (get e list) já está coberta pela regra genérica de subcoleção acima
-        // permitindo que isMemberOfOrg(orgId) leia.
-        // As queries no cliente DEVEM filtrar por employeeId para o dashboard do colaborador,
-        // mas para o ranking, o cliente precisa ler todas as participações.
-
-        allow create: if isMemberOfOrg(orgId) && // Garante que é membro
-                         request.resource.data.employeeId == request.auth.uid && // Garante que está criando para si mesmo
+        // Leitura já coberta pela regra genérica: isMemberOfOrg(orgId)
+        allow create: if isMemberOfOrg(orgId) && 
+                         request.resource.data.employeeId == request.auth.uid &&
                          request.resource.data.organizationId == orgId; // Garante que está criando na organização correta
-
-        // Colaborador pode atualizar (submeter) sua própria participação se status for 'accepted'
-        // Admin pode atualizar (avaliar) qualquer participação em sua organização
-        // SuperAdmin pode atualizar qualquer participação
-        allow update: if (isMemberOfOrg(orgId) && isSelf(resource.data.employeeId) && resource.data.status == 'accepted' &&
-                          request.resource.data.status == 'submitted' && request.resource.data.employeeId == request.auth.uid &&
-                          request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'submissionText', 'submissionFileUrl', 'updatedAt', 'submittedAt'])) ||
+        
+        allow update: if 
+                         // Colaborador submetendo sua própria participação aceita
+                         (isMemberOfOrg(orgId) && isSelf(resource.data.employeeId) && resource.data.status == 'accepted' &&
+                          request.resource.data.status == 'submitted' && request.resource.data.employeeId == request.auth.uid && // Dupla checagem de segurança
+                          request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'submissionText', 'submissionFileUrl', 'updatedAt', 'acceptedAt', 'submittedAt'])) ||
+                         // Admin da organização avaliando
                          (isAdminOfOrg(orgId) && request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'score', 'feedback', 'evaluatorId', 'evaluatedAt', 'updatedAt'])) ||
-                         isSuperAdmin();
+                         // SuperAdmin pode fazer qualquer atualização que admin faz aqui
+                         (isSuperAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'score', 'feedback', 'evaluatorId', 'evaluatedAt', 'updatedAt']));
                          
-        allow delete: if false;
+        allow delete: if false; // Participações geralmente não são deletadas.
       }
 
       match /evaluations/{evalId} {
-        // A leitura (get e list) já está coberta pela regra genérica de subcoleção acima,
-        // permitindo que isMemberOfOrg(orgId) leia.
-        // As queries no cliente DEVEM filtrar por employeeId para o dashboard do colaborador,
-        // mas para o ranking, o cliente precisa ler todas as avaliações.
-
+        // Leitura já coberta pela regra genérica: isMemberOfOrg(orgId)
         allow create, update: if isAdminOfOrg(orgId) || isSuperAdmin();
-        allow delete: if false;
+        allow delete: if false; // Avaliações geralmente não são deletadas.
       }
 
       match /awardHistory/{historyId} {
-        // read is covered by default rule for members
+        // Leitura já coberta pela regra genérica: isMemberOfOrg(orgId)
         allow create, update, delete: if isAdminOfOrg(orgId) || isSuperAdmin();
       }
     }
@@ -144,10 +135,11 @@ service cloud.firestore {
       allow create, update, delete: if isSuperAdmin();
     }
 
-    // --- Collection Group Queries ---
-    // Para `countRecentEvaluations` (usado no dashboard do super_admin)
+    // Collection Group Queries
     match /{path=**}/evaluations/{evaluationId} {
       allow read: if isSuperAdmin();
     }
   }
 }
+
+    
