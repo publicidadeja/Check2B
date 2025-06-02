@@ -16,110 +16,89 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.role == 'admin' && request.auth.token.organizationId == orgIdFromPath;
     }
 
-    function isMemberOfOrg(orgIdFromPath) {
-      return isSignedIn() && request.auth.token.organizationId == orgIdFromPath && (request.auth.token.role == 'admin' || request.auth.token.role == 'collaborator');
-    }
-
-    // Renomeado para clareza do escopo quando usado em regras de subcoleção que referenciam o ID do documento pai.
-    function isSelf(docOwnerId) {
-      return isSignedIn() && request.auth.uid == docOwnerId;
-    }
-
-    // Default deny all reads and writes
+    // Default deny all
     match /{document=**} {
       allow read, write: if false;
     }
 
     // Users collection
-    match /users/{userDocId} { // Renomeado {userId} para {userDocId} para clareza
-      allow read: if isSelf(userDocId) || 
-                     isAdminOfOrg(resource.data.organizationId) || 
-                     isMemberOfOrg(resource.data.organizationId) || 
+    match /users/{userDocId} {
+      // TESTE RANKING: Permitir que qualquer usuário autenticado leia qualquer perfil
+      // se o organizationId do perfil corresponder ao organizationId do token do solicitante
+      // OU se for o próprio usuário
+      allow read: if (isSignedIn() && request.auth.token.organizationId == resource.data.organizationId && (request.auth.token.role == 'admin' || request.auth.token.role == 'collaborator')) ||
+                     (isSignedIn() && request.auth.uid == userDocId) ||
                      isSuperAdmin();
+
       allow create: if isSuperAdmin();
-      allow update: if (isSelf(userDocId) &&
-                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phone', 'photoUrl', 'updatedAt'])) ||
-                       (isAdminOfOrg(resource.data.organizationId)) || 
+      allow update: if (isSignedIn() && request.auth.uid == userDocId &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phone', 'photoUrl', 'updatedAt', 'settings'])) || // Adicionado 'settings' se for para atualizar direto aqui
+                       (isAdminOfOrg(resource.data.organizationId)) ||
                        isSuperAdmin();
       allow delete: if isSuperAdmin();
 
       // User-specific settings subcollection
-      // CORREÇÃO: Referenciando userDocId do caminho pai explicitamente.
       match /settings/notifications {
-        allow read, write: if request.auth != null && request.auth.uid == userDocId; 
+        // TESTE PERFIL: Permitir que o usuário autenticado leia/escreva suas próprias configurações
+        allow read, write: if isSignedIn() && request.auth.uid == userDocId;
       }
     }
 
     // Organizations collection
     match /organizations/{orgId} {
-      allow get: if isMemberOfOrg(orgId) || isSuperAdmin();
-      allow list: if isSuperAdmin(); // Somente SuperAdmin pode listar todas as organizações
+      allow get: if (isSignedIn() && request.auth.token.organizationId == orgId) || isSuperAdmin();
+      allow list: if isSuperAdmin();
       allow create, update, delete: if isSuperAdmin();
 
-      // Default read access for members within their organization's subcollections
-      // Também permite que SuperAdmin leia.
+      // Subcollections
+      // TESTE RANKING: Permitir que qualquer usuário autenticado cujo organizationId no token
+      // corresponda ao orgId no caminho leia QUALQUER documento em QUALQUER subcoleção.
       match /{subcollection}/{docId} {
-        allow read: if isMemberOfOrg(orgId) || isSuperAdmin();
+        allow read: if isSignedIn() && request.auth.token.organizationId == orgId;
       }
 
-      // --- Specific write rules for subcollections ---
-      // As regras de leitura para estas já estão cobertas pela regra genérica acima.
-
+      // Regras de ESCRITA específicas para subcoleções (mantidas mais restritivas)
       match /tasks/{taskId} {
+        // A leitura é coberta pela regra genérica acima
         allow create, update, delete: if isAdminOfOrg(orgId) || isSuperAdmin();
       }
-
       match /roles/{roleId} {
         allow create, update, delete: if isAdminOfOrg(orgId) || isSuperAdmin();
       }
-
       match /departments/{deptId} {
         allow create, update, delete: if isAdminOfOrg(orgId) || isSuperAdmin();
       }
-      
       match /appSettings/{settingsDoc} {
         allow create, update: if isAdminOfOrg(orgId) || isSuperAdmin();
       }
-
       match /rankingManagement/{rankingDoc} {
         allow create, update: if isAdminOfOrg(orgId) || isSuperAdmin();
       }
-
       match /challengeManagement/{settingsDoc} {
         allow create, update: if isAdminOfOrg(orgId) || isSuperAdmin();
       }
-
       match /challenges/{challengeId} {
         allow create, update, delete: if isAdminOfOrg(orgId) || isSuperAdmin();
       }
-
       match /challengeParticipations/{partId} {
-        // Leitura já coberta pela regra genérica: isMemberOfOrg(orgId)
-        allow create: if isMemberOfOrg(orgId) && 
+        // A leitura é coberta pela regra genérica acima
+        allow create: if isSignedIn() && request.auth.token.organizationId == orgId &&
                          request.resource.data.employeeId == request.auth.uid &&
-                         request.resource.data.organizationId == orgId; // Garante que está criando na organização correta
-        
-        allow update: if 
-                         // Colaborador submetendo sua própria participação aceita
-                         (isMemberOfOrg(orgId) && isSelf(resource.data.employeeId) && resource.data.status == 'accepted' &&
-                          request.resource.data.status == 'submitted' && request.resource.data.employeeId == request.auth.uid && // Dupla checagem de segurança
-                          request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'submissionText', 'submissionFileUrl', 'updatedAt', 'acceptedAt', 'submittedAt'])) ||
-                         // Admin da organização avaliando
+                         request.resource.data.organizationId == orgId;
+        allow update: if (isSignedIn() && request.auth.token.organizationId == orgId && request.auth.uid == resource.data.employeeId && resource.data.status == 'accepted' &&
+                          request.resource.data.status == 'submitted' && request.resource.data.employeeId == request.auth.uid &&
+                          request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'submissionText', 'submissionFileUrl', 'updatedAt', 'submittedAt'])) ||
                          (isAdminOfOrg(orgId) && request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'score', 'feedback', 'evaluatorId', 'evaluatedAt', 'updatedAt'])) ||
-                         // SuperAdmin pode fazer qualquer atualização que admin faz aqui
-                         (isSuperAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'score', 'feedback', 'evaluatorId', 'evaluatedAt', 'updatedAt']));
-                         
-        allow delete: if false; // Participações geralmente não são deletadas.
+                         isSuperAdmin();
+        allow delete: if false;
       }
-
       match /evaluations/{evalId} {
-        // Leitura já coberta pela regra genérica: isMemberOfOrg(orgId)
+        // A leitura é coberta pela regra genérica acima
         allow create, update: if isAdminOfOrg(orgId) || isSuperAdmin();
-        allow delete: if false; // Avaliações geralmente não são deletadas.
+        allow delete: if false;
       }
-
-      match /awardHistory/{historyId} {
-        // Leitura já coberta pela regra genérica: isMemberOfOrg(orgId)
+       match /awardHistory/{historyId} {
+        // A leitura é coberta pela regra genérica acima
         allow create, update, delete: if isAdminOfOrg(orgId) || isSuperAdmin();
       }
     }
@@ -129,7 +108,6 @@ service cloud.firestore {
       allow read, list: if isSignedIn();
       allow create, update, delete: if isSuperAdmin();
     }
-
     match /plans/{planId} {
       allow read, list: if isSignedIn();
       allow create, update, delete: if isSuperAdmin();
