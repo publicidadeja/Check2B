@@ -106,29 +106,65 @@ export const saveUser = async (userData: UserProfile): Promise<UserProfile> => {
   if (!userData.uid) {
       throw new Error('[UserService] User UID is required to save user data.');
   }
-  console.log(`[UserService] Saving user profile for UID: ${userData.uid}`);
+  console.log(`[UserService] Saving user profile for UID: ${userData.uid}. Data received:`, JSON.stringify(userData));
   const userDocRef = doc(db, 'users', userData.uid);
-  
-  // Create a mutable copy for Firestore
-  const dataToSave: any = { ...userData };
 
-  // Convert Dates to Timestamps for Firestore, only if they are Date objects
-  if (dataToSave.createdAt && dataToSave.createdAt instanceof Date) {
-    dataToSave.createdAt = Timestamp.fromDate(dataToSave.createdAt);
-  } else if (!dataToSave.createdAt) { // Only set if it's a new document (createdAt is undefined)
-    dataToSave.createdAt = serverTimestamp();
+  const dataForFirestore: { [key: string]: any } = {
+    // Fields that are always expected or being updated
+    name: userData.name,
+    email: userData.email,
+    role: userData.role,
+    organizationId: userData.organizationId,
+    status: userData.status,
+    updatedAt: serverTimestamp(),
+  };
+
+  // Optional fields: only add them if they are explicitly provided (not undefined).
+  // Convert empty strings to null for storage.
+  if (userData.phone !== undefined) {
+    dataForFirestore.phone = userData.phone === '' ? null : userData.phone;
   }
-  // Always update 'updatedAt' with serverTimestamp for updates
-  dataToSave.updatedAt = serverTimestamp();
+  if (userData.photoUrl !== undefined) {
+    dataForFirestore.photoUrl = userData.photoUrl === '' ? null : userData.photoUrl;
+  } else {
+     // If photoUrl is undefined on userData, ensure it's set to null to avoid Firestore error
+     // or to explicitly remove it if merge:true is used and it was previously set.
+    dataForFirestore.photoUrl = null;
+  }
+  if (userData.department !== undefined) {
+    dataForFirestore.department = userData.department === '' ? null : userData.department;
+  }
+  if (userData.userRole !== undefined) {
+    dataForFirestore.userRole = userData.userRole === '' ? null : userData.userRole;
+  }
+  if (userData.admissionDate !== undefined) {
+    dataForFirestore.admissionDate = userData.admissionDate === '' ? null : userData.admissionDate;
+  }
 
+  // For createdAt, only set it if this is effectively a new document creation.
+  // For updates (which this function handles via merge:true), we don't want to overwrite createdAt.
+  // A common pattern for UserProfile is that `createdAt` is set when the user is first created (e.g., by Firebase Functions).
+  // If `userData.createdAt` is passed (e.g., from existing profile data), preserve it.
+  if (userData.createdAt) {
+      if (userData.createdAt instanceof Date) {
+          dataForFirestore.createdAt = Timestamp.fromDate(userData.createdAt);
+      } else if (userData.createdAt.seconds !== undefined && userData.createdAt.nanoseconds !== undefined) {
+          // Assume it's a Firestore Timestamp-like object
+          dataForFirestore.createdAt = new Timestamp(userData.createdAt.seconds, userData.createdAt.nanoseconds);
+      }
+      // If it's already a Firestore Timestamp from a previous read, it will be handled correctly.
+  }
+  // If it's a brand new profile being saved via this function AND userData.createdAt is not set,
+  // one might add: else if (!isUpdatingAnExistingDocument) { dataForFirestore.createdAt = serverTimestamp(); }
+  // But for this specific function, we assume 'uid' means it's an update or creation of an existing Auth user's profile.
 
-  // Remove uid from the data to be set, as it's the document ID
-  const { uid, ...profileDataToSet } = dataToSave; 
-
-  await setDoc(userDocRef, profileDataToSet, { merge: true });
+  console.log(`[UserService] Data being sent to Firestore for user ${userData.uid}:`, JSON.stringify(dataForFirestore));
   
-  // For returning, we might want to fetch the doc again to get server-generated timestamps as Dates
-  // or optimistically return what we have, knowing timestamps will be handled
+  // Ensure no 'uid' field is in dataForFirestore as it's the document ID
+  const { uid, ...finalDataForFirestore } = dataForFirestore;
+
+  await setDoc(userDocRef, finalDataForFirestore, { merge: true });
+  
   const savedDoc = await getDoc(userDocRef);
   if (!savedDoc.exists()) {
     throw new Error("Failed to retrieve user after saving.");
@@ -227,18 +263,18 @@ export const getNotificationSettings = async (userId: string): Promise<Notificat
     console.error('[UserService] Firestore not initialized. Cannot get notification settings.');
     return null;
   }
-  console.log(`[UserService - getNotificationSettings] Attempting to fetch settings for userId: ${userId}`);
+  console.log(`[UserService - getNotificationSettings V2] Attempting to fetch settings for userId: ${userId}`);
   const settingsDocRef = doc(db, `users/${userId}/settings`, 'notifications');
   try {
     const docSnap = await getDoc(settingsDocRef);
     if (docSnap.exists()) {
-      console.log(`[UserService - getNotificationSettings] Settings found for userId: ${userId}`, docSnap.data());
+      console.log(`[UserService - getNotificationSettings V2] Settings found for userId: ${userId}`, docSnap.data());
       return docSnap.data() as NotificationFormData;
     }
-    console.log(`[UserService - getNotificationSettings] No settings document found for userId: ${userId}`);
+    console.log(`[UserService - getNotificationSettings V2] No settings document found for userId: ${userId}`);
     return null; 
   } catch (error) {
-    console.error(`[UserService - getNotificationSettings] Error fetching notification settings for user ${userId}:`, error);
+    console.error(`[UserService - getNotificationSettings V2] Error fetching notification settings for user ${userId}:`, error);
     throw error; 
   }
 };

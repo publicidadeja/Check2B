@@ -101,7 +101,9 @@
              }
 
              try {
+                 console.log("[EmployeeProfilePage] loadInitialData: Starting to load profile for UID:", authUser.uid);
                  const profileData = await getUserProfileData(authUser.uid);
+                 console.log("[EmployeeProfilePage] loadInitialData: Profile data fetched:", profileData);
                  setEmployeeProfile(profileData);
                  if (profileData) {
                      profileForm.reset({
@@ -113,7 +115,7 @@
                      toast({ title: "Erro", description: "Perfil do colaborador não encontrado.", variant: "destructive" });
                  }
              } catch (error) {
-                 console.error("Erro ao carregar perfil:", error);
+                 console.error("[EmployeeProfilePage] Erro ao carregar perfil:", error);
                  toast({ title: "Erro", description: "Não foi possível carregar os dados do seu perfil.", variant: "destructive" });
              } finally {
                  setIsLoadingProfile(false);
@@ -121,6 +123,7 @@
 
              if (authUser?.uid) {
                  try {
+                     console.log("[EmployeeProfilePage] loadInitialData: Attempting to load notification settings for UID:", authUser.uid);
                      const notifySettings = await getNotificationSettings(authUser.uid);
                      notificationForm.reset({
                          newEvaluation: notifySettings?.newEvaluation ?? true,
@@ -130,7 +133,8 @@
                          browserNotifications: notifySettings?.browserNotifications ?? (Notification.permission === 'granted'),
                      });
                  } catch (error) {
-                     console.error("Erro ao carregar configurações de notificação:", error);
+                     console.error("[EmployeeProfilePage] Erro ao carregar configurações de notificação:", error);
+                     // Do not toast here as it might be a permissions issue if doc doesn't exist, handled by service console log
                  } finally {
                      setIsLoadingNotifications(false);
                  }
@@ -141,39 +145,64 @@
          loadInitialData();
      }, [authUser, authLoading, isGuest, toast, profileForm, notificationForm]);
 
-     const onProfileSubmit = async (data: ProfileFormData) => {
-         if (!authUser?.uid || !employeeProfile) return;
-         setIsSavingProfile(true);
-         let finalPhotoUrl = data.photoUrl || employeeProfile.photoUrl; // Use existing if new one is empty
+    const onProfileSubmit = async (data: ProfileFormData) => {
+        if (!authUser?.uid || !employeeProfile) return;
+        setIsSavingProfile(true);
 
-         try {
-             if (selectedFile) {
-                 finalPhotoUrl = await uploadProfilePhoto(authUser.uid, selectedFile);
-             }
+        let finalPhotoUrl: string | null = employeeProfile.photoUrl || null; // Start with existing or null
 
-             const profileToSave: UserProfile = {
-                 ...employeeProfile, // Preserve all existing fields
-                 phone: data.phone || undefined, // Set to undefined if empty string
-                 photoUrl: finalPhotoUrl || undefined, // Set to undefined if empty string
-                 updatedAt: new Date(), // This will be converted to Timestamp by saveUser
-             };
+        if (selectedFile) {
+            console.log("[PerfilPage] Uploading new profile photo...");
+            try {
+                finalPhotoUrl = await uploadProfilePhoto(authUser.uid, selectedFile);
+            } catch (uploadError) {
+                console.error("Error uploading photo:", uploadError);
+                toast({ title: "Erro de Upload", description: "Não foi possível carregar a nova foto.", variant: "destructive" });
+                setIsSavingProfile(false);
+                return; 
+            }
+        } else if (data.photoUrl === '' && employeeProfile.photoUrl) {
+            // User explicitly cleared the URL field, indicating removal
+            finalPhotoUrl = null;
+        } else if (data.photoUrl && data.photoUrl.trim() !== '') {
+            // User provided a URL in the form
+            finalPhotoUrl = data.photoUrl.trim();
+        }
+        // If data.photoUrl is undefined or empty, and no selectedFile, finalPhotoUrl retains employeeProfile.photoUrl or null
 
-             await saveUser(profileToSave); // saveUser will handle setting this in Firestore
+        const profileToSave: Partial<UserProfile> = {
+            uid: authUser.uid,
+            name: employeeProfile.name, 
+            email: employeeProfile.email,
+            role: employeeProfile.role,
+            organizationId: employeeProfile.organizationId,
+            status: employeeProfile.status,
+            department: employeeProfile.department,
+            userRole: employeeProfile.userRole,
+            admissionDate: employeeProfile.admissionDate,
+            phone: data.phone ? data.phone.trim() : null,
+            photoUrl: finalPhotoUrl, // This will be string or null
+        };
+        
+        console.log("[PerfilPage] Profile data to save:", JSON.stringify(profileToSave));
 
-             setEmployeeProfile(profileToSave); // Update local state with the saved data
-             profileForm.reset({ phone: profileToSave.phone || '', photoUrl: profileToSave.photoUrl || '' });
-             setPhotoPreview(profileToSave.photoUrl);
-             setSelectedFile(null);
-             if (fileInputRef.current) fileInputRef.current.value = '';
-             toast({ title: "Sucesso!", description: "Seu perfil foi atualizado." });
-             setIsEditingProfile(false);
-         } catch (error) {
-             console.error("Erro ao atualizar perfil:", error);
-             toast({ title: "Erro", description: "Não foi possível atualizar seu perfil.", variant: "destructive" });
-         } finally {
-             setIsSavingProfile(false);
-         }
-     };
+        try {
+            const savedProfile = await saveUser(profileToSave as UserProfile);
+
+            setEmployeeProfile(savedProfile);
+            profileForm.reset({ phone: savedProfile.phone || '', photoUrl: savedProfile.photoUrl || '' });
+            setPhotoPreview(savedProfile.photoUrl || undefined);
+            setSelectedFile(null);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            toast({ title: "Sucesso!", description: "Seu perfil foi atualizado." });
+            setIsEditingProfile(false);
+        } catch (error) {
+            console.error("Erro ao atualizar perfil:", error);
+            toast({ title: "Erro", description: "Não foi possível atualizar seu perfil.", variant: "destructive" });
+        } finally {
+            setIsSavingProfile(false);
+        }
+    };
 
      const handlePhotoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -184,13 +213,13 @@
                 return;
             }
             setSelectedFile(file);
-            profileForm.setValue('photoUrl', ''); // Clear URL field if file is selected
+            profileForm.setValue('photoUrl', ''); 
             const reader = new FileReader();
             reader.onloadend = () => setPhotoPreview(reader.result as string);
             reader.readAsDataURL(file);
         } else {
             setSelectedFile(null);
-            setPhotoPreview(employeeProfile?.photoUrl || undefined); // Revert to original if file selection cancelled
+            setPhotoPreview(profileForm.getValues('photoUrl') || employeeProfile?.photoUrl || undefined);
         }
      };
 
@@ -209,13 +238,12 @@
 
      const handlePhotoUrlChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const url = event.target.value;
-        profileForm.setValue('photoUrl', url);
+        profileForm.setValue('photoUrl', url); // Update form value
         if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
             setPhotoPreview(url);
-            setSelectedFile(null); // Clear file if URL is manually entered
+            setSelectedFile(null); 
              if (fileInputRef.current) fileInputRef.current.value = '';
         } else if (!url) {
-             // If URL is cleared, revert to original photo or undefined if no file selected
             setPhotoPreview(selectedFile ? photoPreview : (employeeProfile?.photoUrl || undefined));
         }
     };
@@ -324,7 +352,7 @@
                               {isEditingProfile && (
                                  <div className="flex gap-1 flex-shrink-0 mt-2 sm:mt-0">
                                       <Button type="button" variant="ghost" size="sm" onClick={cancelEditProfile} className="text-xs h-7 px-2">Cancelar</Button>
-                                      <Button type="submit" size="sm" disabled={isSavingProfile || !profileForm.formState.isDirty && !selectedFile} className="text-xs h-7 px-2">
+                                      <Button type="submit" size="sm" disabled={isSavingProfile || (!profileForm.formState.isDirty && !selectedFile)} className="text-xs h-7 px-2">
                                          {isSavingProfile ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Save className="mr-1 h-3 w-3" />}
                                          Salvar
                                      </Button>
