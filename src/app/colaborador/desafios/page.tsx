@@ -334,13 +334,13 @@
              const [challengesData, participationsData, userProfileData] = await Promise.all([
                  getAllChallenges(organizationId),
                  getChallengeParticipationsByEmployee(organizationId, CURRENT_EMPLOYEE_ID),
-                 getUserProfileData(CURRENT_EMPLOYEE_ID) // Fetch full user profile
+                 getUserProfileData(CURRENT_EMPLOYEE_ID) 
              ]);
              setAllChallenges(challengesData);
              setParticipations(participationsData);
              setCurrentUserProfile(userProfileData);
          } catch (error) {
-             console.error("Erro ao carregar desafios e participações:", error);
+             console.error("[CollabChallengesPage] Erro ao carregar desafios e participações:", error);
              toast({ title: "Erro", description: "Não foi possível carregar seus desafios.", variant: "destructive" });
          } finally {
              setIsLoading(false);
@@ -359,7 +359,7 @@
              toast({ title: "Desafio Aceito!", description: `Você começou o desafio: "${allChallenges.find(c => c.id === challengeId)?.title}".`, });
              await loadChallengesData(); 
          } catch (error: any) {
-             console.error("Erro ao aceitar desafio:", error);
+             console.error("[CollabChallengesPage] Erro ao aceitar desafio:", error);
              toast({ title: "Erro", description: error.message || "Não foi possível aceitar o desafio.", variant: "destructive" });
          } finally {
              setIsLoading(false);
@@ -372,7 +372,7 @@
              await submitChallengeForEmployee(organizationId, challengeId, CURRENT_EMPLOYEE_ID, submissionText, fileUrl);
              await loadChallengesData();
          } catch (error: any) {
-             console.error("Erro ao submeter desafio (na página):", error);
+             console.error("[CollabChallengesPage] Erro ao submeter desafio (na página):", error);
              toast({ title: "Erro na Submissão", description: error.message || "Falha ao registrar submissão.", variant: "destructive" });
          }
      };
@@ -397,7 +397,10 @@
 
             const startDateValid = challenge.periodStartDate && isValid(parseISO(challenge.periodStartDate));
             const endDateValid = challenge.periodEndDate && isValid(parseISO(challenge.periodEndDate));
-            if (!startDateValid || !endDateValid) return; 
+            if (!startDateValid || !endDateValid) {
+                console.warn(`[CollabChallengesPage] Challenge ${challenge.id} has invalid dates. Start: ${challenge.periodStartDate}, End: ${challenge.periodEndDate}`);
+                return;
+            }
 
             const endDate = parseISO(challenge.periodEndDate + "T23:59:59.999Z");
             const startDate = parseISO(challenge.periodStartDate);
@@ -405,15 +408,15 @@
             const isChallengeNotStartedYet = isBefore(new Date(), startDate);
 
             let isEligible = false;
-            if (currentUserProfile) { // Check if profile is loaded
-                if (challenge.eligibility.type === 'all') isEligible = true;
-                else if (challenge.eligibility.type === 'department' && currentUserProfile.department && challenge.eligibility.entityIds?.includes(currentUserProfile.department)) isEligible = true;
+            if (challenge.eligibility.type === 'all') {
+                isEligible = true;
+            } else if (currentUserProfile) { // Only check specific eligibility if profile is loaded
+                if (challenge.eligibility.type === 'department' && currentUserProfile.department && challenge.eligibility.entityIds?.includes(currentUserProfile.department)) isEligible = true;
                 else if (challenge.eligibility.type === 'role' && currentUserProfile.userRole && challenge.eligibility.entityIds?.includes(currentUserProfile.userRole)) isEligible = true;
                 else if (challenge.eligibility.type === 'individual' && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID!)) isEligible = true;
-            } else if (challenge.eligibility.type === 'all' || (challenge.eligibility.type === 'individual' && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID!))) {
-                // Fallback for 'all' or direct individual assignment if profile is not yet loaded
-                // This might show a challenge briefly as available then hide it if profile makes it ineligible
-                isEligible = true; 
+            } else if (challenge.eligibility.type === 'individual' && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID!)) {
+                 // Still allow individual eligibility check even if full profile isn't loaded (UID is enough)
+                isEligible = true;
             }
 
 
@@ -423,7 +426,7 @@
                 if (participationStatus === 'pending' && !isChallengePeriodOver) {
                     available.push(challenge);
                 } else if (participationStatus === 'accepted' || participationStatus === 'submitted') {
-                    if (!isChallengePeriodOver || challenge.status === 'evaluating') {
+                    if (!isChallengePeriodOver || challenge.status === 'evaluating') { // Keep active if evaluating even if period is over
                         active.push(challenge);
                     } else {
                         completed.push(challenge); 
@@ -432,14 +435,15 @@
                     completed.push(challenge);
                 }
             } else if (challenge.status === 'evaluating') {
-                 if (participationStatus === 'accepted' || participationStatus === 'submitted' || participationStatus === 'approved' || participationStatus === 'rejected') {
-                     if (participationStatus === 'accepted' || participationStatus === 'submitted') active.push(challenge);
-                     else completed.push(challenge);
+                 if (participationStatus === 'accepted' || participationStatus === 'submitted') {
+                     active.push(challenge);
+                 } else if (participationStatus === 'approved' || participationStatus === 'rejected') {
+                     completed.push(challenge);
                  }
             } else if (challenge.status === 'completed') {
                 completed.push(challenge);
             } else if (challenge.status === 'scheduled' && isChallengeNotStartedYet) {
-                if (participationStatus === 'pending') {
+                if (participationStatus === 'pending') { // Show future challenges as available if pending
                     available.push(challenge);
                 }
             }
@@ -455,9 +459,8 @@
             return (dateB instanceof Date ? dateB.getTime() : 0) - (dateA instanceof Date ? dateA.getTime() : 0);
         });
 
-
         return { available, active, completed };
-    }, [allChallenges, participationMap, CURRENT_EMPLOYEE_ID, currentUserProfile]);
+    }, [allChallenges, participations, participationMap, CURRENT_EMPLOYEE_ID, currentUserProfile]);
 
 
       const filterChallenges = (challenges: Challenge[]): Challenge[] => {
@@ -583,4 +586,3 @@
              </div>
      );
  }
-    
