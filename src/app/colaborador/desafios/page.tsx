@@ -2,6 +2,7 @@
  'use client';
 
  import * as React from 'react';
+ import Link from 'next/link'; // Added import
  import { Target, CheckCircle, Clock, Award, History, Filter, Loader2, Info, ArrowRight, FileText, Upload, Link as LinkIcon, Calendar, Trophy, Eye, ArrowLeft, Frown, CalendarDays, ListFilter, Search, X, CheckCircle2 } from 'lucide-react';
  import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
  import {
@@ -334,8 +335,9 @@
              const [challengesData, participationsData, userProfileData] = await Promise.all([
                  getAllChallenges(organizationId),
                  getChallengeParticipationsByEmployee(organizationId, CURRENT_EMPLOYEE_ID),
-                 getUserProfileData(CURRENT_EMPLOYEE_ID) 
+                 getUserProfileData(CURRENT_EMPLOYEE_ID)
              ]);
+
              setAllChallenges(challengesData);
              setParticipations(participationsData);
              setCurrentUserProfile(userProfileData);
@@ -353,11 +355,11 @@
 
      const handleAcceptChallenge = async (challengeId: string) => {
          if (!CURRENT_EMPLOYEE_ID || !organizationId) return;
-         setIsLoading(true); 
+         setIsLoading(true);
          try {
              await acceptChallengeForEmployee(organizationId, challengeId, CURRENT_EMPLOYEE_ID, CURRENT_EMPLOYEE_NAME);
              toast({ title: "Desafio Aceito!", description: `Você começou o desafio: "${allChallenges.find(c => c.id === challengeId)?.title}".`, });
-             await loadChallengesData(); 
+             await loadChallengesData();
          } catch (error: any) {
              console.error("[CollabChallengesPage] Erro ao aceitar desafio:", error);
              toast({ title: "Erro", description: error.message || "Não foi possível aceitar o desafio.", variant: "destructive" });
@@ -386,7 +388,7 @@
          return participationMap.get(challengeId);
      }
 
-     const categorizedChallenges = React.useMemo(() => {
+    const categorizedChallenges = React.useMemo(() => {
         const available: Challenge[] = [];
         const active: Challenge[] = [];
         const completed: Challenge[] = [];
@@ -398,7 +400,6 @@
             const startDateValid = challenge.periodStartDate && isValid(parseISO(challenge.periodStartDate));
             const endDateValid = challenge.periodEndDate && isValid(parseISO(challenge.periodEndDate));
             if (!startDateValid || !endDateValid) {
-                console.warn(`[CollabChallengesPage] Challenge ${challenge.id} has invalid dates. Start: ${challenge.periodStartDate}, End: ${challenge.periodEndDate}`);
                 return;
             }
 
@@ -410,26 +411,27 @@
             let isEligible = false;
             if (challenge.eligibility.type === 'all') {
                 isEligible = true;
-            } else if (currentUserProfile) { // Only check specific eligibility if profile is loaded
+            } else if (currentUserProfile) {
                 if (challenge.eligibility.type === 'department' && currentUserProfile.department && challenge.eligibility.entityIds?.includes(currentUserProfile.department)) isEligible = true;
                 else if (challenge.eligibility.type === 'role' && currentUserProfile.userRole && challenge.eligibility.entityIds?.includes(currentUserProfile.userRole)) isEligible = true;
-                else if (challenge.eligibility.type === 'individual' && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID!)) isEligible = true;
-            } else if (challenge.eligibility.type === 'individual' && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID!)) {
-                 // Still allow individual eligibility check even if full profile isn't loaded (UID is enough)
+                else if (challenge.eligibility.type === 'individual' && CURRENT_EMPLOYEE_ID && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID)) isEligible = true;
+            } else if (challenge.eligibility.type === 'individual' && CURRENT_EMPLOYEE_ID && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID)) {
                 isEligible = true;
             }
 
 
-            if (!isEligible || challenge.status === 'draft' || challenge.status === 'archived') return;
+            if (!isEligible || challenge.status === 'draft' || challenge.status === 'archived') {
+                return;
+            }
 
             if (challenge.status === 'active' || (challenge.status === 'scheduled' && !isChallengeNotStartedYet)) {
                 if (participationStatus === 'pending' && !isChallengePeriodOver) {
                     available.push(challenge);
                 } else if (participationStatus === 'accepted' || participationStatus === 'submitted') {
-                    if (!isChallengePeriodOver || challenge.status === 'evaluating') { // Keep active if evaluating even if period is over
+                    if (!isChallengePeriodOver || challenge.status === 'evaluating') {
                         active.push(challenge);
                     } else {
-                        completed.push(challenge); 
+                        completed.push(challenge);
                     }
                 } else if (participationStatus === 'approved' || participationStatus === 'rejected') {
                     completed.push(challenge);
@@ -443,7 +445,7 @@
             } else if (challenge.status === 'completed') {
                 completed.push(challenge);
             } else if (challenge.status === 'scheduled' && isChallengeNotStartedYet) {
-                if (participationStatus === 'pending') { // Show future challenges as available if pending
+                if (participationStatus === 'pending') {
                     available.push(challenge);
                 }
             }
@@ -586,3 +588,4 @@
              </div>
      );
  }
+
