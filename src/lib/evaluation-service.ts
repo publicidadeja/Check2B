@@ -1,6 +1,6 @@
 
 // src/lib/evaluation-service.ts
-import { getDb, getFirebaseApp } from './firebase'; // Added getFirebaseApp
+import { getDb, getFirebaseApp } from './firebase';
 import type { Evaluation } from '@/types/evaluation';
 import type { Task } from '@/types/task';
 import type { UserProfile } from '@/types/user';
@@ -15,10 +15,13 @@ import {
   orderBy,
   writeBatch,
   getCountFromServer,
-  collectionGroup, // Import collectionGroup
+  collectionGroup,
+  getDoc, // Garantindo que getDoc está importado
+  serverTimestamp, // Garantindo que serverTimestamp está importado
+  updateDoc,
 } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage"; // Added Storage imports
-import { format, parseISO, startOfMonth, endOfMonth, subMonths, subHours } from 'date-fns'; // Added subHours
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { format, parseISO, startOfMonth, endOfMonth, subMonths, subHours } from 'date-fns';
 import { getAllTasksForOrganization } from './task-service';
 
 /**
@@ -30,7 +33,7 @@ import { getAllTasksForOrganization } from './task-service';
  */
 export const uploadEvaluationEvidence = async (
   organizationId: string,
-  evaluationId: string, // This should be a stable identifier for the evaluation event
+  evaluationId: string,
   file: File
 ): Promise<string> => {
   const app = getFirebaseApp();
@@ -42,7 +45,6 @@ export const uploadEvaluationEvidence = async (
     throw new Error('Firebase Storage not initialized. Cannot upload evidence.');
   }
 
-  // Sanitize filename: replace non-alphanumeric (except dots) with underscores
   const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
   const filePath = `organizations/${organizationId}/evaluations_evidence/${evaluationId}/${sanitizedFileName}`;
   const fileRef = ref(storage, filePath);
@@ -137,7 +139,7 @@ export const getEvaluationsForDay = async (organizationId: string, dateString: s
   } else {
     q = query(evaluationsCollectionRef, where("evaluationDate", "==", dateString));
   }
-  
+
 
   try {
     const evaluationsSnapshot = await getDocs(q);
@@ -174,7 +176,7 @@ export const getEvaluationsForOrganizationInPeriod = async (organizationId: stri
   }
   const evaluationsPath = `organizations/${organizationId}/evaluations`;
   const evaluationsCollectionRef = collection(db, evaluationsPath);
-  
+
   let qConstraints = [
     where("evaluationDate", ">=", startDateString),
     where("evaluationDate", "<=", endDateString),
@@ -182,7 +184,7 @@ export const getEvaluationsForOrganizationInPeriod = async (organizationId: stri
   ];
 
   if (employeeId) {
-    qConstraints.unshift(where("employeeId", "==", employeeId)); // Add employeeId filter first for Firestore query structure
+    qConstraints.unshift(where("employeeId", "==", employeeId));
   }
 
   const q = query(evaluationsCollectionRef, ...qConstraints);
@@ -219,7 +221,6 @@ export const getEvaluationsForEmployeeInPeriod = async (
   startDateString: string,
   endDateString: string
 ): Promise<Evaluation[]> => {
-  // This function is now a specific case of getEvaluationsForOrganizationInPeriod
   return getEvaluationsForOrganizationInPeriod(organizationId, startDateString, endDateString, employeeId);
 };
 
@@ -228,19 +229,10 @@ interface TaskEvaluationStateForSave {
     taskId: string;
     score?: 0 | 10;
     justification?: string;
-    evidenceFile?: File | null; // Keep File type here
-    evaluationId?: string; // For existing evaluations
+    evidenceFile?: File | null;
+    evaluationId?: string;
 }
-/**
- * Saves or updates evaluations for a specific employee on a given date.
- * Uses batch writes for efficiency. Handles evidence file upload.
- * @param organizationId The ID of the organization.
- * @param evaluatorId The ID of the admin performing the evaluation.
- * @param employeeId The ID of the employee being evaluated.
- * @param dateString The date string of the evaluation ('yyyy-MM-dd').
- * @param taskEvaluations An array of task evaluation states to save.
- * @returns Promise resolving on successful save.
- */
+
 export const saveEmployeeEvaluations = async (
   organizationId: string,
   evaluatorId: string,
@@ -252,50 +244,52 @@ export const saveEmployeeEvaluations = async (
   if (!db || !organizationId) {
     throw new Error('Firestore not initialized or organizationId missing. Cannot save evaluations.');
   }
-  
+
   const batch = writeBatch(db);
   const evaluationsPath = `organizations/${organizationId}/evaluations`;
 
   for (const taskEval of taskEvaluations) {
-    if (taskEval.score === undefined) continue; // Skip tasks not scored
+    if (taskEval.score === undefined) continue;
 
     const evaluationIdForStorage = taskEval.evaluationId || `${employeeId}-${taskEval.taskId}-${dateString}-new-${Date.now()}`;
     const firestoreDocId = `${employeeId}-${taskEval.taskId}-${dateString}`;
     const evalDocRef = doc(db, evaluationsPath, firestoreDocId);
 
-    let evidenceUrlToSave: string | undefined = undefined;
+    let evidenceUrlToSave: string | null = null; // Initialize as null
 
     if (taskEval.evidenceFile) {
       try {
         evidenceUrlToSave = await uploadEvaluationEvidence(
           organizationId,
-          evaluationIdForStorage, 
+          evaluationIdForStorage,
           taskEval.evidenceFile
         );
       } catch (uploadError) {
         console.error(`[EvaluationService] Failed to upload evidence for task ${taskEval.taskId}, employee ${employeeId}. Skipping evidence for this task.`, uploadError);
+        // Do not set evidenceUrlToSave if upload fails
       }
     }
 
-    const evaluationData: Partial<Evaluation> = {
+    // Prepare data for Firestore, ensuring fields are explicitly null if empty/undefined
+    const dataForFirestore: Partial<Evaluation> & { updatedAt: any, createdAt?: any } = {
       employeeId: employeeId,
       taskId: taskEval.taskId,
       evaluationDate: dateString,
       score: taskEval.score,
-      justification: taskEval.justification || undefined,
-      evidenceUrl: evidenceUrlToSave, 
+      justification: taskEval.justification?.trim() || null,
+      evidenceUrl: evidenceUrlToSave, // This will be null if no file or upload failed
       evaluatorId: evaluatorId,
       organizationId: organizationId,
-      isDraft: false, 
-      updatedAt: new Date(), 
+      isDraft: false,
+      updatedAt: serverTimestamp(),
     };
-    
-    const existingEvalDoc = await getDoc(evalDocRef);
+
+    const existingEvalDoc = await getDoc(evalDocRef); // This was the line causing the error
     if (!existingEvalDoc.exists()) {
-        evaluationData.createdAt = new Date();
+      dataForFirestore.createdAt = serverTimestamp();
     }
-    
-    batch.set(evalDocRef, evaluationData, { merge: true });
+
+    batch.set(evalDocRef, dataForFirestore, { merge: true });
   }
 
   try {
@@ -306,6 +300,7 @@ export const saveEmployeeEvaluations = async (
     throw error;
   }
 };
+
 
 /**
  * Counts distinct employees who have evaluations on a specific date.
@@ -334,7 +329,7 @@ export const countUsersWithExcessiveZeros = async (
   zeroThreshold: number
 ): Promise<number> => {
   const evaluationsInPeriod = await getEvaluationsForOrganizationInPeriod(organizationId, startDateString, endDateString);
-  
+
   const zerosByEmployee: Record<string, number> = {};
   evaluationsInPeriod.forEach(ev => {
     if (ev.score === 0) {
@@ -382,7 +377,7 @@ export const getMonthlyEvaluationStats = async (
       where("evaluationDate", ">=", firstDayOfMonth),
       where("evaluationDate", "<=", lastDayOfMonth)
     );
-    
+
     try {
       const snapshot = await getCountFromServer(q);
       stats.push({ month: monthName, total: snapshot.data().count });
@@ -418,13 +413,9 @@ export const countRecentEvaluations = async (hoursAgo: number): Promise<number> 
         return snapshot.data().count;
     } catch (error) {
         console.error(`Error counting recent evaluations (last ${hoursAgo}h):`, error);
-        // This error might indicate a missing index.
-        // Log a more specific message for the developer if it's a permission or index issue.
         if ((error as any).code === 'failed-precondition') {
             console.warn("Firestore query for recent evaluations failed. This might be due to a missing composite index for the 'evaluations' collection group on 'updatedAt'. Please check your Firestore indexes.");
         }
-        return 0; // Return 0 on error to prevent breaking the dashboard
+        return 0;
     }
 };
-
-    
