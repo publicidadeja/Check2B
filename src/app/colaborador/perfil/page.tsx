@@ -110,7 +110,7 @@
                          phone: profileData.phone || '',
                          photoUrl: profileData.photoUrl || '',
                      });
-                     setPhotoPreview(profileData.photoUrl);
+                     setPhotoPreview(profileData.photoUrl || undefined);
                  } else {
                      toast({ title: "Erro", description: "Perfil do colaborador não encontrado.", variant: "destructive" });
                  }
@@ -134,7 +134,6 @@
                      });
                  } catch (error) {
                      console.error("[EmployeeProfilePage] Erro ao carregar configurações de notificação:", error);
-                     // Do not toast here as it might be a permissions issue if doc doesn't exist, handled by service console log
                  } finally {
                      setIsLoadingNotifications(false);
                  }
@@ -149,7 +148,7 @@
         if (!authUser?.uid || !employeeProfile) return;
         setIsSavingProfile(true);
 
-        let finalPhotoUrl: string | null = employeeProfile.photoUrl || null; // Start with existing or null
+        let finalPhotoUrl: string | null = employeeProfile.photoUrl || null; 
 
         if (selectedFile) {
             console.log("[PerfilPage] Uploading new profile photo...");
@@ -161,34 +160,23 @@
                 setIsSavingProfile(false);
                 return; 
             }
-        } else if (data.photoUrl === '' && employeeProfile.photoUrl) {
-            // User explicitly cleared the URL field, indicating removal
+        } else if (data.photoUrl === '' && finalPhotoUrl !== null) { 
             finalPhotoUrl = null;
         } else if (data.photoUrl && data.photoUrl.trim() !== '') {
-            // User provided a URL in the form
             finalPhotoUrl = data.photoUrl.trim();
         }
-        // If data.photoUrl is undefined or empty, and no selectedFile, finalPhotoUrl retains employeeProfile.photoUrl or null
+        // If data.photoUrl is undefined or empty, and no selectedFile, finalPhotoUrl retains its value (existing or null)
 
         const profileToSave: Partial<UserProfile> = {
             uid: authUser.uid,
-            name: employeeProfile.name, 
-            email: employeeProfile.email,
-            role: employeeProfile.role,
-            organizationId: employeeProfile.organizationId,
-            status: employeeProfile.status,
-            department: employeeProfile.department,
-            userRole: employeeProfile.userRole,
-            admissionDate: employeeProfile.admissionDate,
-            phone: data.phone ? data.phone.trim() : null,
-            photoUrl: finalPhotoUrl, // This will be string or null
+            phone: (data.phone === undefined || data.phone.trim() === '') ? null : data.phone.trim(),
+            photoUrl: finalPhotoUrl, 
         };
         
-        console.log("[PerfilPage] Profile data to save:", JSON.stringify(profileToSave));
-
         try {
-            const savedProfile = await saveUser(profileToSave as UserProfile);
+            const savedProfile = await saveUser(profileToSave); // saveUser now only sends these fields if it's a collaborator
 
+            // Update local state with the full profile returned from saveUser
             setEmployeeProfile(savedProfile);
             profileForm.reset({ phone: savedProfile.phone || '', photoUrl: savedProfile.photoUrl || '' });
             setPhotoPreview(savedProfile.photoUrl || undefined);
@@ -207,7 +195,7 @@
      const handlePhotoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (file) {
-            if (file.size > 5 * 1024 * 1024) { // 5MB limit
+            if (file.size > 5 * 1024 * 1024) { 
                 toast({ title: "Arquivo Grande", description: "A foto não pode exceder 5MB.", variant: "destructive" });
                 if (fileInputRef.current) fileInputRef.current.value = '';
                 return;
@@ -230,7 +218,7 @@
                 phone: employeeProfile.phone || '',
                 photoUrl: employeeProfile.photoUrl || '',
             });
-            setPhotoPreview(employeeProfile.photoUrl);
+            setPhotoPreview(employeeProfile.photoUrl || undefined);
         }
         setSelectedFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -238,12 +226,13 @@
 
      const handlePhotoUrlChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const url = event.target.value;
-        profileForm.setValue('photoUrl', url); // Update form value
+        profileForm.setValue('photoUrl', url); 
         if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
             setPhotoPreview(url);
             setSelectedFile(null); 
              if (fileInputRef.current) fileInputRef.current.value = '';
         } else if (!url) {
+            // If URL is cleared, revert to selected file preview or original profile photo
             setPhotoPreview(selectedFile ? photoPreview : (employeeProfile?.photoUrl || undefined));
         }
     };
@@ -390,7 +379,7 @@
                               <div className="grid grid-cols-1 gap-y-3 text-sm">
                                   <div className="flex justify-between items-center"><span className="text-xs text-muted-foreground">Departamento</span><span className="font-medium text-right">{employeeProfile.department || '-'}</span></div>
                                   <div className="flex justify-between items-center"><span className="text-xs text-muted-foreground">Função</span><span className="font-medium text-right">{employeeProfile.userRole || '-'}</span></div>
-                                   <div className="flex justify-between items-center"><span className="text-xs text-muted-foreground">Data de Admissão</span><span className="font-medium text-right">{employeeProfile.admissionDate && isValid(parseISO(employeeProfile.admissionDate)) ? format(parseISO(employeeProfile.admissionDate), 'dd/MM/yyyy', { locale: ptBR }) : '-'}</span></div>
+                                   <div className="flex justify-between items-center"><span className="text-xs text-muted-foreground">Data de Admissão</span><span className="font-medium text-right">{employeeProfile.admissionDate && isValid(parseISO(employeeProfile.admissionDate)) ? format(parseISO(employeeProfile.admissionDate), 'PPP', { locale: ptBR }) : '-'}</span></div>
                               </div>
                          </CardContent>
                      </form>
