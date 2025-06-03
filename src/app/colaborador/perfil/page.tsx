@@ -87,17 +87,12 @@
      React.useEffect(() => {
          const loadInitialData = async () => {
              if (authLoading || isGuest || !authUser?.uid) {
-                 if (!authLoading) { // Only stop loading if auth is done
+                 if (!authLoading) {
                      setIsLoadingProfile(false);
                      setIsLoadingNotifications(false);
-                     if (!isGuest && !authUser?.uid) {
-                         console.warn("[EmployeeProfilePage] Auth done, but no authUser.uid. Redirecting or showing error might be needed.");
-                     }
                  }
                  return;
              }
-
-             console.log("[EmployeeProfilePage] loadInitialData: Starting to load profile for UID:", authUser.uid);
              setIsLoadingProfile(true);
              setIsLoadingNotifications(true);
 
@@ -107,9 +102,7 @@
 
              try {
                  const profileData = await getUserProfileData(authUser.uid);
-                 console.log("[EmployeeProfilePage] loadInitialData: Profile data fetched:", profileData);
                  setEmployeeProfile(profileData);
-
                  if (profileData) {
                      profileForm.reset({
                          phone: profileData.phone || '',
@@ -120,18 +113,15 @@
                      toast({ title: "Erro", description: "Perfil do colaborador não encontrado.", variant: "destructive" });
                  }
              } catch (error) {
-                 console.error("[EmployeeProfilePage] Erro ao carregar perfil:", error);
+                 console.error("Erro ao carregar perfil:", error);
                  toast({ title: "Erro", description: "Não foi possível carregar os dados do seu perfil.", variant: "destructive" });
              } finally {
                  setIsLoadingProfile(false);
              }
 
-             // Fetch notification settings after profile (and ensuring authUser.uid is still valid)
-             if (authUser && authUser.uid) {
-                 console.log("[EmployeeProfilePage] loadInitialData: Attempting to load notification settings for UID:", authUser.uid);
+             if (authUser?.uid) {
                  try {
                      const notifySettings = await getNotificationSettings(authUser.uid);
-                     console.log("[EmployeeProfilePage] loadInitialData: Notification settings fetched:", notifySettings);
                      notificationForm.reset({
                          newEvaluation: notifySettings?.newEvaluation ?? true,
                          challengeUpdates: notifySettings?.challengeUpdates ?? true,
@@ -140,26 +130,21 @@
                          browserNotifications: notifySettings?.browserNotifications ?? (Notification.permission === 'granted'),
                      });
                  } catch (error) {
-                     console.error("[EmployeeProfilePage] Erro ao carregar configurações de notificação:", error);
-                     // Not showing a toast here for now, as the console already logs it from user-service
+                     console.error("Erro ao carregar configurações de notificação:", error);
                  } finally {
                      setIsLoadingNotifications(false);
                  }
              } else {
-                 console.warn("[EmployeeProfilePage] authUser.uid became invalid before fetching notification settings.");
                  setIsLoadingNotifications(false);
              }
          };
-
          loadInitialData();
-
      }, [authUser, authLoading, isGuest, toast, profileForm, notificationForm]);
-
 
      const onProfileSubmit = async (data: ProfileFormData) => {
          if (!authUser?.uid || !employeeProfile) return;
          setIsSavingProfile(true);
-         let finalPhotoUrl = data.photoUrl;
+         let finalPhotoUrl = data.photoUrl || employeeProfile.photoUrl; // Use existing if new one is empty
 
          try {
              if (selectedFile) {
@@ -167,17 +152,17 @@
              }
 
              const profileToSave: UserProfile = {
-                 ...employeeProfile,
-                 phone: data.phone,
-                 photoUrl: finalPhotoUrl,
-                 updatedAt: new Date(), // Client-side timestamp, Firestore will use serverTimestamp
+                 ...employeeProfile, // Preserve all existing fields
+                 phone: data.phone || undefined, // Set to undefined if empty string
+                 photoUrl: finalPhotoUrl || undefined, // Set to undefined if empty string
+                 updatedAt: new Date(), // This will be converted to Timestamp by saveUser
              };
 
-             await saveUser(profileToSave);
+             await saveUser(profileToSave); // saveUser will handle setting this in Firestore
 
-             setEmployeeProfile(prev => prev ? ({ ...prev, phone: data.phone, photoUrl: finalPhotoUrl }) : null);
-             profileForm.reset({ phone: data.phone, photoUrl: finalPhotoUrl });
-             setPhotoPreview(finalPhotoUrl);
+             setEmployeeProfile(profileToSave); // Update local state with the saved data
+             profileForm.reset({ phone: profileToSave.phone || '', photoUrl: profileToSave.photoUrl || '' });
+             setPhotoPreview(profileToSave.photoUrl);
              setSelectedFile(null);
              if (fileInputRef.current) fileInputRef.current.value = '';
              toast({ title: "Sucesso!", description: "Seu perfil foi atualizado." });
@@ -193,18 +178,19 @@
      const handlePhotoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (file) {
-            if (file.size > 5 * 1024 * 1024) {
+            if (file.size > 5 * 1024 * 1024) { // 5MB limit
                 toast({ title: "Arquivo Grande", description: "A foto não pode exceder 5MB.", variant: "destructive" });
+                if (fileInputRef.current) fileInputRef.current.value = '';
                 return;
             }
             setSelectedFile(file);
-            profileForm.setValue('photoUrl', '');
+            profileForm.setValue('photoUrl', ''); // Clear URL field if file is selected
             const reader = new FileReader();
             reader.onloadend = () => setPhotoPreview(reader.result as string);
             reader.readAsDataURL(file);
         } else {
             setSelectedFile(null);
-            setPhotoPreview(employeeProfile?.photoUrl);
+            setPhotoPreview(employeeProfile?.photoUrl || undefined); // Revert to original if file selection cancelled
         }
      };
 
@@ -226,10 +212,11 @@
         profileForm.setValue('photoUrl', url);
         if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
             setPhotoPreview(url);
-            setSelectedFile(null);
+            setSelectedFile(null); // Clear file if URL is manually entered
              if (fileInputRef.current) fileInputRef.current.value = '';
         } else if (!url) {
-            setPhotoPreview(employeeProfile?.photoUrl || undefined);
+             // If URL is cleared, revert to original photo or undefined if no file selected
+            setPhotoPreview(selectedFile ? photoPreview : (employeeProfile?.photoUrl || undefined));
         }
     };
 
@@ -260,7 +247,7 @@
              const currentPermission = Notification.permission;
              if (data.browserNotifications && currentPermission === 'default') {
                  const permission = await Notification.requestPermission();
-                 setBrowserNotificationPermission(permission); // Update local state
+                 setBrowserNotificationPermission(permission);
                  finalBrowserNotifications = permission === 'granted';
                  if (permission === 'denied') {
                      toast({ title: "Permissão Negada", description: "Notificações do navegador foram bloqueadas.", variant: "destructive" });
@@ -268,13 +255,11 @@
                       toast({ title: "Permissão Concedida", description: "Notificações do navegador ativadas." });
                  }
              } else if (!data.browserNotifications && currentPermission === 'granted') {
-                 // User is trying to turn OFF browser notifications via app UI, but permission is granted in browser.
-                 // We can't revoke browser permission programmatically.
                  toast({ title: "Ação Necessária", description: "Para desativar, ajuste nas configurações do seu navegador para este site.", duration: 6000 });
-                 finalBrowserNotifications = true; // Keep it true as we can't change browser setting
+                 finalBrowserNotifications = true; 
              } else if (data.browserNotifications && currentPermission === 'denied') {
                  toast({ title: "Permissão Bloqueada", description: "Notificações do navegador estão bloqueadas. Altere nas configurações do navegador.", variant: "destructive" });
-                 finalBrowserNotifications = false; // Reflect that it can't be enabled
+                 finalBrowserNotifications = false;
              }
          }
 
@@ -339,7 +324,7 @@
                               {isEditingProfile && (
                                  <div className="flex gap-1 flex-shrink-0 mt-2 sm:mt-0">
                                       <Button type="button" variant="ghost" size="sm" onClick={cancelEditProfile} className="text-xs h-7 px-2">Cancelar</Button>
-                                      <Button type="submit" size="sm" disabled={isSavingProfile || !profileForm.formState.isDirty} className="text-xs h-7 px-2">
+                                      <Button type="submit" size="sm" disabled={isSavingProfile || !profileForm.formState.isDirty && !selectedFile} className="text-xs h-7 px-2">
                                          {isSavingProfile ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Save className="mr-1 h-3 w-3" />}
                                          Salvar
                                      </Button>
@@ -350,7 +335,7 @@
                               <div className="flex flex-col items-center gap-4">
                                  <div className="relative group flex-shrink-0">
                                      <Avatar className="h-28 w-28 border-2 border-primary/20">
-                                         <AvatarImage src={photoPreview || employeeProfile.photoUrl} alt={employeeProfile.name} />
+                                         <AvatarImage src={photoPreview || undefined} alt={employeeProfile.name} />
                                          <AvatarFallback className="text-4xl">{getInitials(employeeProfile.name)}</AvatarFallback>
                                      </Avatar>
                                      {isEditingProfile && (
@@ -451,5 +436,5 @@
          </div>
      );
  }
-
+    
     

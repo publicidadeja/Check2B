@@ -2,9 +2,9 @@
 // src/lib/user-service.ts
 import { getDb, getFirebaseApp } from './firebase';
 import type { UserProfile } from '@/types/user';
-import { collection, getDocs, query, where, doc, setDoc, deleteDoc, getDoc, updateDoc, Timestamp, getCountFromServer } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, setDoc, deleteDoc, getDoc, updateDoc, Timestamp, getCountFromServer, serverTimestamp } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import type { NotificationFormData } from '@/app/colaborador/perfil/page'; // Assuming this type is exported from profile page
+import type { NotificationFormData } from '@/app/colaborador/perfil/page';
 
 /**
  * Fetches all users from the 'users' collection in Firestore.
@@ -25,8 +25,8 @@ export const getAllUsers = async (): Promise<UserProfile[]> => {
     return {
       uid: docSnapshot.id,
       ...data,
-      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt,
-      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt,
+      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : undefined),
+      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : undefined),
     } as UserProfile;
   });
 };
@@ -51,8 +51,8 @@ export const getUsersByRole = async (role: 'admin' | 'collaborator' | 'super_adm
     return {
       uid: docSnapshot.id,
       ...data,
-      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt,
-      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt,
+      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : undefined),
+      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : undefined),
       department: data.department || undefined,
       userRole: data.userRole || undefined,
     } as UserProfile
@@ -80,8 +80,8 @@ export const getUsersByRoleAndOrganization = async (role: 'admin' | 'collaborato
     return {
       uid: docSnapshot.id,
       ...data,
-      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt,
-      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt,
+      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : undefined),
+      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : undefined),
       department: data.department || undefined,
       userRole: data.userRole || undefined,
       photoUrl: data.photoUrl || undefined,
@@ -108,21 +108,39 @@ export const saveUser = async (userData: UserProfile): Promise<UserProfile> => {
   }
   console.log(`[UserService] Saving user profile for UID: ${userData.uid}`);
   const userDocRef = doc(db, 'users', userData.uid);
+  
+  // Create a mutable copy for Firestore
   const dataToSave: any = { ...userData };
+
+  // Convert Dates to Timestamps for Firestore, only if they are Date objects
   if (dataToSave.createdAt && dataToSave.createdAt instanceof Date) {
     dataToSave.createdAt = Timestamp.fromDate(dataToSave.createdAt);
-  } else if (!dataToSave.createdAt) {
-    dataToSave.createdAt = Timestamp.now();
+  } else if (!dataToSave.createdAt) { // Only set if it's a new document (createdAt is undefined)
+    dataToSave.createdAt = serverTimestamp();
   }
-  if (dataToSave.updatedAt && dataToSave.updatedAt instanceof Date) {
-    dataToSave.updatedAt = Timestamp.fromDate(dataToSave.updatedAt);
-  } else {
-    dataToSave.updatedAt = Timestamp.now();
-  }
+  // Always update 'updatedAt' with serverTimestamp for updates
+  dataToSave.updatedAt = serverTimestamp();
 
-  const { uid, ...profileDataToSet } = dataToSave;
+
+  // Remove uid from the data to be set, as it's the document ID
+  const { uid, ...profileDataToSet } = dataToSave; 
+
   await setDoc(userDocRef, profileDataToSet, { merge: true });
-  return userData; 
+  
+  // For returning, we might want to fetch the doc again to get server-generated timestamps as Dates
+  // or optimistically return what we have, knowing timestamps will be handled
+  const savedDoc = await getDoc(userDocRef);
+  if (!savedDoc.exists()) {
+    throw new Error("Failed to retrieve user after saving.");
+  }
+  const savedData = savedDoc.data();
+
+  return {
+    uid: userData.uid,
+    ...savedData,
+    createdAt: savedData.createdAt instanceof Timestamp ? savedData.createdAt.toDate() : (savedData.createdAt ? new Date(savedData.createdAt) : undefined),
+    updatedAt: savedData.updatedAt instanceof Timestamp ? savedData.updatedAt.toDate() : (savedData.updatedAt ? new Date(savedData.updatedAt) : undefined),
+  } as UserProfile; 
 };
 
 /**
@@ -154,7 +172,7 @@ export const updateUserStatusInFirestore = async (userId: string, status: 'activ
   }
   console.log(`[UserService] Updating status for user UID: ${userId} to ${status}`);
   const userDocRef = doc(db, 'users', userId);
-  await updateDoc(userDocRef, { status, updatedAt: Timestamp.now() });
+  await updateDoc(userDocRef, { status, updatedAt: serverTimestamp() });
 
   const updatedDoc = await getDoc(userDocRef);
   if (!updatedDoc.exists()) throw new Error('[UserService] User not found after status update.');
@@ -162,8 +180,8 @@ export const updateUserStatusInFirestore = async (userId: string, status: 'activ
   return {
       uid: userId,
       ...data,
-      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt,
-      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : data.updatedAt,
+      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : undefined),
+      updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : undefined),
     } as UserProfile;
 };
 
@@ -209,7 +227,6 @@ export const getNotificationSettings = async (userId: string): Promise<Notificat
     console.error('[UserService] Firestore not initialized. Cannot get notification settings.');
     return null;
   }
-  // Log an NWTAS aqui
   console.log(`[UserService - getNotificationSettings] Attempting to fetch settings for userId: ${userId}`);
   const settingsDocRef = doc(db, `users/${userId}/settings`, 'notifications');
   try {
@@ -219,10 +236,10 @@ export const getNotificationSettings = async (userId: string): Promise<Notificat
       return docSnap.data() as NotificationFormData;
     }
     console.log(`[UserService - getNotificationSettings] No settings document found for userId: ${userId}`);
-    return null; // No settings found, can use defaults in component
+    return null; 
   } catch (error) {
     console.error(`[UserService - getNotificationSettings] Error fetching notification settings for user ${userId}:`, error);
-    throw error; // Re-throw para que a página de perfil possa pegar o erro
+    throw error; 
   }
 };
 
@@ -303,5 +320,5 @@ export const countActiveUsersByOrganization = async (organizationId: string, rol
     throw error;
   }
 };
-
+    
     
