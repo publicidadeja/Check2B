@@ -199,16 +199,17 @@
                     <div className="relative h-32 sm:h-40 w-full flex-shrink-0">
                         <img src={challenge.imageUrl} alt={challenge.title} className="absolute inset-0 h-full w-full object-cover" data-ai-hint="challenge competition achievement"/>
                         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent"></div>
-                        <Button variant="ghost" size="icon" className="absolute top-2 left-2 h-8 w-8 rounded-full bg-black/30 text-white hover:bg-black/50" onClick={() => onOpenChange(false)}>
+                        {/* O DialogContent já tem um X, remover o daqui se não for para sobrepor a imagem */}
+                         {/* <Button variant="ghost" size="icon" className="absolute top-2 left-2 h-8 w-8 rounded-full bg-black/30 text-white hover:bg-black/50" onClick={() => onOpenChange(false)}>
                              <ArrowLeft className="h-5 w-5"/><span className="sr-only">Voltar</span>
-                         </Button>
+                         </Button> */}
                      </div>
                   )}
                   {!challenge.imageUrl && (
                      <DialogHeader className='p-4 pb-2 border-b relative'>
                           <DialogTitle className="text-lg flex items-center gap-2"><Target className="h-5 w-5 flex-shrink-0 text-primary" /><span className="flex-1">{challenge.title}</span></DialogTitle>
                            <DialogDescription className="text-xs line-clamp-3 pt-1">{challenge.description}</DialogDescription>
-                         <DialogClose asChild><Button variant="ghost" size="icon" className="absolute top-3 right-3 h-7 w-7 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /><span className="sr-only">Fechar</span></Button></DialogClose>
+                         {/* Removido o DialogClose customizado daqui para evitar duplicidade com o X padrão do DialogContent */}
                      </DialogHeader>
                   )}
                  <ScrollArea className="flex-grow px-4 py-3">
@@ -331,12 +332,15 @@
              return;
          }
          setIsLoading(true);
+         console.log(`[CollabChallengesPage] loadChallengesData: Fetching for user ${CURRENT_EMPLOYEE_ID}, org ${organizationId}`);
          try {
              const [challengesData, participationsData, userProfileData] = await Promise.all([
                  getAllChallenges(organizationId),
                  getChallengeParticipationsByEmployee(organizationId, CURRENT_EMPLOYEE_ID),
                  getUserProfileData(CURRENT_EMPLOYEE_ID)
              ]);
+             console.log(`[CollabChallengesPage] Fetched ${challengesData.length} challenges, ${participationsData.length} participations.`);
+             console.log(`[CollabChallengesPage] User Profile:`, userProfileData);
 
              setAllChallenges(challengesData);
              setParticipations(participationsData);
@@ -355,27 +359,26 @@
 
      const handleAcceptChallenge = async (challengeId: string) => {
          if (!CURRENT_EMPLOYEE_ID || !organizationId) return;
-         setIsLoading(true);
+         // Consider adding a local loading state for the specific card or a global one for the modal action
          try {
              await acceptChallengeForEmployee(organizationId, challengeId, CURRENT_EMPLOYEE_ID, CURRENT_EMPLOYEE_NAME);
              toast({ title: "Desafio Aceito!", description: `Você começou o desafio: "${allChallenges.find(c => c.id === challengeId)?.title}".`, });
-             await loadChallengesData();
+             await loadChallengesData(); // Refresh data after action
          } catch (error: any) {
              console.error("[CollabChallengesPage] Erro ao aceitar desafio:", error);
              toast({ title: "Erro", description: error.message || "Não foi possível aceitar o desafio.", variant: "destructive" });
-         } finally {
-             setIsLoading(false);
          }
      };
 
       const handleSubmitChallenge = async (challengeId: string, submissionText?: string, fileUrl?: string) => {
          if (!CURRENT_EMPLOYEE_ID || !organizationId) return;
+          // Consider adding a local loading state for the specific card or a global one for the modal action
          try {
              await submitChallengeForEmployee(organizationId, challengeId, CURRENT_EMPLOYEE_ID, submissionText, fileUrl);
-             await loadChallengesData();
+             await loadChallengesData(); // Refresh data after action
          } catch (error: any) {
              console.error("[CollabChallengesPage] Erro ao submeter desafio (na página):", error);
-             toast({ title: "Erro na Submissão", description: error.message || "Falha ao registrar submissão.", variant: "destructive" });
+             // Toast for success/error is handled within the modal now
          }
      };
 
@@ -416,6 +419,7 @@
                 else if (challenge.eligibility.type === 'role' && currentUserProfile.userRole && challenge.eligibility.entityIds?.includes(currentUserProfile.userRole)) isEligible = true;
                 else if (challenge.eligibility.type === 'individual' && CURRENT_EMPLOYEE_ID && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID)) isEligible = true;
             } else if (challenge.eligibility.type === 'individual' && CURRENT_EMPLOYEE_ID && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID)) {
+                // Fallback for individual eligibility if profile is not yet loaded (though less likely now with profile in initial load)
                 isEligible = true;
             }
 
@@ -424,29 +428,33 @@
                 return;
             }
 
+            // Categorization logic
             if (challenge.status === 'active' || (challenge.status === 'scheduled' && !isChallengeNotStartedYet)) {
                 if (participationStatus === 'pending' && !isChallengePeriodOver) {
                     available.push(challenge);
                 } else if (participationStatus === 'accepted' || participationStatus === 'submitted') {
+                     // Keep in active if not over OR if it's over but still in 'evaluating' status
                     if (!isChallengePeriodOver || challenge.status === 'evaluating') {
                         active.push(challenge);
-                    } else {
+                    } else { // Period is over and not evaluating -> considered completed for the user
                         completed.push(challenge);
                     }
                 } else if (participationStatus === 'approved' || participationStatus === 'rejected') {
                     completed.push(challenge);
                 }
             } else if (challenge.status === 'evaluating') {
-                 if (participationStatus === 'accepted' || participationStatus === 'submitted') {
+                 if (participationStatus === 'accepted' || participationStatus === 'submitted') { // User's submission is awaiting evaluation
                      active.push(challenge);
-                 } else if (participationStatus === 'approved' || participationStatus === 'rejected') {
+                 } else if (participationStatus === 'approved' || participationStatus === 'rejected') { // User's submission was evaluated
                      completed.push(challenge);
                  }
-            } else if (challenge.status === 'completed') {
+            } else if (challenge.status === 'completed') { // Challenge itself is globally completed
                 completed.push(challenge);
-            } else if (challenge.status === 'scheduled' && isChallengeNotStartedYet) {
-                if (participationStatus === 'pending') {
+            } else if (challenge.status === 'scheduled' && isChallengeNotStartedYet) { // Challenge is upcoming
+                if (participationStatus === 'pending') { // And user hasn't interacted
                     available.push(challenge);
+                } else if (participationStatus === 'accepted') { // User accepted early
+                    active.push(challenge); // Show as "Em Andamento" if accepted, even if not started
                 }
             }
         });
