@@ -43,15 +43,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import type { Challenge } from '@/types/challenge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'; // Added Popover
-import { ScrollArea } from '@/components/ui/scroll-area'; // Added ScrollArea
-import { Separator } from '@/components/ui/separator'; // Added Separator
-
-// Mock data for Selects - Replace with actual data fetching later
-const mockDepartments = ['RH', 'Engenharia', 'Marketing', 'Vendas', 'Operações'];
-const mockRoles = ['Recrutadora', 'Desenvolvedor Backend', 'Analista de Marketing', 'Executivo de Contas', 'Desenvolvedora Frontend'];
-import { mockEmployeesSimple } from '@/lib/mockData/challenges';
-
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import { useAuth } from '@/hooks/use-auth';
+import { getDepartmentsByOrganization, type Department } from '@/lib/department-service';
+import { getRolesByOrganization, type Role } from '@/lib/role-service';
+import { getUsersByRoleAndOrganization, type UserProfile } from '@/lib/user-service';
 
 const challengeSchema = z.object({
   title: z.string().min(3, "Título deve ter pelo menos 3 caracteres."),
@@ -67,7 +65,6 @@ const challengeSchema = z.object({
   evaluationMetrics: z.string().min(5, "Métricas de avaliação são obrigatórias."),
   supportMaterialUrl: z.string().url("URL inválida.").optional().or(z.literal('')),
   imageUrl: z.string().url("URL inválida.").optional().or(z.literal('')),
-  // status is managed by the parent page, not directly in form
 }).refine(data => data.periodEndDate >= data.periodStartDate, {
     message: "Data de término não pode ser anterior à data de início.",
     path: ["periodEndDate"],
@@ -81,13 +78,11 @@ const challengeSchema = z.object({
     path: ["eligibleEntityIds"],
 });
 
-// Type for form data might not include status if it's handled outside
 type ChallengeFormData = Omit<z.infer<typeof challengeSchema>, 'status'>;
-
 
 interface ChallengeFormProps {
   challenge?: Challenge | null;
-  onSave: (data: Partial<ChallengeFormData & { status?: Challenge['status'] }>) => Promise<void>; // Allow status pass-through if needed
+  onSave: (data: Partial<ChallengeFormData & { status?: Challenge['status'] }>) => Promise<void>;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -98,9 +93,14 @@ export function ChallengeForm({
     open: controlledOpen,
     onOpenChange: controlledOnOpenChange
 }: ChallengeFormProps) {
+  const { organizationId } = useAuth();
   const [internalOpen, setInternalOpen] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
   const { toast } = useToast();
+  const [departments, setDepartments] = React.useState<Department[]>([]);
+  const [roles, setRoles] = React.useState<Role[]>([]);
+  const [employees, setEmployees] = React.useState<UserProfile[]>([]);
+  const [isLoadingEligibilityData, setIsLoadingEligibilityData] = React.useState(false);
 
   const isOpen = controlledOpen ?? internalOpen;
   const setIsOpen = controlledOnOpenChange ?? setInternalOpen;
@@ -147,20 +147,39 @@ export function ChallengeForm({
      }
   }, [challenge, form, isOpen]);
 
+  React.useEffect(() => {
+    const fetchEligibilityData = async () => {
+        if (!organizationId || !isOpen) return;
+        setIsLoadingEligibilityData(true);
+        try {
+            const [depts, fetchedRoles, emps] = await Promise.all([
+                getDepartmentsByOrganization(organizationId),
+                getRolesByOrganization(organizationId),
+                getUsersByRoleAndOrganization('collaborator', organizationId)
+            ]);
+            setDepartments(depts);
+            setRoles(fetchedRoles);
+            setEmployees(emps);
+        } catch (error) {
+            toast({ title: "Erro", description: "Falha ao carregar dados para elegibilidade.", variant: "destructive"});
+        } finally {
+            setIsLoadingEligibilityData(false);
+        }
+    };
+    fetchEligibilityData();
+  }, [organizationId, isOpen, toast]);
+
+
   const onSubmit = async (data: ChallengeFormData) => {
     setIsSaving(true);
     const dataToSave = {
         ...data,
-        // Dates are already Date objects from react-hook-form with DatePicker
-        // The service layer (saveChallengeToFirestore) will format them to string if needed.
         eligibility: {
             type: data.eligibilityType,
             entityIds: data.eligibilityType !== 'all' ? data.eligibleEntityIds : undefined,
         },
-        // Ensure status is passed if it's an update and challenge object has it
         ...(challenge && challenge.status && { status: challenge.status }),
     };
-    // Remove form-specific fields before saving
     delete (dataToSave as any).eligibilityType;
     delete (dataToSave as any).eligibleEntityIds;
 
@@ -177,15 +196,29 @@ export function ChallengeForm({
 
   const eligibilityType = form.watch('eligibilityType');
 
-  const getEligibilityPlaceholder = (selectedIds: string[] | undefined, type: string): string => {
-      if (!selectedIds || selectedIds.length === 0) return `Selecione ${type}...`;
+  const getEligibilityPlaceholder = (selectedIds: string[] | undefined): string => {
+      if (isLoadingEligibilityData) return "Carregando opções...";
+      if (!selectedIds || selectedIds.length === 0) return `Selecione...`;
+
+      let source: (Department | Role | UserProfile)[] = [];
+      if (eligibilityType === 'department') source = departments;
+      else if (eligibilityType === 'role') source = roles;
+      else if (eligibilityType === 'individual') source = employees;
+
       if (selectedIds.length === 1) {
-        const source = type === 'Deptos' ? mockDepartments : type === 'Funções' ? mockRoles : mockEmployeesSimple;
-        const item = typeof source[0] === 'string' ? source.find(s => s === selectedIds[0]) : (source as {id:string, name:string}[]).find(s => s.id === selectedIds[0]);
-        return typeof item === 'string' ? item : item?.name || selectedIds[0];
+        const item = source.find(s => s.id === selectedIds[0]);
+        return item?.name || selectedIds[0];
       }
-      return `${selectedIds.length} ${type} selecionados`;
+      const typeMap = {'department': 'Deptos', 'role': 'Funções', 'individual': 'Indivíduos'};
+      return `${selectedIds.length} ${typeMap[eligibilityType] || ''} selecionados`;
   }
+
+  const eligibilityOptions = React.useMemo(() => {
+    if (eligibilityType === 'department') return departments;
+    if (eligibilityType === 'role') return roles;
+    if (eligibilityType === 'individual') return employees;
+    return [];
+  }, [eligibilityType, departments, roles, employees]);
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -219,12 +252,11 @@ export function ChallengeForm({
                                 {eligibilityType !== 'all' && (
                                     <FormField control={form.control} name="eligibleEntityIds" render={({ field }) => (
                                     <FormItem><FormLabel className="sr-only">Entidades</FormLabel>
-                                        <Popover><PopoverTrigger asChild><FormControl><Button variant="outline" className="w-full justify-start font-normal">{getEligibilityPlaceholder(field.value, eligibilityType === 'department' ? 'Deptos' : eligibilityType === 'role' ? 'Funções' : 'Indivíduos')}</Button></FormControl></PopoverTrigger>
+                                        <Popover><PopoverTrigger asChild><FormControl><Button variant="outline" className="w-full justify-start font-normal" disabled={isLoadingEligibilityData}>{getEligibilityPlaceholder(field.value)}</Button></FormControl></PopoverTrigger>
                                         <PopoverContent className="w-[--radix-popover-trigger-width] max-h-60 p-0"><ScrollArea className="max-h-60"><div className="p-2 space-y-1">
-                                            {(eligibilityType === 'department' ? mockDepartments : eligibilityType === 'role' ? mockRoles : mockEmployeesSimple)
-                                            .map((item) => {
-                                                const entityId = typeof item === 'string' ? item : item.id;
-                                                const entityName = typeof item === 'string' ? item : item.name;
+                                            {isLoadingEligibilityData ? <Loader2 className="h-4 w-4 animate-spin mx-auto my-2"/> : eligibilityOptions.map((item) => {
+                                                const entityId = item.id;
+                                                const entityName = item.name;
                                                 return (<div key={entityId} className="flex items-center space-x-2 px-2 py-1 hover:bg-muted rounded-sm">
                                                     <Checkbox id={`entity-${entityId}`} checked={field.value?.includes(entityId)}
                                                         onCheckedChange={(checked) => field.onChange(checked ? [...(field.value || []), entityId] : (field.value || []).filter((v) => v !== entityId))}
@@ -232,6 +264,7 @@ export function ChallengeForm({
                                                     <Label htmlFor={`entity-${entityId}`} className="font-normal text-sm">{entityName}</Label>
                                                 </div>);
                                             })}
+                                            { !isLoadingEligibilityData && eligibilityOptions.length === 0 && <p className="text-xs text-muted-foreground text-center p-2">Nenhuma opção disponível.</p>}
                                         </div></ScrollArea></PopoverContent></Popover><FormMessage /></FormItem>)}/>
                                 )}
                             </div>
@@ -254,3 +287,5 @@ export function ChallengeForm({
     </Dialog>
   );
 }
+
+    

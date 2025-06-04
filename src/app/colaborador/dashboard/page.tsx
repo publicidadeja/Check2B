@@ -35,31 +35,24 @@
  import { Progress } from '@/components/ui/progress';
  import { Badge } from '@/components/ui/badge';
  import { Button } from '@/components/ui/button';
- import { ScrollArea } from '@/components/ui/scroll-area';
- import { Separator } from '@/components/ui/separator';
  import { useToast } from '@/hooks/use-toast';
  import { format, parseISO, startOfMonth, endOfMonth, isBefore, isValid, isPast } from 'date-fns';
  import { ptBR } from 'date-fns/locale';
  import Link from 'next/link';
  import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
  import { cn } from '@/lib/utils'; 
- import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'; 
  import { Label } from '@/components/ui/label'; 
  import { LoadingSpinner } from '@/components/ui/loading-spinner'; 
  import { useAuth } from '@/hooks/use-auth';
- import { getUserProfileData } from '@/lib/auth'; // Importar para buscar perfil
+ import { getUserProfileData } from '@/lib/auth';
  import type { UserProfile } from '@/types/user';
-
- // Import types
- import type { Evaluation } from '@/types/evaluation';
  import type { Task } from '@/types/task';
  import type { Challenge, ChallengeParticipation } from '@/types/challenge';
  import type { Notification } from '@/types/notification'; 
-
- // Import services
  import { getAllTasksForOrganization } from '@/lib/task-service';
  import { getTasksForEmployeeOnDate, getEvaluationsForDay, getEvaluationsForOrganizationInPeriod } from '@/lib/evaluation-service';
  import { getAllChallenges, getChallengeParticipationsByEmployee } from '@/lib/challenge-service';
+ import { getGeneralSettings } from '@/lib/settings-service';
 
 
  interface EmployeeDashboardData {
@@ -72,6 +65,8 @@
      monthlyPerformanceTrend?: 'up' | 'down' | 'stable';
      employeeName: string; 
      userProfile?: UserProfile | null;
+     zeroLimitForBonus: number;
+     baseBonusValue: number;
  }
 
 
@@ -84,8 +79,6 @@
      const CURRENT_EMPLOYEE_ID = user?.uid;
      const employeeDisplayName = user?.displayName || "Colaborador";
 
-     const ZERO_LIMIT = 3; 
-     const BASE_BONUS = 100; 
 
      React.useEffect(() => {
          const fetchEmployeeDashboardData = async () => {
@@ -98,6 +91,7 @@
                  setData({ 
                     todayStatus: 'no_tasks', zerosThisMonth: 0, projectedBonus: 0, tasksToday: [], 
                     activeChallenges: [], recentNotifications: [], employeeName: employeeDisplayName, userProfile: null,
+                    zeroLimitForBonus: 3, baseBonusValue: 100, // Default values
                  });
                  return;
              }
@@ -109,15 +103,17 @@
                     throw new Error("Perfil do colaborador não encontrado no Firestore.");
                  }
 
+                 const generalSettings = await getGeneralSettings(organizationId);
+                 const ZERO_LIMIT = generalSettings?.zeroLimit ?? 3;
+                 const BASE_BONUS = generalSettings?.bonusValue ?? 100;
+
                  const today = new Date();
                  const todayStr = format(today, 'yyyy-MM-dd');
                  const startCurrentMonthStr = format(startOfMonth(today), 'yyyy-MM-dd');
                  const endCurrentMonthStr = format(endOfMonth(today), 'yyyy-MM-dd');
 
                  const allOrgTasks = await getAllTasksForOrganization(organizationId);
-                 
                  const tasksToday = getTasksForEmployeeOnDate(userProfileData, today, allOrgTasks);
-                 
                  const evaluationsToday = await getEvaluationsForDay(organizationId, todayStr, CURRENT_EMPLOYEE_ID); 
                  
                  let todayStatus: EmployeeDashboardData['todayStatus'] = 'no_tasks';
@@ -129,7 +125,6 @@
                  }
                  
                  const evaluationsThisMonth = await getEvaluationsForOrganizationInPeriod(organizationId, startCurrentMonthStr, endCurrentMonthStr, CURRENT_EMPLOYEE_ID);
-                 
                  const zerosThisMonth = evaluationsThisMonth.filter(ev => ev.score === 0).length;
                  const projectedBonus = zerosThisMonth >= ZERO_LIMIT ? 0 : BASE_BONUS;
 
@@ -138,9 +133,7 @@
                     getChallengeParticipationsByEmployee(organizationId, CURRENT_EMPLOYEE_ID)
                  ]);
 
-
                  const participationMap = new Map(employeeParticipations.map(p => [p.challengeId, p]));
-
                  const activeChallenges = allOrgChallenges.filter(ch => {
                      if (ch.status !== 'active' && !(ch.status === 'scheduled' && ch.periodStartDate && !isBefore(today, parseISO(ch.periodStartDate)))) {
                          return false; 
@@ -158,18 +151,11 @@
                      else if (ch.eligibility.type === 'individual' && ch.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID)) isEligible = true;
                      
                      if (!isEligible) return false;
-
                      const participation = participationMap.get(ch.id);
                      return !participation || participation.status === 'pending' || participation.status === 'accepted';
                  });
                  
-                 // Mock notifications for now, real integration is separate
-                 const recentNotifications: Notification[] = [
-                     ...(todayStatus === 'evaluated' ? [{ id: 'n1', type: 'evaluation' as const, message: `Sua avaliação de hoje (${format(new Date(), 'dd/MM')}) foi registrada.`, timestamp: new Date(), read: false, link: '/colaborador/avaliacoes' }] : []),
-                     { id: 'n2', type: zerosThisMonth >= ZERO_LIMIT ? 'system' as const : 'info' as const, message: `Você tem ${zerosThisMonth} zero(s) este mês. Limite para bônus: ${ZERO_LIMIT}.`, timestamp: new Date(), read: false },
-                     ...(activeChallenges.length > 0 ? [{ id: 'n3', type: 'challenge' as const, message: `Desafio ativo: "${activeChallenges[0]?.title}". Ganhe ${activeChallenges[0]?.points} pts!`, timestamp: new Date(), read: false, link: '/colaborador/desafios' }] : []),
-                 ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-
+                 const recentNotifications: Notification[] = []; // Real notifications are handled by MobileLayout
 
                  setData({
                      todayStatus,
@@ -181,6 +167,8 @@
                      monthlyPerformanceTrend: 'stable', 
                      employeeName: userProfileData.name || employeeDisplayName,
                      userProfile: userProfileData,
+                     zeroLimitForBonus: ZERO_LIMIT,
+                     baseBonusValue: BASE_BONUS,
                  });
 
              } catch (error: any) {
@@ -190,9 +178,10 @@
                      description: error.message || "Não foi possível carregar os dados do dashboard.",
                      variant: "destructive",
                  });
-                 setData(prev => prev ? {...prev, isLoading: false, userProfile: prev.userProfile} : { 
+                 setData(prev => prev ? {...prev, isLoading: false} : { 
                     todayStatus: 'no_tasks', zerosThisMonth: 0, projectedBonus: 0, tasksToday: [], 
-                    activeChallenges: [], recentNotifications: [], employeeName: employeeDisplayName, userProfile: null
+                    activeChallenges: [], recentNotifications: [], employeeName: employeeDisplayName, userProfile: null,
+                    zeroLimitForBonus: 3, baseBonusValue: 100,
                  });
              } finally {
                  setIsLoading(false);
@@ -203,7 +192,7 @@
      }, [CURRENT_EMPLOYEE_ID, organizationId, authIsLoading, employeeDisplayName, toast]);
 
 
-     if (authIsLoading || isLoading ) { 
+     if (authIsLoading || isLoading || !data ) { 
          return (
              <div className="flex justify-center items-center h-full py-20">
                  <LoadingSpinner size="lg" text="Carregando dashboard..." />
@@ -224,7 +213,7 @@
         );
     }
     
-    if (!data || !data.userProfile) { 
+    if (!data.userProfile) { 
         return (
             <Card className="m-4">
                 <CardHeader><CardTitle>Erro ao Carregar Perfil</CardTitle></CardHeader>
@@ -235,9 +224,8 @@
         );
     }
 
-
-     const zeroProgress = Math.min((data.zerosThisMonth / ZERO_LIMIT) * 100, 100);
-      const progressColor = zeroProgress >= 100 ? 'bg-destructive' : zeroProgress >= ( (ZERO_LIMIT - 1) / ZERO_LIMIT * 100) ? 'bg-yellow-500' : 'bg-green-500';
+     const zeroProgress = Math.min((data.zerosThisMonth / data.zeroLimitForBonus) * 100, 100);
+     const progressColor = zeroProgress >= 100 ? 'bg-destructive' : zeroProgress >= ( (data.zeroLimitForBonus - 1) / data.zeroLimitForBonus * 100) ? 'bg-yellow-500' : 'bg-green-500';
 
 
      const getTrendIcon = (trend?: 'up' | 'down' | 'stable') => {
@@ -283,21 +271,21 @@
 
                           <div className="flex flex-col items-center justify-center text-center p-3 rounded-lg bg-white/10 backdrop-blur-sm border border-white/20">
                             <Label className="text-[10px] uppercase tracking-wider text-primary-foreground/70 mb-1 font-medium">Zeros no Mês</Label>
-                              <div className={cn("text-3xl font-bold mb-0.5 leading-none", data.zerosThisMonth >= ZERO_LIMIT ? 'text-red-300' : 'text-primary-foreground')}>
+                              <div className={cn("text-3xl font-bold mb-0.5 leading-none", data.zerosThisMonth >= data.zeroLimitForBonus ? 'text-red-300' : 'text-primary-foreground')}>
                                  {data.zerosThisMonth}
-                                 <span className="text-xs text-primary-foreground/70">/{ZERO_LIMIT}</span>
+                                 <span className="text-xs text-primary-foreground/70">/{data.zeroLimitForBonus}</span>
                              </div>
                              <Tooltip>
                                 <TooltipTrigger asChild>
                                      <Progress
                                         value={zeroProgress}
-                                        aria-label={`${data.zerosThisMonth} de ${ZERO_LIMIT} zeros permitidos`}
+                                        aria-label={`${data.zerosThisMonth} de ${data.zeroLimitForBonus} zeros permitidos`}
                                         className="h-1 w-full bg-white/30 rounded-full"
                                         indicatorClassName={progressColor}
                                      />
                                 </TooltipTrigger>
                                  <TooltipContent side="bottom">
-                                    <p className="text-xs">{data.zerosThisMonth >= ZERO_LIMIT ? 'Limite de zeros atingido/excedido.' : `${ZERO_LIMIT - data.zerosThisMonth} zero(s) restante(s) para bônus.`}</p>
+                                    <p className="text-xs">{data.zerosThisMonth >= data.zeroLimitForBonus ? 'Limite de zeros atingido/excedido.' : `${data.zeroLimitForBonus - data.zerosThisMonth} zero(s) restante(s) para bônus.`}</p>
                                  </TooltipContent>
                              </Tooltip>
                           </div>
@@ -311,11 +299,11 @@
                                         <Info className="h-3 w-3 text-primary-foreground/70 cursor-help" />
                                     </TooltipTrigger>
                                     <TooltipContent side="top" className="max-w-[180px]">
-                                         <p className="text-xs">Estimativa baseada no desempenho atual. Valor final definido no fechamento do mês (Min. R$ {BASE_BONUS.toFixed(2)} se &lt;= {ZERO_LIMIT} zeros).</p>
+                                         <p className="text-xs">Estimativa baseada no desempenho atual. Valor final definido no fechamento do mês (Min. R$ {data.baseBonusValue.toFixed(2)} se &lt;= {data.zeroLimitForBonus} zeros).</p>
                                     </TooltipContent>
                                 </Tooltip>
                              </div>
-                             <span className={cn("text-lg font-bold", data.zerosThisMonth >= ZERO_LIMIT ? "text-red-300 line-through" : "text-yellow-300")}>
+                             <span className={cn("text-lg font-bold", data.zerosThisMonth >= data.zeroLimitForBonus ? "text-red-300 line-through" : "text-yellow-300")}>
                                 R$ {data.projectedBonus.toFixed(2)}
                             </span>
                          </div>
@@ -399,12 +387,9 @@
                          )}
                      </CardContent>
                  </Card>
-
              </div>
          </TooltipProvider>
      );
  }
-
-    
 
     

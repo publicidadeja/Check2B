@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -7,7 +6,7 @@ import { format, parseISO, subMonths, addMonths, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
-import { Trophy, Cog, History, Award as AwardIcon, Crown, Medal, BarChartHorizontal, Loader2, ListFilter, PlusCircle, Edit, Trash2, MoreHorizontal, FileClock, User, Activity, AlertTriangle, Eye, CheckCircle, Image as ImageIcon, UploadCloud } from "lucide-react"; // Added ImageIcon, UploadCloud
+import { Trophy, Cog, History, Award as AwardIcon, Crown, Medal, BarChartHorizontal, Loader2, ListFilter, PlusCircle, Edit, Trash2, MoreHorizontal, FileClock, User, Activity, AlertTriangle, Eye, CheckCircle, Image as ImageIcon, UploadCloud } from "lucide-react";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -55,15 +54,18 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { getAllAwards, saveAward, deleteAward, getActiveAward, getAwardById, saveAwardHistory, getAwardHistory, getRankingSettings, saveRankingSettings as saveRankingSettingsToFirestore, calculateMonthlyRanking, uploadAwardDeliveryPhoto, updateAwardHistoryPhoto } from '@/lib/ranking-service'; // Added uploadAwardDeliveryPhoto, updateAwardHistoryPhoto
+import { getAllAwards, saveAward, deleteAward, getActiveAward, getAwardById, saveAwardHistory, getAwardHistory, getRankingSettings, saveRankingSettings as saveRankingSettingsToFirestore, calculateMonthlyRanking, uploadAwardDeliveryPhoto, updateAwardHistoryPhoto } from '@/lib/ranking-service';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { getDb } from '@/lib/firebase';
 import type { Firestore } from 'firebase/firestore';
 import { TrendingDown, TrendingUp, Minus } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { mockEmployeesSimple, mockDepartments } from '@/lib/mockData/ranking';
 import { useAuth } from '@/hooks/use-auth';
 import type { RankingSettings, RankingSettingsData } from '@/types/ranking';
+import { getDepartmentsByOrganization, type Department } from '@/lib/department-service'; // Import department service
+import { getUsersByRoleAndOrganization } from '@/lib/user-service';
+import type { UserProfile } from '@/types/user';
+
 
 // --- Type Definitions ---
 export interface Award {
@@ -89,16 +91,16 @@ export interface RankingEntry {
     employeeName: string;
     employeePhotoUrl?: string;
     department: string;
-    role: string; // Cargo/Função
+    role: string;
     score: number;
     zeros: number;
     trend?: 'up' | 'down' | 'stable';
-    admissionDate?: string; // For tie-breaking
+    admissionDate?: string;
 }
 
 export interface AwardHistoryEntry {
     id: string;
-    period: string; // YYYY-MM
+    period: string;
     awardTitle: string;
     winners: { rank: number; employeeName: string; prize: string }[];
     deliveryPhotoUrl?: string;
@@ -106,7 +108,6 @@ export interface AwardHistoryEntry {
     createdAt?: Date;
 }
 
-// --- Zod Schema for Award Form ---
 const awardSchema = z.object({
     title: z.string().min(3, "Título deve ter pelo menos 3 caracteres."),
     description: z.string().min(5, "Descrição deve ter pelo menos 5 caracteres."),
@@ -128,11 +129,8 @@ const awardSchema = z.object({
     path: ["eligibleDepartments"],
 });
 
-
 type AwardFormData = z.infer<typeof awardSchema>;
 
-
-// --- Utility Functions ---
 const exportData = (data: any[], filename: string) => {
      if (data.length === 0) {
         alert("Não há dados para exportar.");
@@ -150,13 +148,11 @@ const exportData = (data: any[], filename: string) => {
      document.body.removeChild(link);
 }
 
-
 const getInitials = (name?: string) => {
     if (!name) return '??';
     return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
 }
 
-// --- Trend Icon Helper ---
 const getTrendIcon = (trend?: 'up' | 'down' | 'stable') => {
      switch (trend) {
          case 'up': return <TrendingUp className="h-4 w-4 text-green-500" />;
@@ -166,7 +162,6 @@ const getTrendIcon = (trend?: 'up' | 'down' | 'stable') => {
      }
  };
 
-// --- Ranking Table Columns ---
 const rankingColumns: ColumnDef<RankingEntry>[] = [
      {
         id: 'rank',
@@ -221,7 +216,6 @@ const rankingColumns: ColumnDef<RankingEntry>[] = [
      },
 ];
 
-// --- Award Configuration Component ---
 const AwardConfigContext = React.createContext<{
     openEditForm: (award: Award) => void;
     handleDeleteClick: (award: Award) => void;
@@ -231,6 +225,7 @@ const AwardConfigContext = React.createContext<{
 });
 
 const AwardConfiguration = () => {
+    const { organizationId } = useAuth();
     const [awards, setAwards] = React.useState<Award[]>([]);
     const [isLoading, setIsLoading] = React.useState(true);
     const [isSaving, setIsSaving] = React.useState(false);
@@ -238,6 +233,8 @@ const AwardConfiguration = () => {
     const [selectedAward, setSelectedAward] = React.useState<Award | null>(null);
     const [awardToDelete, setAwardToDelete] = React.useState<Award | null>(null);
     const [isDeleting, setIsDeleting] = React.useState(false);
+    const [departments, setDepartments] = React.useState<Department[]>([]);
+    const [isLoadingDepartments, setIsLoadingDepartments] = React.useState(false);
     const { toast } = useToast();
     const [db, setDb] = React.useState<Firestore | null>(null);
 
@@ -263,9 +260,25 @@ const AwardConfiguration = () => {
         }
     }, [toast, db]);
 
+     const loadDepartments = React.useCallback(async () => {
+        if (!organizationId) return;
+        setIsLoadingDepartments(true);
+        try {
+            const depts = await getDepartmentsByOrganization(organizationId);
+            setDepartments(depts);
+        } catch (error) {
+            console.error("Falha ao carregar departamentos:", error);
+            toast({ title: "Erro", description: "Não foi possível carregar os departamentos para o formulário.", variant: "destructive" });
+        } finally {
+            setIsLoadingDepartments(false);
+        }
+    }, [organizationId, toast]);
+
+
     React.useEffect(() => {
         if(db) loadAwards();
-    }, [loadAwards, db]);
+        if(organizationId) loadDepartments();
+    }, [loadAwards, db, loadDepartments, organizationId]);
 
     const form = useForm<AwardFormData>({
         resolver: zodResolver(awardSchema),
@@ -278,7 +291,6 @@ const AwardConfiguration = () => {
     const { control, watch, setValue, handleSubmit, reset } = form;
     const isRecurring = watch('isRecurring');
     const winnerCount = watch('winnerCount');
-
 
     const openAddForm = () => {
         setSelectedAward(null);
@@ -462,9 +474,7 @@ const AwardConfiguration = () => {
         },
     ];
 
-
     const contextValue = React.useMemo(() => ({ openEditForm, handleDeleteClick }), [openEditForm, handleDeleteClick]);
-
 
     return (
          <AwardConfigContext.Provider value={contextValue}>
@@ -644,21 +654,21 @@ const AwardConfiguration = () => {
                                                             <Label htmlFor="dept-all" className="font-normal text-sm">Todos</Label>
                                                         </div>
                                                         <Separator />
-                                                        {mockDepartments.map(dept => (
-                                                            <div key={dept} className="flex items-center space-x-2 px-2 py-1 hover:bg-muted rounded-sm">
+                                                        {isLoadingDepartments ? <Loader2 className="h-4 w-4 animate-spin mx-auto my-2"/> : departments.map(dept => (
+                                                            <div key={dept.id} className="flex items-center space-x-2 px-2 py-1 hover:bg-muted rounded-sm">
                                                                 <Checkbox
-                                                                    id={`dept-${dept}`}
-                                                                    checked={field.value?.includes(dept)}
+                                                                    id={`dept-${dept.id}`}
+                                                                    checked={field.value?.includes(dept.id)}
                                                                     onCheckedChange={(checked) => {
                                                                         const currentSelection = field.value?.filter(d => d !== 'all') || [];
                                                                         const newSelection = checked
-                                                                            ? [...currentSelection, dept]
-                                                                            : currentSelection.filter(d => d !== dept);
+                                                                            ? [...currentSelection, dept.id]
+                                                                            : currentSelection.filter(d => d !== dept.id);
                                                                         field.onChange(newSelection.length > 0 ? newSelection : ['all']);
                                                                     }}
                                                                     disabled={field.value?.includes('all')}
                                                                 />
-                                                                <Label htmlFor={`dept-${dept}`} className="font-normal text-sm">{dept}</Label>
+                                                                <Label htmlFor={`dept-${dept.id}`} className="font-normal text-sm">{dept.name}</Label>
                                                             </div>
                                                         ))}
                                                     </div>
@@ -717,15 +727,13 @@ const AwardConfiguration = () => {
     );
 };
 
-// --- Award History Component ---
 const AwardHistory = () => {
      const [history, setHistory] = React.useState<AwardHistoryEntry[]>([]);
      const [isLoading, setIsLoading] = React.useState(true);
      const { toast } = useToast();
      const [db, setDb] = React.useState<Firestore | null>(null);
-     const { organizationId } = useAuth(); // Get organizationId
+     const { organizationId } = useAuth();
 
-     // States for photo upload dialog
      const [isPhotoDialogOpen, setIsPhotoDialogOpen] = React.useState(false);
      const [selectedEntryForPhoto, setSelectedEntryForPhoto] = React.useState<AwardHistoryEntry | null>(null);
      const [photoFile, setPhotoFile] = React.useState<File | null>(null);
@@ -772,14 +780,14 @@ const AwardHistory = () => {
      const handleOpenPhotoDialog = (entry: AwardHistoryEntry) => {
         setSelectedEntryForPhoto(entry);
         setPhotoFile(null);
-        if (fileInputRef.current) fileInputRef.current.value = ''; // Reset file input
+        if (fileInputRef.current) fileInputRef.current.value = '';
         setIsPhotoDialogOpen(true);
      };
 
      const handlePhotoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (file) {
-            if (file.size > 5 * 1024 * 1024) { // 5MB Limit
+            if (file.size > 5 * 1024 * 1024) {
                 toast({title: "Arquivo Grande", description: "A foto não pode exceder 5MB.", variant: "destructive"});
                 setPhotoFile(null);
                 if (fileInputRef.current) fileInputRef.current.value = '';
@@ -801,7 +809,7 @@ const AwardHistory = () => {
             const photoUrl = await uploadAwardDeliveryPhoto(organizationId, selectedEntryForPhoto.id, photoFile);
             await updateAwardHistoryPhoto(db, selectedEntryForPhoto.id, photoUrl);
             toast({title: "Sucesso", description: "Foto da entrega adicionada."});
-            await loadHistory(); // Refresh history
+            await loadHistory();
             setIsPhotoDialogOpen(false);
         } catch (error: any) {
             console.error("Falha ao salvar foto da entrega:", error);
@@ -810,7 +818,6 @@ const AwardHistory = () => {
             setIsUploadingPhoto(false);
         }
     };
-
 
     return (
          <div className="space-y-6">
@@ -871,7 +878,6 @@ const AwardHistory = () => {
                     </Button>
                  </CardFooter>
             </Card>
-            {/* Dialog for Photo Upload */}
             <Dialog open={isPhotoDialogOpen} onOpenChange={setIsPhotoDialogOpen}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
@@ -914,7 +920,6 @@ const AwardHistory = () => {
     );
 };
 
-// --- Advanced Settings Component ---
 const rankingSettingsSchema = z.object({
     tieBreaker: z.enum(['zeros', 'admissionDate', 'manual']),
     includeProbation: z.boolean(),
@@ -1099,7 +1104,6 @@ const AdvancedSettings = () => {
     );
 }
 
-// --- Ranking Dashboard Component ---
 const RankingDashboard = () => {
     const { organizationId, isLoading: authLoading } = useAuth();
     const [rankingData, setRankingData] = React.useState<RankingEntry[]>([]);
@@ -1295,8 +1299,6 @@ const RankingDashboard = () => {
     );
 };
 
-
-// Main Page Component
 export default function RankingPage() {
   return (
     <div className="space-y-6">
@@ -1332,3 +1334,4 @@ export default function RankingPage() {
   );
 }
 
+    

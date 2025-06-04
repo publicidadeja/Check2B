@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { ReactNode } from 'react';
@@ -24,13 +25,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/toaster';
 import { logoutUser } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { BottomNavigation } from '@/components/layout/bottom-navigation';
-import { Sheet, SheetContent, SheetTrigger, SheetClose, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -38,13 +38,12 @@ import type { Notification as NotificationType } from '@/types/notification';
 import { listenToNotifications, markNotificationAsRead, markAllNotificationsAsRead, requestBrowserNotificationPermission, triggerTestNotification } from '@/lib/notifications';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Logo } from '@/components/logo';
-import { useAuth } from '@/hooks/use-auth'; // Import useAuth
+import { useAuth } from '@/hooks/use-auth';
 
 interface MobileLayoutProps {
   children: ReactNode;
 }
 
-// Navigation items for the main layout
 const navItems = [
   { href: '/colaborador/dashboard', label: 'Início', icon: LayoutDashboard },
   { href: '/colaborador/avaliacoes', label: 'Avaliações', icon: ClipboardCheck },
@@ -53,16 +52,8 @@ const navItems = [
   { href: '/colaborador/perfil', label: 'Perfil', icon: User },
 ];
 
-// Mock employee data - Replace with actual data fetching/auth context
-const mockEmployee = {
-    id: '1', // IMPORTANT: Using ID '1' to match mock data fetching
-    name: 'Alice Silva',
-    email: 'alice.silva@check2b.com',
-    photoUrl: 'https://picsum.photos/seed/alicesilva/80/80', // More specific seed
-};
-
-// Helper to get initials from a name
-const getInitials = (name: string = '') => {
+const getInitials = (name?: string) => {
+    if (!name) return '??';
     return name
         ?.split(' ')
         .map((n) => n[0])
@@ -71,7 +62,6 @@ const getInitials = (name: string = '') => {
         .toUpperCase() || '??';
 };
 
-// Function to get notification icon based on type
 const getNotificationIcon = (type: NotificationType['type']) => {
     switch (type) {
         case 'evaluation': return <ClipboardCheck className="h-4 w-4 text-blue-500" />;
@@ -89,42 +79,21 @@ export function MobileLayout({ children }: MobileLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
-  const { user, isGuest } = useAuth(); // Use auth state, get user object
+  const { user, isGuest, isLoading: authIsLoading } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [notifications, setNotifications] = React.useState<NotificationType[]>([]);
   const [isLoadingNotifications, setIsLoadingNotifications] = React.useState(true);
-  // const [isGuest, setIsGuest] = React.useState(false); // This is now handled by useAuth
   const [browserNotificationPermission, setBrowserNotificationPermission] = React.useState<NotificationPermission | null>(null);
   const unsubscribeRef = React.useRef<() => void>(() => {});
 
-  const currentUserId = user?.uid || mockEmployee.id; // Use actual user ID if available, else fallback to mock
-  const currentUserDisplayName = user?.displayName || mockEmployee.name;
-  const currentUserPhotoUrl = user?.photoURL || mockEmployee.photoUrl;
+  const currentUserId = user?.uid;
+  const currentUserDisplayName = user?.displayName;
+  const currentUserPhotoUrl = user?.photoURL;
 
-
-  // Check authentication status on mount - This logic should ideally be centralized in useAuth
-  React.useEffect(() => {
-      const checkAuth = () => {
-          const token = Cookies.get('auth-token');
-          const guestModeCookie = Cookies.get('guest-mode');
-          // If guest-mode cookie exists, we are in guest mode regardless of token (middleware handles this usually)
-          // If no token AND not on login page, and no guest-mode cookie, it's effectively a guest session or error
-          const effectiveGuest = !!guestModeCookie || (!token && pathname !== '/login');
-
-          //setIsGuest(effectiveGuest); // No longer needed, useAuth provides isGuest
-          console.log(`[MobileLayout AuthCheck] Guest mode (from useAuth): ${isGuest}. Path: ${pathname}`);
-
-          if (isGuest && pathname !== '/login') {
-              console.log("[MobileLayout AuthCheck] Guest detected and not on login, redirecting to /login is handled by ConditionalLayout or middleware.");
-              // router.replace('/login?reason=guest_mode');
-          }
-      };
-      checkAuth();
-  }, [pathname, isGuest]);
-
-  // Request Browser Notification Permission and Setup Listener
   React.useEffect(() => {
     const setupNotifications = async () => {
+        if (authIsLoading) return; // Wait for auth to resolve
+
         if (isGuest || !currentUserId) {
             setIsLoadingNotifications(false);
             setNotifications([]);
@@ -179,7 +148,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
             unsubscribeRef.current = () => {};
          }
     };
-  }, [isGuest, toast, currentUserId]);
+  }, [isGuest, toast, currentUserId, authIsLoading]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -250,10 +219,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
   return (
     <TooltipProvider>
       <div className="flex flex-col min-h-screen w-full bg-gradient-to-b from-sky-50 via-white to-gray-100 dark:from-slate-900 dark:via-slate-950 dark:to-slate-800">
-
-        {/* Header */}
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-             {/* Mobile Menu Trigger */}
              <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
                 <SheetTrigger asChild>
                     <Button variant="ghost" size="icon" className="shrink-0">
@@ -289,14 +255,14 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                          </nav>
                      </ScrollArea>
                      <div className="mt-auto border-t p-4">
-                        {!isGuest ? (
+                        {!isGuest && user ? (
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 overflow-hidden">
                                     <Avatar className="h-9 w-9 flex-shrink-0">
-                                        <AvatarImage src={currentUserPhotoUrl || undefined} alt={currentUserDisplayName} />
+                                        <AvatarImage src={currentUserPhotoUrl || undefined} alt={currentUserDisplayName || undefined} />
                                         <AvatarFallback>{getInitials(currentUserDisplayName)}</AvatarFallback>
                                     </Avatar>
-                                    <span className="text-sm font-medium truncate flex-1">{currentUserDisplayName}</span>
+                                    <span className="text-sm font-medium truncate flex-1">{currentUserDisplayName || 'Colaborador'}</span>
                                 </div>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}>
                                     <LogOut className="h-4 w-4" />
@@ -312,12 +278,10 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                 </SheetContent>
              </Sheet>
 
-            {/* Title */}
             <h1 className="text-base font-semibold text-center flex-1 truncate px-2">
                 {getCurrentTitle()}
             </h1>
 
-            {/* Notifications */}
              <div className="flex items-center gap-1">
                  <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -406,7 +370,6 @@ export function MobileLayout({ children }: MobileLayoutProps) {
              {children}
         </main>
 
-        {/* Bottom Navigation for Mobile */}
         {isMobile && <BottomNavigation />}
 
         <Toaster />
@@ -414,3 +377,5 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     </TooltipProvider>
   );
 }
+
+    

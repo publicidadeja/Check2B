@@ -3,7 +3,7 @@
 'use client';
 
 import * as React from 'react';
-import { PlusCircle, MoreHorizontal, Edit, Trash2, Copy, ClipboardList, Loader2, Frown } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, Edit, Trash2, Copy, ClipboardList, Loader2, Frown, AlertTriangle } from 'lucide-react'; // Added AlertTriangle
 import {
   TableBody,
   TableCell,
@@ -40,7 +40,6 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { useAuth } from '@/hooks/use-auth';
 import { getTasksByOrganization, saveTask as saveTaskToFirestore, deleteTask as deleteTaskFromFirestore } from '@/lib/task-service';
-import { mockEmployees } from '@/lib/mockData/employees'; // Keep for name lookup if needed
 
 export default function TasksPage() {
   const { organizationId, role: adminRole } = useAuth();
@@ -53,7 +52,7 @@ export default function TasksPage() {
   const { toast } = useToast();
 
   const getAssignmentText = (task: Task): string => {
-      if (!task.assignedTo) return 'Global';
+      if (!task.assignedTo || !task.assignedEntityId) return 'Global';
       let typeText = '';
       switch (task.assignedTo) {
           case 'role': typeText = 'Função'; break;
@@ -61,9 +60,8 @@ export default function TasksPage() {
           case 'individual': typeText = 'Indiv.'; break;
           default: typeText = task.assignedTo;
       }
-      // For individual, you might want to fetch employee name based on assignedEntityId
-      const entityName = task.assignedTo === 'individual' ? mockEmployees.find(e => e.id === task.assignedEntityId)?.name : task.assignedEntityId;
-      return `${typeText}${entityName ? `: ${entityName}` : ''}`;
+      // Displaying ID directly as fetching name requires additional service calls here
+      return `${typeText}: ${task.assignedEntityId}`;
   }
 
   const getPeriodicityText = (periodicity: Task['periodicity']): string => {
@@ -128,9 +126,12 @@ export default function TasksPage() {
   ];
 
   const loadTasks = React.useCallback(async () => {
-    if (!organizationId || adminRole !== 'admin') {
+    if (!organizationId || (adminRole !== 'admin' && adminRole !== 'super_admin')) {
       setIsLoading(false);
       setTasks([]);
+        if (adminRole === 'admin' && !organizationId) {
+             toast({ title: "Erro de Configuração", description: "Administrador não vinculado a uma organização.", variant: "destructive" });
+        }
       return;
     }
     setIsLoading(true);
@@ -155,8 +156,8 @@ export default function TasksPage() {
          return;
      }
      const taskDataToSave: Omit<Task, 'id' | 'organizationId'> | Task = selectedTask
-        ? { ...selectedTask, ...data, organizationId } // Ensure orgId is part of the object for type compatibility if needed
-        : { ...data, organizationId }; // Add orgId for new tasks
+        ? { ...selectedTask, ...data, organizationId } 
+        : { ...data, organizationId }; 
 
      try {
         await saveTaskToFirestore(organizationId, taskDataToSave);
@@ -200,13 +201,13 @@ export default function TasksPage() {
 
    const handleDuplicateTask = async (task: Task) => {
     if (!organizationId) return;
-    const { id, title, ...taskData } = task; // Exclude id
+    const { id, title, ...taskData } = task; 
     const duplicatedTaskData = {
-        ...taskData, // This already contains organizationId if it's part of your Task type
+        ...taskData, 
         title: `${title} (Cópia)`,
     };
     try {
-       await saveTaskToFirestore(organizationId, duplicatedTaskData as Omit<Task, 'id' | 'organizationId'>); // Cast if necessary
+       await saveTaskToFirestore(organizationId, duplicatedTaskData as Omit<Task, 'id' | 'organizationId'>); 
       toast({ title: "Sucesso", description: "Tarefa duplicada com sucesso." });
       await loadTasks();
     } catch (error) {
@@ -240,12 +241,13 @@ export default function TasksPage() {
                  <div className="flex justify-center items-center py-10">
                      <LoadingSpinner text="Carregando tarefas..." />
                  </div>
-            ) : !organizationId && adminRole !== 'super_admin' && !isLoading ? (
+            ) : (!organizationId && (adminRole === 'admin' || adminRole === 'super_admin')) && !isLoading ? ( // Check if admin but no orgId
                  <div className="text-center py-10 text-muted-foreground">
-                     <Frown className="mx-auto h-10 w-10 mb-2" />
-                     <p>Selecione uma organização para gerenciar tarefas ou você não tem permissão.</p>
+                     <AlertTriangle className="mx-auto h-10 w-10 mb-2 text-yellow-500" />
+                     <p>Administrador não vinculado a uma organização.</p>
+                     <p className="text-xs">Não é possível carregar ou criar tarefas.</p>
                  </div>
-            ) : tasks.length === 0 ? (
+            ) : tasks.length === 0 && organizationId ? ( // Check if orgId exists to allow creating first task
                 <div className="text-center py-10 text-muted-foreground">
                     <Frown className="mx-auto h-10 w-10 mb-2" />
                     <p>Nenhuma tarefa encontrada para esta organização.</p>
@@ -300,3 +302,4 @@ export default function TasksPage() {
   );
 }
 
+    
