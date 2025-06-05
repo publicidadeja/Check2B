@@ -233,6 +233,6 @@ function AdminDashboardContent() {
 }
 
 export default function RootPage() {
-    console.log("[RootPage /] Rendering AdminDashboardContent. This should be wrapped by ConditionalLayout -> MainLayout.");
+    //console.log("[RootPage /] Rendering AdminDashboardContent. This should be wrapped by ConditionalLayout -> MainLayout.");
     return <AdminDashboardContent />;
 }

@@ -16,7 +16,7 @@ export const getAllUsers = async (): Promise<UserProfile[]> => {
     console.error('[UserService] Firestore not initialized. Cannot fetch users.');
     return [];
   }
-  console.log('[UserService] Fetching all users.');
+  //console.log('[UserService] Fetching all users.');
   const usersCollection = collection(db, 'users');
   const usersSnapshot = await getDocs(usersCollection);
 
@@ -42,7 +42,7 @@ export const getUsersByRole = async (role: 'admin' | 'collaborator' | 'super_adm
     console.error('[UserService] Firestore not initialized. Cannot fetch users by role.');
     return [];
   }
-  console.log(`[UserService] Fetching users by role: ${role}`);
+  //console.log(`[UserService] Fetching users by role: ${role}`);
   const usersCollectionRef = collection(db, 'users');
   const q = query(usersCollectionRef, where('role', '==', role));
   const querySnapshot = await getDocs(q);
@@ -71,7 +71,7 @@ export const getUsersByRoleAndOrganization = async (role: 'admin' | 'collaborato
     console.error('[UserService] Firestore not initialized. Cannot fetch users by role and organization.');
     return [];
   }
-  console.log(`[UserService] Fetching users by role: ${role} for organizationId: ${organizationId}`);
+  //console.log(`[UserService] Fetching users by role: ${role} for organizationId: ${organizationId}`);
   const usersCollectionRef = collection(db, 'users');
   const q = query(usersCollectionRef, where('role', '==', role), where('organizationId', '==', organizationId));
   const querySnapshot = await getDocs(q);
@@ -139,7 +139,7 @@ export const saveUser = async (userData: Partial<UserProfile>): Promise<UserProf
   if (userData.hasOwnProperty('admissionDate') && userData.admissionDate !== undefined) dataForFirestore.admissionDate = userData.admissionDate;
 
 
-  console.log(`[UserService - saveUser] Data being sent to Firestore for user ${userData.uid}:`, JSON.stringify(dataForFirestore));
+  //console.log(`[UserService - saveUser] Data being sent to Firestore for user ${userData.uid}:`, JSON.stringify(dataForFirestore));
   
   await setDoc(userDocRef, dataForFirestore, { merge: true });
   
@@ -169,7 +169,7 @@ export const deleteUserFromFirestore = async (userId: string): Promise<void> => 
   if (!db) {
     throw new Error('[UserService] Firestore not initialized. Cannot delete user.');
   }
-  console.log(`[UserService] Deleting user profile from Firestore for UID: ${userId}`);
+  //console.log(`[UserService] Deleting user profile from Firestore for UID: ${userId}`);
   const userDocRef = doc(db, 'users', userId);
   await deleteDoc(userDocRef);
 };
@@ -185,7 +185,7 @@ export const updateUserStatusInFirestore = async (userId: string, status: 'activ
   if (!db) {
     throw new Error('[UserService] Firestore not initialized. Cannot update user status.');
   }
-  console.log(`[UserService] Updating status for user UID: ${userId} to ${status}`);
+  //console.log(`[UserService] Updating status for user UID: ${userId} to ${status}`);
   const userDocRef = doc(db, 'users', userId);
   await updateDoc(userDocRef, { status, updatedAt: serverTimestamp() });
 
@@ -215,7 +215,7 @@ export const uploadProfilePhoto = async (userId: string, file: File): Promise<st
   if (!storage) {
     throw new Error('[UserService] Firebase Storage not initialized. Cannot upload profile photo.');
   }
-  console.log(`[UserService] Uploading profile photo for user UID: ${userId}, filename: ${file.name}`);
+  //console.log(`[UserService] Uploading profile photo for user UID: ${userId}, filename: ${file.name}`);
   const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
   const filePath = `profile_photos/${userId}/${Date.now()}_${sanitizedFileName}`;
   const fileRef = ref(storage, filePath);
@@ -223,7 +223,7 @@ export const uploadProfilePhoto = async (userId: string, file: File): Promise<st
   try {
     const snapshot = await uploadBytes(fileRef, file);
     const downloadURL = await getDownloadURL(snapshot.ref);
-    console.log(`[UserService] Profile photo uploaded for user ${userId}: ${downloadURL}`);
+    //console.log(`[UserService] Profile photo uploaded for user ${userId}: ${downloadURL}`);
     return downloadURL;
   } catch (error) {
     console.error(`[UserService] Error uploading profile photo for user ${userId}:`, error);
@@ -242,15 +242,15 @@ export const getNotificationSettings = async (userId: string): Promise<Notificat
     console.error('[UserService] Firestore not initialized. Cannot get notification settings.');
     return null;
   }
-  console.log(`[UserService - getNotificationSettings V2] Attempting to fetch settings for userId: ${userId}`);
+  //console.log(`[UserService - getNotificationSettings V2] Attempting to fetch settings for userId: ${userId}`);
   const settingsDocRef = doc(db, `users/${userId}/settings`, 'notifications');
   try {
     const docSnap = await getDoc(settingsDocRef);
     if (docSnap.exists()) {
-      console.log(`[UserService - getNotificationSettings V2] Settings found for userId: ${userId}`, docSnap.data());
+      //console.log(`[UserService - getNotificationSettings V2] Settings found for userId: ${userId}`, docSnap.data());
       return docSnap.data() as NotificationFormData;
     }
-    console.log(`[UserService - getNotificationSettings V2] No settings document found for userId: ${userId}`);
+    //console.log(`[UserService - getNotificationSettings V2] No settings document found for userId: ${userId}`);
     return null; 
   } catch (error) {
     console.error(`[UserService - getNotificationSettings V2] Error fetching notification settings for user ${userId}:`, error);
@@ -269,7 +269,7 @@ export const saveNotificationSettings = async (userId: string, settings: Notific
   if (!db) {
     throw new Error('[UserService] Firestore not initialized. Cannot save notification settings.');
   }
-  console.log(`[UserService] Saving notification settings for userId: ${userId}`, settings);
+  //console.log(`[UserService] Saving notification settings for userId: ${userId}`, settings);
   const settingsDocRef = doc(db, `users/${userId}/settings`, 'notifications');
   try {
     await setDoc(settingsDocRef, settings, { merge: true });
@@ -292,7 +292,7 @@ export const countTotalUsersByOrganization = async (organizationId: string, role
     console.error('[UserService] Firestore not initialized or organizationId missing for countTotalUsersByOrganization.');
     return 0;
   }
-  console.log(`[UserService] Counting total users for org ${organizationId} ${role ? `with role ${role}` : ''}`);
+  //console.log(`[UserService] Counting total users for org ${organizationId} ${role ? `with role ${role}` : ''}`);
   const usersCollectionRef = collection(db, 'users');
   let q = query(usersCollectionRef, where('organizationId', '==', organizationId));
   if (role) {
@@ -320,7 +320,7 @@ export const countActiveUsersByOrganization = async (organizationId: string, rol
     console.error('[UserService] Firestore not initialized or organizationId missing for countActiveUsersByOrganization.');
     return 0;
   }
-  console.log(`[UserService] Counting active users for org ${organizationId} ${role ? `with role ${role}` : ''}`);
+  //console.log(`[UserService] Counting active users for org ${organizationId} ${role ? `with role ${role}` : ''}`);
   const usersCollectionRef = collection(db, 'users');
   let q = query(usersCollectionRef, where('organizationId', '==', organizationId), where('status', '==', 'active'));
   if (role) {

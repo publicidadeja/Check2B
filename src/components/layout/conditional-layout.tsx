@@ -23,12 +23,12 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
   const router = useRouter();
   const [redirectPath, setRedirectPath] = React.useState<string | null>(null);
 
-  console.log(`[ConditionalLayout START V10 FIX ATTEMPT] Path: ${pathname}, Role: ${role}, OrgId: ${organizationId}, isLoading: ${isLoading}, isGuest: ${isGuest}, Bypass: ${MIDDLEWARE_BYPASS_ACTIVE}`);
+  //console.log(`[ConditionalLayout START V10 FIX ATTEMPT] Path: ${pathname}, Role: ${role}, OrgId: ${organizationId}, isLoading: ${isLoading}, isGuest: ${isGuest}, Bypass: ${MIDDLEWARE_BYPASS_ACTIVE}`);
 
   React.useEffect(() => {
-    console.log("[ConditionalLayout useEffect for redirect] Triggered. redirectPath:", redirectPath, "pathname:", pathname);
+    //console.log("[ConditionalLayout useEffect for redirect] Triggered. redirectPath:", redirectPath, "pathname:", pathname);
     if (redirectPath && pathname === '/login') { // Only redirect if currently on /login and redirectPath is set
-      console.log(`[ConditionalLayout useEffect for redirect] Redirecting from /login to ${redirectPath}`);
+     // console.log(`[ConditionalLayout useEffect for redirect] Redirecting from /login to ${redirectPath}`);
       router.push(redirectPath);
       setRedirectPath(null); // Clear after redirect attempt
     }
@@ -36,7 +36,7 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
 
 
   if (isLoading) {
-    console.log("[ConditionalLayout DECISION V10] Auth state loading. Rendering spinner.");
+   // console.log("[ConditionalLayout DECISION V10] Auth state loading. Rendering spinner.");
     return (
       <div className="flex min-h-screen items-center justify-center">
         <LoadingSpinner size="lg" text="Carregando sistema..." />
@@ -51,7 +51,7 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
       else if (role === 'admin') targetPath = '/'; // Admin dashboard is root
       else if (role === 'collaborator') targetPath = '/colaborador/dashboard';
       
-      console.log(`[ConditionalLayout REDIRECT PREP V10] Authenticated user (${role}) on /login. Preparing to redirect to ${targetPath}`);
+      //console.log(`[ConditionalLayout REDIRECT PREP V10] Authenticated user (${role}) on /login. Preparing to redirect to ${targetPath}`);
       // Instead of direct router.push, set state to trigger useEffect
       if (redirectPath !== targetPath) { // Prevent setting state if already set or during initial render if not needed
         setRedirectPath(targetPath);
@@ -66,25 +66,25 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
   const isAdminPath = !pathname.startsWith('/colaborador') && !pathname.startsWith('/superadmin') && pathname !== '/login';
   const isColaboradorPath = pathname.startsWith('/colaborador');
   const isSuperAdminPath = pathname.startsWith('/superadmin');
-  console.log(`[ConditionalLayout INFO V10] Path checks: isAdminPath=${isAdminPath}, isColaboradorPath=${isColaboradorPath}, isSuperAdminPath=${isSuperAdminPath}`);
+ // console.log(`[ConditionalLayout INFO V10] Path checks: isAdminPath=${isAdminPath}, isColaboradorPath=${isColaboradorPath}, isSuperAdminPath=${isSuperAdminPath}`);
 
 
   // --- MODO BYPASS DO MIDDLEWARE (APENAS PARA DESENVOLVIMENTO) ---
   if (MIDDLEWARE_BYPASS_ACTIVE) {
-    console.warn("[ConditionalLayout BYPASS ACTIVE V10]");
+   // console.warn("[ConditionalLayout BYPASS ACTIVE V10]");
     if (isSuperAdminPath) {
-      console.log(`[ConditionalLayout DECISION V10] (Bypass) Renderizando SuperAdminLayout para: ${pathname}`);
+    //  console.log(`[ConditionalLayout DECISION V10] (Bypass) Renderizando SuperAdminLayout para: ${pathname}`);
       return <SuperAdminLayout>{children}</SuperAdminLayout>;
     }
     if (isAdminPath) {
-      console.log(`[ConditionalLayout DECISION V10] (Bypass) Renderizando MainLayout para: ${pathname}`);
+    //  console.log(`[ConditionalLayout DECISION V10] (Bypass) Renderizando MainLayout para: ${pathname}`);
       return <MainLayout>{children}</MainLayout>;
     }
     if (isColaboradorPath) {
-      console.log(`[ConditionalLayout DECISION V10] (Bypass) Renderizando MobileLayout para: ${pathname}`);
+    //  console.log(`[ConditionalLayout DECISION V10] (Bypass) Renderizando MobileLayout para: ${pathname}`);
       return <MobileLayout>{children}</MobileLayout>;
     }
-    console.warn(`[ConditionalLayout BYPASS UNHANDLED V10] Path ${pathname} não corresponde a nenhum layout. Renderizando children.`);
+    //console.warn(`[ConditionalLayout BYPASS UNHANDLED V10] Path ${pathname} não corresponde a nenhum layout. Renderizando children.`);
     return <>{children}</>; 
   }
 
@@ -94,12 +94,12 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
   // So, here we assume the user is either authenticated or in guest mode and on an allowed path.
 
   if (isGuest) {
-    console.log(`[ConditionalLayout GUEST MODE V10] Role (from guest cookie): ${role}`);
+   // console.log(`[ConditionalLayout GUEST MODE V10] Role (from guest cookie): ${role}`);
     if (role === 'super_admin' && isSuperAdminPath) return <SuperAdminLayout>{children}</SuperAdminLayout>;
     if (role === 'admin' && isAdminPath) return <MainLayout>{children}</MainLayout>;
     if (role === 'collaborator' && isColaboradorPath) return <MobileLayout>{children}</MobileLayout>;
     
-    console.warn(`[ConditionalLayout GUEST FALLBACK V10] Guest on unhandled path or role mismatch. Path: ${pathname}, Guest Role: ${role}. Redirecting to login (middleware should catch).`);
+    //console.warn(`[ConditionalLayout GUEST FALLBACK V10] Guest on unhandled path or role mismatch. Path: ${pathname}, Guest Role: ${role}. Redirecting to login (middleware should catch).`);
     // Removed direct router.replace to avoid the render error, middleware should handle this redirect if needed
     // if (typeof window !== 'undefined') router.replace('/login?reason=cl_guest_unhandled_v10');
     return <div className="flex min-h-screen items-center justify-center"><LoadingSpinner size="lg" text="Redirecionando..." /></div>;
@@ -107,7 +107,7 @@ export function ConditionalLayout({ children }: ConditionalLayoutProps) {
 
   // Authenticated User Routing (if middleware didn't redirect, user has token and role SHOULD be set by useAuth)
   if (role) {
-    console.log(`[ConditionalLayout AUTH MODE V10] Role: ${role}, OrgID: ${organizationId}`);
+    //console.log(`[ConditionalLayout AUTH MODE V10] Role: ${role}, OrgID: ${organizationId}`);
     if (role === 'super_admin') {
         return isSuperAdminPath ? <SuperAdminLayout>{children}</SuperAdminLayout> : (() => {
             // if (typeof window !== 'undefined') router.replace('/superadmin');

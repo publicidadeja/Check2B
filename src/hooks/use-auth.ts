@@ -37,10 +37,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isGuest: false,
   });
 
-  console.log(`[AuthProvider V10 DEBUG] Component RENDER. Path: ${pathname}, isLoading: ${authState.isLoading}, Role: ${authState.role}, isGuest: ${authState.isGuest}, OrgID: ${authState.organizationId}`);
+ // console.log(`[AuthProvider V10 DEBUG] Component RENDER. Path: ${pathname}, isLoading: ${authState.isLoading}, Role: ${authState.role}, isGuest: ${authState.isGuest}, OrgID: ${authState.organizationId}`);
 
   React.useEffect(() => {
-    console.log("[AuthProvider V10 DEBUG] Main Auth useEffect - LISTENER setup");
+   // console.log("[AuthProvider V10 DEBUG] Main Auth useEffect - LISTENER setup");
     const auth = getAuthInstance();
     let isMounted = true;
 
@@ -53,20 +53,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log(`[AuthProvider V10 DEBUG] onAuthStateChanged triggered. User: ${firebaseUser ? firebaseUser.uid : 'null'}`);
+     // console.log(`[AuthProvider V10 DEBUG] onAuthStateChanged triggered. User: ${firebaseUser ? firebaseUser.uid : 'null'}`);
       if (!isMounted) {
-        console.log("[AuthProvider V10 DEBUG] onAuthStateChanged: Component unmounted, skipping update.");
+       // console.log("[AuthProvider V10 DEBUG] onAuthStateChanged: Component unmounted, skipping update.");
         return;
       }
 
       const guestModeCookie = Cookies.get('guest-mode') as UserRole | undefined;
-      console.log(`[AuthProvider V10 DEBUG] Guest cookie: ${guestModeCookie}`);
+     // console.log(`[AuthProvider V10 DEBUG] Guest cookie: ${guestModeCookie}`);
 
       if (firebaseUser) {
         // User is signed in
-        console.log(`[AuthProvider V10 DEBUG] Firebase user ${firebaseUser.uid} detected.`);
+       // console.log(`[AuthProvider V10 DEBUG] Firebase user ${firebaseUser.uid} detected.`);
         if (guestModeCookie) {
-          console.log("[AuthProvider V10 DEBUG] User logged in, removing guest-mode cookie if it exists.");
+         // console.log("[AuthProvider V10 DEBUG] User logged in, removing guest-mode cookie if it exists.");
           Cookies.remove('guest-mode');
         }
 
@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         try {
           const profileData = await getUserProfileData(firebaseUser.uid);
-          console.log("[AuthProvider V10 DEBUG] Fetched profile for UID", firebaseUser.uid, ":", JSON.stringify(profileData));
+         // console.log("[AuthProvider V10 DEBUG] Fetched profile for UID", firebaseUser.uid, ":", JSON.stringify(profileData));
 
           if (!isMounted) return;
 
@@ -100,7 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const idToken = await firebaseUser.getIdToken(true);
             setAuthCookiesLib(idToken, profileData.role, profileData.organizationId);
 
-            console.log("[AuthProvider V10 DEBUG] Setting AUTHENTICATED state: isLoading: false, role:", profileData.role, "orgId:", profileData.organizationId);
+           // console.log("[AuthProvider V10 DEBUG] Setting AUTHENTICATED state: isLoading: false, role:", profileData.role, "orgId:", profileData.organizationId);
             setAuthState({
               user: firebaseUser,
               role: profileData.role,
@@ -119,9 +119,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } else {
         // User is signed out or not yet determined
-        console.log("[AuthProvider V10 DEBUG] No Firebase user.");
+       // console.log("[AuthProvider V10 DEBUG] No Firebase user.");
         if (guestModeCookie && pathname !== '/login') {
-          console.log(`[AuthProvider V10 DEBUG] Guest mode cookie found (${guestModeCookie}). Setting GUEST state.`);
+         // console.log(`[AuthProvider V10 DEBUG] Guest mode cookie found (${guestModeCookie}). Setting GUEST state.`);
           const guestOrgId = guestModeCookie === 'super_admin' ? null : (Cookies.get('organization-id') || 'org_default');
           // Only update if not already in this specific guest state or was loading
           if (!authState.isGuest || authState.role !== guestModeCookie || authState.organizationId !== guestOrgId || authState.isLoading) {
@@ -134,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             });
           }
         } else {
-          console.log("[AuthProvider V10 DEBUG] No Firebase user & no (or irrelevant) guest cookie. Setting LOGGED OUT state.");
+         // console.log("[AuthProvider V10 DEBUG] No Firebase user & no (or irrelevant) guest cookie. Setting LOGGED OUT state.");
           Cookies.remove('auth-token');
           Cookies.remove('user-role');
           Cookies.remove('organization-id');
@@ -150,13 +150,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       isMounted = false;
-      console.log("[AuthProvider V10 DEBUG] Firebase Auth useEffect - MAIN LISTENER cleanup");
+     // console.log("[AuthProvider V10 DEBUG] Firebase Auth useEffect - MAIN LISTENER cleanup");
       unsubscribe();
     };
   }, [pathname]); // Added pathname dependency
 
   const logout = React.useCallback(async () => {
-    console.log("[AuthProvider V10 DEBUG] Logout initiated by user action.");
+   // console.log("[AuthProvider V10 DEBUG] Logout initiated by user action.");
     await logoutUserHelper(); // This clears Firebase auth state & all relevant cookies
     // The onAuthStateChanged listener will set the state to user: null, isLoading: false, isGuest: false.
     // For immediate UI feedback and to prevent issues if onAuthStateChanged is slow:
