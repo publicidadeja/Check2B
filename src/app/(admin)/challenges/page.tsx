@@ -496,7 +496,7 @@ const ChallengeEvaluation = () => {
             return;
         }
         setIsLoadingParticipants(true);
-        setCurrentEvaluation({}); // Clear previous evaluations for the new challenge
+        setCurrentEvaluation({}); 
         try {
             const participantsData = await fetchParticipantsForChallengeFromFirestore(organizationId, challengeId);
             const submittedParticipants = participantsData.filter(p => p.status === 'submitted');
@@ -506,9 +506,10 @@ const ChallengeEvaluation = () => {
                  initialEvalState[p.id] = { status: 'pending', feedback: '', isSaving: false };
             });
             setCurrentEvaluation(initialEvalState);
-        } catch {
+        } catch (error) {
+             console.error("Falha ao carregar participantes:", error);
              toast({ title: "Erro", description: "Falha ao carregar participantes.", variant: "destructive" });
-             setParticipants([]); // Clear participants on error
+             setParticipants([]); 
         } finally {
             setIsLoadingParticipants(false);
         }
@@ -525,7 +526,8 @@ const ChallengeEvaluation = () => {
             try {
                 const allChallenges = await getAllChallenges(organizationId);
                 setChallengesToEvaluate(allChallenges.filter(c => c.status === 'evaluating'));
-            } catch {
+            } catch (error){
+                 console.error("Falha ao carregar desafios para avaliação:", error);
                  toast({ title: "Erro", description: "Falha ao carregar desafios para avaliação.", variant: "destructive" });
             } finally {
                  setIsLoadingChallenges(false);
@@ -535,7 +537,12 @@ const ChallengeEvaluation = () => {
     }, [organizationId, authLoading, toast]);
 
      React.useEffect(() => {
-        fetchParticipantsForSelectedChallenge(selectedChallengeId);
+        if(selectedChallengeId) {
+            fetchParticipantsForSelectedChallenge(selectedChallengeId);
+        } else {
+            setParticipants([]);
+            setCurrentEvaluation({});
+        }
     }, [selectedChallengeId, fetchParticipantsForSelectedChallenge]);
 
     const handleEvaluationChange = (participantId: string, field: 'status' | 'feedback' | 'score', value: any) => {
@@ -587,13 +594,6 @@ const ChallengeEvaluation = () => {
             // Recarregar participantes para o desafio selecionado
             // Isso removerá o participante avaliado da lista, pois seu status não será mais 'submitted'
             fetchParticipantsForSelectedChallenge(selectedChallengeId);
-            
-            // Limpar o estado de avaliação para este participante já está em fetchParticipantsForSelectedChallenge
-            // setCurrentEvaluation(prevEvalState => {
-            //     const newState = { ...prevEvalState };
-            //     delete newState[participantId];
-            //     return newState;
-            // });
 
         } catch (error) {
             console.error("Falha ao salvar avaliação:", error);
@@ -997,4 +997,3 @@ export default function ChallengesPage() {
     </div>
   );
 }
-
