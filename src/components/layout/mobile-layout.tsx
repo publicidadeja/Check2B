@@ -44,7 +44,7 @@ import {
     deleteAllNotifications,
     requestBrowserNotificationPermission,
     triggerTestNotification,
-    showBrowserNotification // Importar explicitamente
+    showBrowserNotification
 } from '@/lib/notifications';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Logo } from '@/components/logo';
@@ -93,6 +93,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [notifications, setNotifications] = React.useState<NotificationType[]>([]);
   const [isLoadingNotifications, setIsLoadingNotifications] = React.useState(true);
+  const [notificationError, setNotificationError] = React.useState<string | null>(null);
   const [browserNotificationPermission, setBrowserNotificationPermission] = React.useState<NotificationPermission | null>(null);
   const unsubscribeRef = React.useRef<() => void>(() => {});
 
@@ -102,17 +103,21 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
   React.useEffect(() => {
     let localInitialLoadComplete = false;
+    let loadingTimeout: NodeJS.Timeout | null = null;
+
     const setupNotifications = async () => {
         if (authIsLoading) return;
 
         if (isGuest || !currentUserId) {
             setIsLoadingNotifications(false);
+            setNotificationError(null);
             setNotifications([]);
             console.log("[MobileLayout Notifications] Guest mode or no user ID, skipping setup.");
-            localInitialLoadComplete = true; // Consider initial load complete for guest/no user
+            localInitialLoadComplete = true;
+            if (loadingTimeout) clearTimeout(loadingTimeout);
             return;
         }
-         console.log("[MobileLayout Notifications] Setting up for user ID:", currentUserId);
+        console.log("[MobileLayout Notifications] Setting up for user ID:", currentUserId);
 
         if (typeof window !== 'undefined' && "Notification" in window) {
              if (Notification.permission === "default") {
@@ -131,6 +136,18 @@ export function MobileLayout({ children }: MobileLayoutProps) {
          }
 
         setIsLoadingNotifications(true);
+        setNotificationError(null); // Reset error state on new attempt
+        
+        // Safety timeout for loading notifications
+        loadingTimeout = setTimeout(() => {
+            if (isLoadingNotifications) { // Check if still loading
+                console.warn("[MobileLayout Notifications] Timeout: Notifications did not load within 10 seconds.");
+                setIsLoadingNotifications(false);
+                setNotificationError("Não foi possível carregar as notificações. Verifique sua conexão ou tente mais tarde.");
+                // Do not toast here, error message will be shown in dropdown
+            }
+        }, 10000); // 10 seconds timeout
+
         if (unsubscribeRef.current) {
             console.log("[MobileLayout Notifications] Unsubscribing previous listener.");
             unsubscribeRef.current();
@@ -139,14 +156,16 @@ export function MobileLayout({ children }: MobileLayoutProps) {
         unsubscribeRef.current = listenToNotifications(
             currentUserId,
             (freshNotificationsList) => {
+                if (loadingTimeout) clearTimeout(loadingTimeout);
                 console.log(`[MobileLayout Notifications] Received update with ${freshNotificationsList.length} items. InitialLoad: ${localInitialLoadComplete}`);
                 
                 setNotifications(freshNotificationsList);
                 setIsLoadingNotifications(false);
+                setNotificationError(null);
 
                 if (localInitialLoadComplete) {
                     freshNotificationsList.forEach(n => {
-                        if (!n.read && Notification.permission === 'granted') { // Check permission before showing
+                        if (!n.read && Notification.permission === 'granted') {
                             console.log(`[MobileLayout Notifications] Post-initial load: Attempting to show browser notification for unread item: ${n.id} - ${n.message}`);
                             showBrowserNotification(
                                 n.type === 'evaluation' ? 'Nova Avaliação Recebida' :
@@ -155,7 +174,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                                 n.type === 'announcement' ? 'Novo Anúncio Importante' :
                                 n.type === 'system' ? 'Alerta do Sistema Check2B' :
                                 'Nova Notificação Check2B',
-                                { body: n.message, tag: n.id }, // tag can help prevent re-showing if events are rapid
+                                { body: n.message, tag: n.id },
                                 n.id
                             );
                         }
@@ -166,9 +185,11 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                 }
             },
             (error) => {
+                if (loadingTimeout) clearTimeout(loadingTimeout);
                 console.error("[MobileLayout Notifications] Error listening:", error);
                 localInitialLoadComplete = false;
                 setIsLoadingNotifications(false);
+                setNotificationError(error.message || "Erro ao carregar notificações.");
                 toast({ title: "Erro Notificações", description: "Não foi possível carregar as notificações.", variant: "destructive" });
             }
         );
@@ -182,7 +203,8 @@ export function MobileLayout({ children }: MobileLayoutProps) {
             unsubscribeRef.current();
             unsubscribeRef.current = () => {};
          }
-         localInitialLoadComplete = false; // Reset for potential re-runs if component remounts
+         if (loadingTimeout) clearTimeout(loadingTimeout);
+         localInitialLoadComplete = false;
     };
   }, [isGuest, toast, currentUserId, authIsLoading]);
 
@@ -348,12 +370,12 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="relative rounded-full h-9 w-9">
                         <Bell className="h-5 w-5" />
-                        {notifications.length > 0 && !isGuest && (
+                        {unreadCount > 0 && !isGuest && (
                             <Badge
                             variant="destructive"
                             className="absolute -top-1 -right-1 h-4 min-w-[1rem] px-1 py-0 text-[10px] flex items-center justify-center rounded-full animate-pulse"
                             >
-                            {notifications.length > 9 ? '9+' : notifications.length}
+                            {unreadCount > 9 ? '9+' : unreadCount}
                             </Badge>
                         )}
                         <span className="sr-only">Abrir notificações</span>
@@ -372,6 +394,8 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                          <ScrollArea className="h-[300px]">
                             {isLoadingNotifications && !isGuest ? (
                                  <div className="flex justify-center items-center p-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                            ) : notificationError && !isGuest ? (
+                                <DropdownMenuItem disabled className="text-center justify-center py-4 text-destructive italic text-xs">{notificationError}</DropdownMenuItem>
                             ) : isGuest ? (
                                  <DropdownMenuItem disabled className="text-center justify-center py-4 text-muted-foreground italic text-xs">Login necessário para ver notificações</DropdownMenuItem>
                             ) : notifications.length === 0 ? (
@@ -454,3 +478,4 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     </TooltipProvider>
   );
 }
+
