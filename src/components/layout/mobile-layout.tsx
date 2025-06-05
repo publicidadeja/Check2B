@@ -19,6 +19,7 @@ import {
   X,
   Settings,
   Loader2,
+  Trash2, // Added Trash2
 } from 'lucide-react';
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -35,7 +36,15 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Notification as NotificationType } from '@/types/notification';
-import { listenToNotifications, markNotificationAsRead, markAllNotificationsAsRead, requestBrowserNotificationPermission, triggerTestNotification } from '@/lib/notifications';
+import {
+    listenToNotifications,
+    markNotificationAsRead,
+    markAllNotificationsAsRead,
+    deleteNotification, // Added deleteNotification
+    deleteAllNotifications, // Added deleteAllNotifications
+    requestBrowserNotificationPermission,
+    triggerTestNotification
+} from '@/lib/notifications';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Logo } from '@/components/logo';
 import { useAuth } from '@/hooks/use-auth';
@@ -92,7 +101,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
   React.useEffect(() => {
     const setupNotifications = async () => {
-        if (authIsLoading) return; // Wait for auth to resolve
+        if (authIsLoading) return;
 
         if (isGuest || !currentUserId) {
             setIsLoadingNotifications(false);
@@ -176,6 +185,33 @@ export function MobileLayout({ children }: MobileLayoutProps) {
         toast({ title: "Erro", description: "Falha ao marcar notificações como lidas.", variant: "destructive" });
     }
   };
+
+  const handleDeleteNotification = async (notificationId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (isGuest || !currentUserId) return;
+    try {
+      await deleteNotification(currentUserId, notificationId);
+      toast({ title: "Notificação Removida", duration: 2000 });
+      // The listener will update the notifications state automatically
+    } catch (error) {
+      console.error("Error deleting notification:", error);
+      toast({ title: "Erro", description: "Falha ao remover notificação.", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteAllNotifications = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isGuest || !currentUserId) return;
+    try {
+      await deleteAllNotifications(currentUserId);
+      toast({ title: "Todas as Notificações Removidas", duration: 2000 });
+      // The listener will update the notifications state automatically
+    } catch (error) {
+      console.error("Error deleting all notifications:", error);
+      toast({ title: "Erro", description: "Falha ao remover todas as notificações.", variant: "destructive" });
+    }
+  };
+
 
   const getCurrentTitle = () => {
     const currentNavItem = navItems.find(item => pathname?.startsWith(item.href));
@@ -287,12 +323,12 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="relative rounded-full h-9 w-9">
                         <Bell className="h-5 w-5" />
-                        {unreadCount > 0 && !isGuest && (
+                        {notifications.length > 0 && !isGuest && ( // Show count for all if list has items
                             <Badge
                             variant="destructive"
                             className="absolute -top-1 -right-1 h-4 min-w-[1rem] px-1 py-0 text-[10px] flex items-center justify-center rounded-full animate-pulse"
                             >
-                            {unreadCount > 9 ? '9+' : unreadCount}
+                            {notifications.length > 9 ? '9+' : notifications.length}
                             </Badge>
                         )}
                         <span className="sr-only">Abrir notificações</span>
@@ -301,9 +337,9 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                      <DropdownMenuContent align="end" className="w-80">
                         <DropdownMenuLabel className="flex justify-between items-center">
                             Notificações
-                            {unreadCount > 0 && !isGuest && (
-                                <Button variant="link" size="sm" className="h-auto p-0 text-xs text-primary" onClick={handleMarkAllRead}>
-                                    Marcar todas como lidas
+                            {notifications.length > 0 && !isGuest && (
+                                <Button variant="link" size="sm" className="h-auto p-0 text-xs text-destructive" onClick={handleDeleteAllNotifications}>
+                                    Limpar Todas
                                 </Button>
                             )}
                         </DropdownMenuLabel>
@@ -319,7 +355,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                                 notifications.map((notification) => (
                                 <DropdownMenuItem
                                     key={notification.id}
-                                    className={cn("flex items-start gap-3 cursor-pointer p-2 data-[highlighted]:bg-muted/50 group min-h-[50px]", !notification.read && "bg-accent/20 dark:bg-accent/10 font-medium")}
+                                    className={cn("flex items-start gap-3 cursor-pointer p-2 data-[highlighted]:bg-muted/50 group min-h-[50px]", !notification.read && "bg-primary/5 dark:bg-primary/10")}
                                     onClick={() => handleNotificationClick(notification)}
                                     onSelect={(e) => e.preventDefault()}
                                     style={{whiteSpace: 'normal'}}
@@ -327,26 +363,42 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                                     <div className="flex-shrink-0 pt-1 text-muted-foreground">
                                         {getNotificationIcon(notification.type)}
                                     </div>
-                                    <div className={cn("flex-1 space-y-0.5")}>
+                                    <div className={cn("flex-1 space-y-0.5", !notification.read && "font-medium")}>
                                         <p className="text-xs leading-tight">{notification.message}</p>
                                         <p className="text-[10px] text-muted-foreground/80">{notification.timestamp.toLocaleTimeString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
                                     </div>
-                                     {!notification.read && (
-                                        <Tooltip>
+                                     <div className="flex items-center">
+                                        {!notification.read && (
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-6 w-6 text-muted-foreground hover:text-primary flex-shrink-0 ml-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        onClick={(e) => handleMarkRead(notification.id, e)}
+                                                        aria-label="Marcar como lida"
+                                                    >
+                                                        <Check className="h-4 w-4" />
+                                                    </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="left"><p>Marcar como lida</p></TooltipContent>
+                                            </Tooltip>
+                                        )}
+                                         <Tooltip>
                                             <TooltipTrigger asChild>
-                                                 <Button
-                                                     variant="ghost"
-                                                     size="icon"
-                                                     className="h-6 w-6 text-muted-foreground hover:text-primary flex-shrink-0 ml-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                     onClick={(e) => handleMarkRead(notification.id, e)}
-                                                     aria-label="Marcar como lida"
-                                                 >
-                                                     <Check className="h-4 w-4" />
-                                                 </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-6 w-6 text-muted-foreground hover:text-destructive flex-shrink-0 ml-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    onClick={(e) => handleDeleteNotification(notification.id, e)}
+                                                    aria-label="Apagar notificação"
+                                                >
+                                                    <Trash2 className="h-3 w-3" />
+                                                </Button>
                                             </TooltipTrigger>
-                                            <TooltipContent side="left"><p>Marcar como lida</p></TooltipContent>
+                                            <TooltipContent side="left"><p>Apagar</p></TooltipContent>
                                         </Tooltip>
-                                     )}
+                                     </div>
                                 </DropdownMenuItem>
                                 ))
                             )}
@@ -377,5 +429,3 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     </TooltipProvider>
   );
 }
-
-    

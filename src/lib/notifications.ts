@@ -1,15 +1,13 @@
+
 // src/lib/notifications.ts
-import { onValue, ref, set, get, push, update, getDatabase, query, orderByChild, equalTo } from "firebase/database";
-import { getFirebaseApp } from "./firebase"; // Assuming you have a firebase init file
+import { onValue, ref, set, get, push, update, getDatabase, query, orderByChild, equalTo, remove } from "firebase/database"; // Added remove
+import { getFirebaseApp } from "./firebase"; 
 import type { Notification } from "@/types/notification";
 
-// --- Mock Data (If needed for initial setup or fallback) ---
-// Removed mock data as we rely on Firebase
 
-// --- Firebase Realtime Database Setup ---
 let db: ReturnType<typeof getDatabase> | null = null;
 try {
-    const app = getFirebaseApp(); // Get initialized Firebase app
+    const app = getFirebaseApp(); 
     if (app) {
         db = getDatabase(app);
     } else {
@@ -19,12 +17,7 @@ try {
     console.error("[Notifications] Error getting Firebase Database instance:", error);
 }
 
-// --- Browser Notification Functions ---
 
-/**
- * Requests permission to show browser notifications.
- * @returns Promise resolving to the permission state ('granted', 'denied', 'default').
- */
 export const requestBrowserNotificationPermission = async (): Promise<NotificationPermission> => {
     if (!("Notification" in window)) {
         console.warn("Este navegador não suporta notificações desktop.");
@@ -40,22 +33,16 @@ export const requestBrowserNotificationPermission = async (): Promise<Notificati
     }
 };
 
-/**
- * Shows a browser notification if permission is granted.
- * @param title The title of the notification.
- * @param options Optional NotificationOptions (body, icon, etc.).
- * @param notificationId Optional ID to prevent showing the same notification multiple times.
- */
-const shownNotifications = new Set<string>(); // Keep track of shown notifications in this session
+const shownNotifications = new Set<string>(); 
 export const showBrowserNotification = (
     title: string,
     options?: NotificationOptions,
-    notificationId?: string // Use the notification ID from the database
+    notificationId?: string 
 ): void => {
     if (!("Notification" in window) || Notification.permission !== "granted") {
-        return; // Do nothing if not supported or not granted
+        return; 
     }
-    // Prevent showing the same notification repeatedly in the same session
+    
     if (notificationId && shownNotifications.has(notificationId)) {
         console.log(`[Notifications] Notification ${notificationId} already shown this session.`);
         return;
@@ -63,45 +50,31 @@ export const showBrowserNotification = (
 
     const notification = new Notification(title, {
         body: options?.body,
-        icon: options?.icon || '/logo.png', // Default icon
-        tag: options?.tag || notificationId, // Use ID as tag to potentially replace older ones
+        icon: options?.icon || '/logo.png', 
+        tag: options?.tag || notificationId, 
         renotify: options?.renotify || false,
         silent: options?.silent || false,
-        ...options, // Allow overriding other options
+        ...options, 
     });
 
-     // Handle click event (e.g., focus the window/tab)
     notification.onclick = () => {
-        window.focus(); // Focus the current window/tab
-        notification.close(); // Close notification on click
+        window.focus(); 
+        notification.close(); 
     };
 
-     // Handle error event
     notification.onerror = (event) => {
         console.error("[Notifications] Error showing browser notification:", event);
     };
 
     if (notificationId) {
         shownNotifications.add(notificationId);
-         // Optional: Remove from set after a delay to allow re-notification later if needed
-         // setTimeout(() => shownNotifications.delete(notificationId), 60000); // Example: Remove after 1 minute
     }
 
     console.log("[Notifications] Showing browser notification:", title);
 };
 
 
-// --- Firebase Functions ---
-
-/**
- * Listens for real-time notification updates for a specific employee.
- * Also triggers browser notifications for new, unread items.
- * @param employeeId The ID of the employee.
- * @param callback Function to call with the updated notifications array (for in-app list).
- * @param onError Function to call if there's an error.
- * @returns An unsubscribe function.
- */
-let initialLoadComplete = false; // Flag to prevent showing old notifications on initial load
+let initialLoadComplete = false; 
 export const listenToNotifications = (
     employeeId: string,
     callback: (notifications: Notification[]) => void,
@@ -110,12 +83,12 @@ export const listenToNotifications = (
     if (!db) {
         console.error("[Notifications] Database not initialized. Cannot listen.");
         onError(new Error("Database not initialized"));
-        initialLoadComplete = false; // Reset flag on error
-        return () => {}; // Return empty unsubscribe function
+        initialLoadComplete = false; 
+        return () => {}; 
     }
 
     const notificationsRef = ref(db, `userNotifications/${employeeId}`);
-    initialLoadComplete = false; // Reset on new listener setup
+    initialLoadComplete = false; 
 
     console.log(`[Notifications] Setting up listener for user: ${employeeId}`);
 
@@ -128,17 +101,14 @@ export const listenToNotifications = (
                 return {
                     id: key,
                     ...notificationData,
-                    timestamp: new Date(notificationData.timestamp || Date.now()), // Ensure timestamp is a Date
-                    read: notificationData.read === true, // Ensure read is boolean
+                    timestamp: new Date(notificationData.timestamp || Date.now()), 
+                    read: notificationData.read === true, 
                 };
-            }).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()); // Sort newest first
+            }).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()); 
         }
 
-        // Process notifications (including triggering browser notifications)
         if (initialLoadComplete) {
-             // Only process for browser notifications after the initial data load
             notificationsArray.forEach(n => {
-                 // Show browser notification only if it's new and unread
                 if (!n.read) {
                      console.log(`[Notifications] Attempting to show browser notification for unread item: ${n.id}`);
                      showBrowserNotification(
@@ -147,42 +117,31 @@ export const listenToNotifications = (
                          n.type === 'ranking' ? 'Ranking Atualizado' :
                          'Nova Notificação',
                          { body: n.message },
-                         n.id // Pass ID to prevent duplicates
+                         n.id 
                      );
                  }
             });
         } else {
              console.log("[Notifications] Initial data load complete.");
-             initialLoadComplete = true; // Mark initial load as done
-             // Optionally, clear the shownNotifications set on initial load if desired
-             // shownNotifications.clear();
+             initialLoadComplete = true; 
         }
 
-
-        // Update the in-app list via the callback
         callback(notificationsArray);
 
     }, (error) => {
         console.error("[Notifications] Error listening to notifications:", error);
-        initialLoadComplete = false; // Reset flag on error
+        initialLoadComplete = false; 
         onError(error);
     });
 
-     // Return the unsubscribe function with reset for the flag
     return () => {
         console.log(`[Notifications] Unsubscribing listener for user: ${employeeId}`);
-        initialLoadComplete = false; // Reset flag when unsubscribing
+        initialLoadComplete = false; 
         unsubscribe();
     };
 };
 
 
-/**
- * Marks a specific notification as read for an employee.
- * @param employeeId The ID of the employee.
- * @param notificationId The ID of the notification to mark as read.
- * @returns Promise resolving when the operation is complete.
- */
 export const markNotificationAsRead = async (employeeId: string, notificationId: string): Promise<void> => {
     if (!db) {
         console.error("[Notifications] Database not initialized. Cannot mark as read.");
@@ -199,11 +158,7 @@ export const markNotificationAsRead = async (employeeId: string, notificationId:
     }
 };
 
-/**
- * Marks all notifications as read for an employee.
- * @param employeeId The ID of the employee.
- * @returns Promise resolving when the operation is complete.
- */
+
 export const markAllNotificationsAsRead = async (employeeId: string): Promise<void> => {
     if (!db) {
         console.error("[Notifications] Database not initialized. Cannot mark all as read.");
@@ -234,24 +189,48 @@ export const markAllNotificationsAsRead = async (employeeId: string): Promise<vo
     }
 };
 
-/**
- * Adds a new notification for a specific employee.
- * Usually called from the backend/admin actions.
- * @param employeeId The ID of the employee.
- * @param notificationData Data for the new notification (type, message, link).
- * @returns Promise resolving with the new notification ID.
- */
+export const deleteNotification = async (employeeId: string, notificationId: string): Promise<void> => {
+    if (!db) {
+        console.error("[Notifications] Database not initialized. Cannot delete notification.");
+        throw new Error("Database not initialized");
+    }
+    const notificationRef = ref(db, `userNotifications/${employeeId}/${notificationId}`);
+    try {
+        await remove(notificationRef);
+        console.log(`[Notifications] Deleted notification ${notificationId} for user ${employeeId}`);
+    } catch (error) {
+        console.error(`[Notifications] Error deleting notification ${notificationId}:`, error);
+        throw error;
+    }
+};
+
+export const deleteAllNotifications = async (employeeId: string): Promise<void> => {
+    if (!db) {
+        console.error("[Notifications] Database not initialized. Cannot delete all notifications.");
+        throw new Error("Database not initialized");
+    }
+    const userNotificationsRef = ref(db, `userNotifications/${employeeId}`);
+    try {
+        await set(userNotificationsRef, null); // Set to null to remove the entire node
+        console.log(`[Notifications] Deleted all notifications for user ${employeeId}`);
+    } catch (error) {
+        console.error(`[Notifications] Error deleting all notifications for user ${employeeId}:`, error);
+        throw error;
+    }
+};
+
+
 export const addNotification = async (employeeId: string, notificationData: Omit<Notification, 'id' | 'timestamp' | 'read'>): Promise<string> => {
     if (!db) {
         console.error("[Notifications] Database not initialized. Cannot add notification.");
         throw new Error("Database not initialized");
     }
     const notificationsRef = ref(db, `userNotifications/${employeeId}`);
-    const newNotificationRef = push(notificationsRef); // Generate unique key from Firebase
+    const newNotificationRef = push(notificationsRef); 
 
     const notificationPayload = {
         ...notificationData,
-        timestamp: new Date().toISOString(), // Store timestamp as ISO string for consistency
+        timestamp: new Date().toISOString(), 
         read: false,
     };
 
@@ -266,7 +245,6 @@ export const addNotification = async (employeeId: string, notificationData: Omit
     }
 };
 
-// --- Example: Helper to trigger a test notification (for development) ---
 export const triggerTestNotification = async (employeeId: string) => {
     console.log(`[Notifications] Triggering test notification for user ${employeeId}`);
     try {
