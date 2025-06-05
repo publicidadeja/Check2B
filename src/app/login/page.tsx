@@ -1,3 +1,4 @@
+
 // src/app/login/page.tsx
 'use client';
 
@@ -21,16 +22,6 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
     Dialog,
     DialogClose,
     DialogContent,
@@ -48,7 +39,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { loginUser, logoutUser, sendPasswordReset } from '@/lib/auth'; // Removed setAuthCookie as it's handled by loginUser
+import { loginUser, logoutUser, sendPasswordReset } from '@/lib/auth';
 import { Separator } from '@/components/ui/separator';
 import { Logo } from '@/components/logo';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -65,14 +56,12 @@ const forgotPasswordSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
-type UserRole = 'super_admin' | 'admin' | 'collaborator';
 
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = React.useState(false);
-  const [isGuestChoiceOpen, setIsGuestChoiceOpen] = React.useState(false);
   const [isForgotPasswordOpen, setIsForgotPasswordOpen] = React.useState(false);
   const [isSendingReset, setIsSendingReset] = React.useState(false);
   const [showPassword, setShowPassword] = React.useState(false);
@@ -118,7 +107,6 @@ function LoginContent() {
     setIsLoading(true);
     setLoginError(null);
     try {
-      // loginUser now handles setting cookies internally after successful auth and profile fetch
       const { userData } = await loginUser(data.email, data.password);
 
        if (userData) {
@@ -132,18 +120,17 @@ function LoginContent() {
         if (role === 'super_admin') {
           router.push('/superadmin');
         } else if (role === 'admin') {
-          router.push('/'); // Admin dashboard is root
+          router.push('/');
         } else if (role === 'collaborator') {
           router.push('/colaborador/dashboard');
         } else {
           console.warn(`[Login Page] Invalid role detected after login: ${role}`);
           setLoginError("Perfil de usuário inválido após login. Contate o suporte.");
-          await logoutUser(); // Use the centralized logoutUser from lib/auth
+          await logoutUser();
           setIsLoading(false);
           return;
         }
       } else {
-        // This case should ideally be handled by an error in loginUser if userData is not returned
         throw new Error("Credenciais inválidas ou erro desconhecido durante o login.");
       }
     } catch (error: any) {
@@ -204,36 +191,6 @@ function LoginContent() {
       } finally {
           setIsSendingReset(false);
       }
-  };
-
-  const handleGuestLoginClick = () => {
-    setIsGuestChoiceOpen(true);
-  };
-
-  const handleGuestChoice = (role: UserRole) => {
-     setIsGuestChoiceOpen(false);
-     let targetPath = '/';
-     let roleName = 'Admin';
-
-     if (role === 'collaborator') {
-        targetPath = '/colaborador/dashboard';
-        roleName = 'Colaborador';
-     } else if (role === 'super_admin') {
-        targetPath = '/superadmin';
-        roleName = 'Super Admin';
-     }
-
-     toast({
-          title: `Acesso Convidado (${roleName})`,
-          description: `Entrando no painel...`,
-          duration: 2000,
-      });
-      Cookies.remove('auth-token');
-      Cookies.remove('user-role');
-      Cookies.remove('organization-id');
-      console.log(`[Login Page] Setting guest mode cookie to: ${role}`);
-      Cookies.set('guest-mode', role, { path: '/' }); // Session cookie
-      router.push(targetPath);
   };
 
   return (
@@ -321,44 +278,8 @@ function LoginContent() {
         </CardContent>
 
         <CardFooter className="flex-col gap-4 pt-4 pb-6">
-            <div className="relative w-full">
-                <div className="absolute inset-0 flex items-center">
-                   <Separator />
-                </div>
-                 <div className="relative flex justify-center">
-                     <span className="bg-card px-2 text-xs text-muted-foreground">
-                         Ou
-                     </span>
-                </div>
-            </div>
-             <Button variant="outline" className="w-full h-10 text-sm" onClick={handleGuestLoginClick} disabled={isLoading}>
-                <Eye className="mr-2 h-4 w-4"/>
-                Explorar como Convidado
-             </Button>
+             {/* "Ou" separator and Guest button removed */}
         </CardFooter>
-
-         <AlertDialog open={isGuestChoiceOpen} onOpenChange={setIsGuestChoiceOpen}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                <AlertDialogTitle>Escolher Visualização Convidado</AlertDialogTitle>
-                <AlertDialogDescription>
-                    Qual painel você gostaria de visualizar como convidado? (Funcionalidade limitada)
-                </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
-                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                     <Button onClick={() => handleGuestChoice('collaborator')} variant="outline">
-                        <User className="mr-2 h-4 w-4" /> Colaborador
-                     </Button>
-                     <Button onClick={() => handleGuestChoice('admin')} variant="outline">
-                        <Shield className="mr-2 h-4 w-4" /> Admin
-                    </Button>
-                     <Button onClick={() => handleGuestChoice('super_admin')}>
-                        <Settings2 className="mr-2 h-4 w-4" /> Super Admin
-                    </Button>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
 
          <Dialog open={isForgotPasswordOpen} onOpenChange={setIsForgotPasswordOpen}>
             <DialogContent className="sm:max-w-md">
@@ -412,3 +333,4 @@ export default function LoginPage() {
     </div>
   );
 }
+
