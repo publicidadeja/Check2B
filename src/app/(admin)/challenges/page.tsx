@@ -489,6 +489,32 @@ const ChallengeEvaluation = () => {
     const [currentEvaluation, setCurrentEvaluation] = React.useState<{ [key: string]: { status: 'approved' | 'rejected' | 'pending', feedback: string, score?: number, isSaving: boolean } }>({});
     const { toast } = useToast();
 
+    const fetchParticipantsForSelectedChallenge = React.useCallback(async (challengeId: string | null) => {
+        if (!challengeId || !organizationId) {
+            setParticipants([]);
+            setCurrentEvaluation({});
+            return;
+        }
+        setIsLoadingParticipants(true);
+        setCurrentEvaluation({}); // Clear previous evaluations for the new challenge
+        try {
+            const participantsData = await fetchParticipantsForChallengeFromFirestore(organizationId, challengeId);
+            const submittedParticipants = participantsData.filter(p => p.status === 'submitted');
+            setParticipants(submittedParticipants);
+            const initialEvalState: typeof currentEvaluation = {};
+            submittedParticipants.forEach(p => {
+                 initialEvalState[p.id] = { status: 'pending', feedback: '', isSaving: false };
+            });
+            setCurrentEvaluation(initialEvalState);
+        } catch {
+             toast({ title: "Erro", description: "Falha ao carregar participantes.", variant: "destructive" });
+             setParticipants([]); // Clear participants on error
+        } finally {
+            setIsLoadingParticipants(false);
+        }
+    }, [organizationId, toast]);
+
+
     React.useEffect(() => {
         if (!organizationId || authLoading) {
             if (!authLoading) setIsLoadingChallenges(false);
@@ -509,30 +535,8 @@ const ChallengeEvaluation = () => {
     }, [organizationId, authLoading, toast]);
 
      React.useEffect(() => {
-        if (selectedChallengeId && organizationId) {
-            const fetchParticipants = async () => {
-                setIsLoadingParticipants(true);
-                setCurrentEvaluation({});
-                try {
-                    const participantsData = await fetchParticipantsForChallengeFromFirestore(organizationId, selectedChallengeId);
-                    const submittedParticipants = participantsData.filter(p => p.status === 'submitted');
-                    setParticipants(submittedParticipants);
-                    const initialEvalState: typeof currentEvaluation = {};
-                    submittedParticipants.forEach(p => {
-                         initialEvalState[p.id] = { status: 'pending', feedback: '', isSaving: false };
-                    });
-                    setCurrentEvaluation(initialEvalState);
-                } catch {
-                     toast({ title: "Erro", description: "Falha ao carregar participantes.", variant: "destructive" });
-                } finally {
-                    setIsLoadingParticipants(false);
-                }
-            };
-            fetchParticipants();
-        } else {
-            setParticipants([]);
-        }
-    }, [selectedChallengeId, organizationId, toast]);
+        fetchParticipantsForSelectedChallenge(selectedChallengeId);
+    }, [selectedChallengeId, fetchParticipantsForSelectedChallenge]);
 
     const handleEvaluationChange = (participantId: string, field: 'status' | 'feedback' | 'score', value: any) => {
         setCurrentEvaluation(prev => ({
@@ -555,7 +559,10 @@ const ChallengeEvaluation = () => {
         const participant = participants.find(p => p.id === participantId);
         const challenge = challengesToEvaluate.find(c => c.id === selectedChallengeId);
 
-        if (!evaluationData || !participant || !challenge) return;
+        if (!evaluationData || !participant || !challenge) {
+            toast({ title: "Erro", description: "Dados da avaliação, participante ou desafio não encontrados.", variant: "destructive" });
+            return;
+        }
         if (evaluationData.status === 'pending') {
             toast({ title: "Atenção", description: "Selecione 'Aprovado' ou 'Rejeitado'.", variant: "destructive" });
             return;
@@ -574,8 +581,20 @@ const ChallengeEvaluation = () => {
                 feedback: evaluationData.feedback,
                 evaluatorId: currentUser.uid,
             });
+            
             toast({ title: "Sucesso", description: `Avaliação para ${participant.employeeName} salva.` });
-            setParticipants(prev => prev.filter(p => p.id !== participantId)); // Remove from list
+            
+            // Recarregar participantes para o desafio selecionado
+            // Isso removerá o participante avaliado da lista, pois seu status não será mais 'submitted'
+            fetchParticipantsForSelectedChallenge(selectedChallengeId);
+            
+            // Limpar o estado de avaliação para este participante já está em fetchParticipantsForSelectedChallenge
+            // setCurrentEvaluation(prevEvalState => {
+            //     const newState = { ...prevEvalState };
+            //     delete newState[participantId];
+            //     return newState;
+            // });
+
         } catch (error) {
             console.error("Falha ao salvar avaliação:", error);
             toast({ title: "Erro", description: "Falha ao salvar avaliação.", variant: "destructive" });
