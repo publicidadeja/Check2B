@@ -95,33 +95,43 @@ export function MobileLayout({ children }: MobileLayoutProps) {
   const [isLoadingNotifications, setIsLoadingNotifications] = React.useState(true);
   const [notificationError, setNotificationError] = React.useState<string | null>(null);
   const [browserNotificationPermission, setBrowserNotificationPermission] = React.useState<NotificationPermission | null>(null);
+  
   const unsubscribeRef = React.useRef<() => void>(() => {});
+  const initialLoadCompleteRef = React.useRef(false);
+
 
   const currentUserId = user?.uid;
   const currentUserDisplayName = user?.displayName;
   const currentUserPhotoUrl = user?.photoURL;
 
   React.useEffect(() => {
-    let localInitialLoadComplete = false;
+    console.log("[MobileLayout Notifications] State Updated. isLoadingNotifications:", isLoadingNotifications, "Count:", notifications.length, "Error:", notificationError);
+  }, [notifications, isLoadingNotifications, notificationError]);
+
+
+  React.useEffect(() => {
     let loadingTimeout: NodeJS.Timeout | null = null;
+    let currentListenerUnsubscribe: (() => void) | null = null;
 
     const setupNotifications = async () => {
-        if (authIsLoading) return;
+        if (authIsLoading) {
+            console.log("[MobileLayout Notifications] Auth is loading, deferring setup.");
+            return;
+        }
 
         if (isGuest || !currentUserId) {
             setIsLoadingNotifications(false);
             setNotificationError(null);
             setNotifications([]);
-            console.log("[MobileLayout Notifications] Guest mode or no user ID, skipping setup.");
-            localInitialLoadComplete = true;
+            console.log(`[MobileLayout Notifications] Guest mode (${isGuest}) or no user ID (${currentUserId}), skipping setup.`);
+            initialLoadCompleteRef.current = true;
             if (loadingTimeout) clearTimeout(loadingTimeout);
             return;
         }
-        console.log("[MobileLayout Notifications] Setting up for user ID:", currentUserId);
+        console.log(`[MobileLayout Notifications] Attempting to set up for user ID: ${currentUserId}`);
 
         if (typeof window !== 'undefined' && "Notification" in window) {
              if (Notification.permission === "default") {
-                 console.log("[MobileLayout Notifications] Requesting browser permission...");
                  const permission = await requestBrowserNotificationPermission();
                  setBrowserNotificationPermission(permission);
                  if (permission === 'granted') {
@@ -130,40 +140,34 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                     toast({title: "Notificações Bloqueadas", description: "Para receber alertas, ative nas configurações do navegador.", variant: "destructive", duration: 5000});
                  }
              } else {
-                  console.log("[MobileLayout Notifications] Browser permission already set:", Notification.permission);
                   setBrowserNotificationPermission(Notification.permission);
              }
          }
 
         setIsLoadingNotifications(true);
-        setNotificationError(null); // Reset error state on new attempt
+        setNotificationError(null);
+        initialLoadCompleteRef.current = false;
         
-        // Safety timeout for loading notifications
         loadingTimeout = setTimeout(() => {
-            if (isLoadingNotifications) { // Check if still loading
+            if (isLoadingNotifications) {
                 console.warn("[MobileLayout Notifications] Timeout: Notifications did not load within 10 seconds.");
                 setIsLoadingNotifications(false);
                 setNotificationError("Não foi possível carregar as notificações. Verifique sua conexão ou tente mais tarde.");
-                // Do not toast here, error message will be shown in dropdown
             }
-        }, 10000); // 10 seconds timeout
+        }, 10000);
 
-        if (unsubscribeRef.current) {
-            console.log("[MobileLayout Notifications] Unsubscribing previous listener.");
-            unsubscribeRef.current();
-        }
-        console.log("[MobileLayout Notifications] Starting listener...");
-        unsubscribeRef.current = listenToNotifications(
+        console.log(`[MobileLayout Notifications] Calling listenToNotifications for user: ${currentUserId}`);
+        currentListenerUnsubscribe = listenToNotifications(
             currentUserId,
             (freshNotificationsList) => {
                 if (loadingTimeout) clearTimeout(loadingTimeout);
-                console.log(`[MobileLayout Notifications] Received update with ${freshNotificationsList.length} items. InitialLoad: ${localInitialLoadComplete}`);
+                console.log(`[MobileLayout Notifications] Received update with ${freshNotificationsList.length} items for user ${currentUserId}. InitialLoadComplete: ${initialLoadCompleteRef.current}`);
                 
                 setNotifications(freshNotificationsList);
                 setIsLoadingNotifications(false);
                 setNotificationError(null);
 
-                if (localInitialLoadComplete) {
+                if (initialLoadCompleteRef.current) {
                     freshNotificationsList.forEach(n => {
                         if (!n.read && Notification.permission === 'granted') {
                             console.log(`[MobileLayout Notifications] Post-initial load: Attempting to show browser notification for unread item: ${n.id} - ${n.message}`);
@@ -181,32 +185,32 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                     });
                 } else {
                     console.log("[MobileLayout Notifications] Initial data load complete for this listener instance.");
-                    localInitialLoadComplete = true;
+                    initialLoadCompleteRef.current = true;
                 }
             },
             (error) => {
                 if (loadingTimeout) clearTimeout(loadingTimeout);
-                console.error("[MobileLayout Notifications] Error listening:", error);
-                localInitialLoadComplete = false;
+                console.error(`[MobileLayout Notifications] Error listening for user ${currentUserId}:`, error);
+                initialLoadCompleteRef.current = false;
                 setIsLoadingNotifications(false);
                 setNotificationError(error.message || "Erro ao carregar notificações.");
                 toast({ title: "Erro Notificações", description: "Não foi possível carregar as notificações.", variant: "destructive" });
             }
         );
+        unsubscribeRef.current = currentListenerUnsubscribe;
     };
 
     setupNotifications();
 
     return () => {
-         if (unsubscribeRef.current) {
-            console.log("[MobileLayout Notifications] Cleaning up listener.");
-            unsubscribeRef.current();
-            unsubscribeRef.current = () => {};
+         console.log("[MobileLayout Notifications] useEffect cleanup. Unsubscribing current listener.");
+         if (currentListenerUnsubscribe) {
+            currentListenerUnsubscribe();
          }
          if (loadingTimeout) clearTimeout(loadingTimeout);
-         localInitialLoadComplete = false;
+         initialLoadCompleteRef.current = false; // Reset on cleanup
     };
-  }, [isGuest, toast, currentUserId, authIsLoading]);
+  }, [isGuest, toast, currentUserId, authIsLoading]); // authIsLoading dependency is crucial
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -214,7 +218,6 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     e?.stopPropagation();
     if (isGuest || !currentUserId) return;
     try {
-      console.log(`[MobileLayout Notifications] Marking ${notificationId} as read.`);
       await markNotificationAsRead(currentUserId, notificationId);
     } catch (error) {
         console.error("Error marking notification as read:", error);
@@ -226,11 +229,9 @@ export function MobileLayout({ children }: MobileLayoutProps) {
      e.stopPropagation();
     if (isGuest || !currentUserId) return;
      try {
-        console.log("[MobileLayout Notifications] Marking all as read.");
         await markAllNotificationsAsRead(currentUserId);
          toast({ title: "Sucesso", description: "Notificações marcadas como lidas.", duration: 2000 });
     } catch (error) {
-         console.error("Error marking all notifications as read:", error);
         toast({ title: "Erro", description: "Falha ao marcar notificações como lidas.", variant: "destructive" });
     }
   };
@@ -242,7 +243,6 @@ export function MobileLayout({ children }: MobileLayoutProps) {
       await deleteNotification(currentUserId, notificationId);
       toast({ title: "Notificação Removida", duration: 2000 });
     } catch (error) {
-      console.error("Error deleting notification:", error);
       toast({ title: "Erro", description: "Falha ao remover notificação.", variant: "destructive" });
     }
   };
@@ -254,7 +254,6 @@ export function MobileLayout({ children }: MobileLayoutProps) {
       await deleteAllNotifications(currentUserId);
       toast({ title: "Todas as Notificações Removidas", duration: 2000 });
     } catch (error) {
-      console.error("Error deleting all notifications:", error);
       toast({ title: "Erro", description: "Falha ao remover todas as notificações.", variant: "destructive" });
     }
   };
@@ -273,7 +272,6 @@ export function MobileLayout({ children }: MobileLayoutProps) {
         toast({ title: "Logout", description: "Você saiu com sucesso." });
         router.push('/login');
     } catch (error) {
-        console.error("Erro ao fazer logout:", error);
         toast({ title: "Erro", description: "Falha ao fazer logout.", variant: "destructive" });
     }
   };
@@ -290,7 +288,6 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
    const handleTestNotification = async () => {
        if (isGuest || !currentUserId) return;
-       console.log("[MobileLayout Notifications] Triggering test notification...");
        const success = await triggerTestNotification(currentUserId);
        if (success) {
            toast({ title: "Teste Enviado", description: "Notificação de teste enviada." });
@@ -478,4 +475,3 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     </TooltipProvider>
   );
 }
-

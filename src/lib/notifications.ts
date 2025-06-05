@@ -85,18 +85,19 @@ export const listenToNotifications = (
         onError(new Error("Database not initialized for notifications."));
         return () => {}; 
     }
-    if (!employeeId) {
-        console.error("[Notifications Lib] Employee ID is null or undefined. Cannot listen for notifications.");
-        onError(new Error("Employee ID not provided for notifications."));
+    if (!employeeId || typeof employeeId !== 'string' || employeeId.trim() === '') { // Stricter check
+        console.error(`[Notifications Lib] Invalid Employee ID ('${employeeId}'). Cannot listen for notifications.`);
+        onError(new Error("Employee ID inválido ou não fornecido para notificações."));
         return () => {};
     }
 
     const notificationsRef = ref(db, `userNotifications/${employeeId}`);
-    console.log(`[Notifications Lib] Attempting to set up listener for user: ${employeeId} at path: userNotifications/${employeeId}`);
+    console.log(`[Notifications Lib - listenToNotifications] Setting up listener for user: ${employeeId} at path: userNotifications/${employeeId}`);
 
     const unsubscribe = onValue(notificationsRef, (snapshot) => {
-        console.log(`[Notifications Lib] onValue callback triggered for user: ${employeeId}. Snapshot exists: ${snapshot.exists()}`);
+        console.log(`[Notifications Lib - listenToNotifications] onValue callback triggered for user: ${employeeId}. Snapshot exists: ${snapshot.exists()}`);
         const data = snapshot.val();
+        console.log(`[Notifications Lib - listenToNotifications] Raw data from RTDB for ${employeeId}:`, data);
         let notificationsArray: Notification[] = [];
         if (data) {
             notificationsArray = Object.keys(data).map(key => {
@@ -109,24 +110,23 @@ export const listenToNotifications = (
                 };
             }).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()); 
         }
-        console.log(`[Notifications Lib] Processed ${notificationsArray.length} notifications for user ${employeeId}.`);
+        console.log(`[Notifications Lib - listenToNotifications] Processed ${notificationsArray.length} notifications for user ${employeeId}.`);
         callback(notificationsArray);
 
     }, (error) => {
-        console.error(`[Notifications Lib] Firebase onValue error for user ${employeeId}:`, error);
+        console.error(`[Notifications Lib - listenToNotifications] Firebase onValue error for user ${employeeId}:`, error);
         onError(error);
     });
-
-    // Test if the path exists right after setting up the listener (for debugging)
+    
     get(notificationsRef).then(snapshot => {
-        console.log(`[Notifications Lib] Manual get() after onValue setup for ${employeeId}. Path exists: ${snapshot.exists()}`);
+        console.log(`[Notifications Lib - listenToNotifications] Manual get() for ${employeeId} after onValue setup. Path exists: ${snapshot.exists()}. Data:`, snapshot.val());
     }).catch(err => {
-        console.error(`[Notifications Lib] Manual get() error for ${employeeId}:`, err);
+        console.error(`[Notifications Lib - listenToNotifications] Manual get() error for ${employeeId}:`, err);
     });
 
 
     return () => {
-        console.log(`[Notifications Lib] Unsubscribing listener for user: ${employeeId}`);
+        console.log(`[Notifications Lib - listenToNotifications] Unsubscribing listener for user: ${employeeId}`);
         unsubscribe();
     };
 };
@@ -249,4 +249,3 @@ export const triggerTestNotification = async (employeeId: string) => {
         return false;
     }
 };
-
