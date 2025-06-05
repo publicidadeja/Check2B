@@ -265,7 +265,7 @@ function LoginContent() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full h-10 text-sm" disabled={isLoading}>
+              <Button type="submit" className="w-full h-10 text-sm mt-6" disabled={isLoading}> {/* Margem superior aumentada aqui */}
                 {isLoading ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
