@@ -19,7 +19,7 @@ import {
   X,
   Settings,
   Loader2,
-  Trash2, // Added Trash2
+  Trash2,
 } from 'lucide-react';
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -40,10 +40,11 @@ import {
     listenToNotifications,
     markNotificationAsRead,
     markAllNotificationsAsRead,
-    deleteNotification, // Added deleteNotification
-    deleteAllNotifications, // Added deleteAllNotifications
+    deleteNotification,
+    deleteAllNotifications,
     requestBrowserNotificationPermission,
-    triggerTestNotification
+    triggerTestNotification,
+    showBrowserNotification // Importar explicitamente
 } from '@/lib/notifications';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Logo } from '@/components/logo';
@@ -100,6 +101,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
   const currentUserPhotoUrl = user?.photoURL;
 
   React.useEffect(() => {
+    let localInitialLoadComplete = false;
     const setupNotifications = async () => {
         if (authIsLoading) return;
 
@@ -107,6 +109,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
             setIsLoadingNotifications(false);
             setNotifications([]);
             console.log("[MobileLayout Notifications] Guest mode or no user ID, skipping setup.");
+            localInitialLoadComplete = true; // Consider initial load complete for guest/no user
             return;
         }
          console.log("[MobileLayout Notifications] Setting up for user ID:", currentUserId);
@@ -135,15 +138,38 @@ export function MobileLayout({ children }: MobileLayoutProps) {
         console.log("[MobileLayout Notifications] Starting listener...");
         unsubscribeRef.current = listenToNotifications(
             currentUserId,
-            (newNotifications) => {
-                console.log("[MobileLayout Notifications] Received update:", newNotifications.length, "items");
-                setNotifications(newNotifications);
+            (freshNotificationsList) => {
+                console.log(`[MobileLayout Notifications] Received update with ${freshNotificationsList.length} items. InitialLoad: ${localInitialLoadComplete}`);
+                
+                setNotifications(freshNotificationsList);
                 setIsLoadingNotifications(false);
+
+                if (localInitialLoadComplete) {
+                    freshNotificationsList.forEach(n => {
+                        if (!n.read && Notification.permission === 'granted') { // Check permission before showing
+                            console.log(`[MobileLayout Notifications] Post-initial load: Attempting to show browser notification for unread item: ${n.id} - ${n.message}`);
+                            showBrowserNotification(
+                                n.type === 'evaluation' ? 'Nova Avaliação Recebida' :
+                                n.type === 'challenge' ? 'Atualização de Desafio' :
+                                n.type === 'ranking' ? 'Ranking Atualizado' :
+                                n.type === 'announcement' ? 'Novo Anúncio Importante' :
+                                n.type === 'system' ? 'Alerta do Sistema Check2B' :
+                                'Nova Notificação Check2B',
+                                { body: n.message, tag: n.id }, // tag can help prevent re-showing if events are rapid
+                                n.id
+                            );
+                        }
+                    });
+                } else {
+                    console.log("[MobileLayout Notifications] Initial data load complete for this listener instance.");
+                    localInitialLoadComplete = true;
+                }
             },
             (error) => {
                 console.error("[MobileLayout Notifications] Error listening:", error);
-                toast({ title: "Erro Notificações", description: "Não foi possível carregar as notificações.", variant: "destructive" });
+                localInitialLoadComplete = false;
                 setIsLoadingNotifications(false);
+                toast({ title: "Erro Notificações", description: "Não foi possível carregar as notificações.", variant: "destructive" });
             }
         );
     };
@@ -156,6 +182,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
             unsubscribeRef.current();
             unsubscribeRef.current = () => {};
          }
+         localInitialLoadComplete = false; // Reset for potential re-runs if component remounts
     };
   }, [isGuest, toast, currentUserId, authIsLoading]);
 
@@ -192,7 +219,6 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     try {
       await deleteNotification(currentUserId, notificationId);
       toast({ title: "Notificação Removida", duration: 2000 });
-      // The listener will update the notifications state automatically
     } catch (error) {
       console.error("Error deleting notification:", error);
       toast({ title: "Erro", description: "Falha ao remover notificação.", variant: "destructive" });
@@ -205,7 +231,6 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     try {
       await deleteAllNotifications(currentUserId);
       toast({ title: "Todas as Notificações Removidas", duration: 2000 });
-      // The listener will update the notifications state automatically
     } catch (error) {
       console.error("Error deleting all notifications:", error);
       toast({ title: "Erro", description: "Falha ao remover todas as notificações.", variant: "destructive" });
@@ -323,7 +348,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="relative rounded-full h-9 w-9">
                         <Bell className="h-5 w-5" />
-                        {notifications.length > 0 && !isGuest && ( // Show count for all if list has items
+                        {notifications.length > 0 && !isGuest && (
                             <Badge
                             variant="destructive"
                             className="absolute -top-1 -right-1 h-4 min-w-[1rem] px-1 py-0 text-[10px] flex items-center justify-center rounded-full animate-pulse"
