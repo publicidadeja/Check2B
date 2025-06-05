@@ -3,7 +3,7 @@
 'use client';
 
 import * as React from 'react';
-import { Building, PlusCircle, MoreHorizontal, Edit, Trash2, ToggleRight, Settings2, CircleSlash, Users as UsersIcon, CalendarDays, UserShield, UserSquare } from 'lucide-react';
+import { Building, PlusCircle, MoreHorizontal, Edit, Trash2, ToggleRight, Settings2, CircleSlash, Users as UsersIcon, CalendarDays, ShieldCheck, UserSquare } from 'lucide-react'; // Changed UserShield to ShieldCheck
 import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Button } from '@/components/ui/button';
@@ -33,7 +33,7 @@ export interface Organization {
   status: 'active' | 'inactive' | 'pending';
   createdAt: Date;
   adminCount?: number;
-  collaboratorCount?: number; // Renamed from userCount for clarity
+  collaboratorCount?: number;
 }
 
 type OrganizationFormData = Pick<Organization, 'name' | 'plan' | 'status'>;
@@ -79,7 +79,7 @@ export default function OrganizationsPage() {
     {
         id: 'adminCount',
         accessorKey: "adminCount",
-        header: () => <div className="text-center flex items-center gap-1"><UserShield className="h-3 w-3"/>Admins</div>,
+        header: () => <div className="text-center flex items-center gap-1"><ShieldCheck className="h-3 w-3"/>Admins</div>, // Changed UserShield to ShieldCheck
         cell: ({ row }) => <div className="text-center text-xs">{row.original.adminCount ?? '-'}</div>,
         size: 100
     },
