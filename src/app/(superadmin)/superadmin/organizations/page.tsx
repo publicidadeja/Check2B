@@ -3,7 +3,7 @@
 'use client';
 
 import * as React from 'react';
-import { Building, PlusCircle, MoreHorizontal, Edit, Trash2, ToggleRight, Settings2, CircleSlash, Users as UsersIcon, CalendarDays } from 'lucide-react';
+import { Building, PlusCircle, MoreHorizontal, Edit, Trash2, ToggleRight, Settings2, CircleSlash, Users as UsersIcon, CalendarDays, UserShield, UserSquare } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Button } from '@/components/ui/button';
@@ -33,7 +33,7 @@ export interface Organization {
   status: 'active' | 'inactive' | 'pending';
   createdAt: Date;
   adminCount?: number;
-  userCount?: number;
+  collaboratorCount?: number; // Renamed from userCount for clarity
 }
 
 type OrganizationFormData = Pick<Organization, 'name' | 'plan' | 'status'>;
@@ -76,32 +76,40 @@ export default function OrganizationsPage() {
         cell: ({ row }) => <Badge variant={getStatusBadgeVariant(row.original.status)} className={row.original.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200' : 'text-xs'}>{getStatusText(row.original.status)}</Badge>,
         size: 100
     },
-    { 
-        id: 'userCount', // Explicit ID
-        accessorKey: "userCount", 
-        header: () => <div className="text-center flex items-center gap-1"><UsersIcon className="h-3 w-3"/>Usuários</div>, 
-        cell: ({ row }) => <div className="text-center text-xs">{row.original.userCount ?? '-'}</div>, 
-        size: 100 
+    {
+        id: 'adminCount',
+        accessorKey: "adminCount",
+        header: () => <div className="text-center flex items-center gap-1"><UserShield className="h-3 w-3"/>Admins</div>,
+        cell: ({ row }) => <div className="text-center text-xs">{row.original.adminCount ?? '-'}</div>,
+        size: 100
     },
-    { 
-      id: 'createdAt', // Explicit ID
-      accessorKey: "createdAt", 
-      header: () => <div className="flex items-center gap-1"><CalendarDays className="h-3 w-3"/>Criada em</div>, 
+    {
+        id: 'collaboratorCount',
+        accessorKey: "collaboratorCount",
+        header: () => <div className="text-center flex items-center gap-1"><UsersIcon className="h-3 w-3"/>Colab.</div>,
+        cell: ({ row }) => <div className="text-center text-xs">{row.original.collaboratorCount ?? '-'}</div>,
+        size: 100
+    },
+    {
+      id: 'createdAt',
+      accessorKey: "createdAt",
+      header: () => <div className="flex items-center gap-1"><CalendarDays className="h-3 w-3"/>Criada em</div>,
       cell: ({ row }) => {
         const createdAtDate = row.original.createdAt;
         if (createdAtDate && createdAtDate instanceof Date && !isNaN(createdAtDate.getTime())) {
           return <span className="text-xs">{format(createdAtDate, 'dd/MM/yyyy', { locale: ptBR })}</span>;
         }
-        console.warn(`OrganizationsPage: Invalid createdAt value for org ${row.original.id}:`, createdAtDate);
+        // console.warn(`OrganizationsPage: Invalid createdAt value for org ${row.original.id}:`, createdAtDate);
         return <span className="text-xs">-</span>;
-      }, 
-      size: 120 
+      },
+      size: 120
     },
     {
       id: "actions",
       header: () => <div className="text-right">Ações</div>,
       cell: ({ row }) => {
         const org = row.original;
+        const totalUsers = (org.adminCount ?? 0) + (org.collaboratorCount ?? 0);
         return (
           <div className="text-right">
             <DropdownMenu>
@@ -129,7 +137,7 @@ export default function OrganizationsPage() {
                 <DropdownMenuItem
                   onClick={() => handleDeleteClick(org)}
                   className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                  disabled={org.id === 'org_default' || org.userCount && org.userCount > 0} // Example: cannot delete if has users
+                  disabled={org.id === 'org_default' || totalUsers > 0}
                 >
                   <Trash2 className="mr-2 h-4 w-4" /> Remover
                 </DropdownMenuItem>
@@ -160,12 +168,12 @@ export default function OrganizationsPage() {
   }, [loadOrganizations]);
 
   const handleSaveOrg = async (data: OrganizationFormData) => {
-    setIsLoading(true);
+    setIsLoading(true); // Consider a more specific saving flag if needed
     try {
-      const orgPayload = selectedOrganization 
-        ? { ...selectedOrganization, ...data, createdAt: selectedOrganization.createdAt } // Preserve original createdAt on update
-        : data;
-      await saveOrganizationToFirestore(orgPayload as any); // Cast as any for now, or refine type
+      const orgPayload = selectedOrganization
+        ? { ...selectedOrganization, ...data } // Retain existing ID and counts if editing
+        : data; // For new, counts will be set by service or backend
+      await saveOrganizationToFirestore(orgPayload as any);
       setIsFormOpen(false);
       setSelectedOrganization(null);
       await loadOrganizations();
@@ -190,8 +198,9 @@ export default function OrganizationsPage() {
         toast({ title: "Ação Bloqueada", description: "A organização padrão de desenvolvimento não pode ser removida.", variant: "destructive" });
         return;
     }
-    if (org.userCount && org.userCount > 0) {
-        toast({ title: "Ação Bloqueada", description: "Não é possível remover organizações com usuários ativos. Desative-a primeiro.", variant: "destructive" });
+    const totalUsers = (org.adminCount ?? 0) + (org.collaboratorCount ?? 0);
+    if (totalUsers > 0) {
+        toast({ title: "Ação Bloqueada", description: "Não é possível remover organizações com usuários (admins ou colaboradores). Desative-a ou remova os usuários primeiro.", variant: "destructive" });
         return;
     }
     setOrganizationToDelete(org);
@@ -200,7 +209,7 @@ export default function OrganizationsPage() {
 
   const confirmDelete = async () => {
     if (organizationToDelete) {
-       setIsLoading(true);
+       setIsLoading(true); // Or a specific deleting flag
       try {
         await deleteOrganizationFromFirestore(organizationToDelete.id);
         toast({ title: "Sucesso", description: "Organização removida com sucesso." });
@@ -221,7 +230,7 @@ export default function OrganizationsPage() {
           toast({ title: "Ação Bloqueada", description: "Não é possível alterar o status da organização padrão.", variant: "destructive" });
           return;
       }
-      setIsLoading(true);
+      setIsLoading(true); // Or a specific status toggle flag
       const newStatus = org.status === 'active' ? 'inactive' : 'active';
       try {
           await updateOrganizationStatusInFirestore(org.id, newStatus);
@@ -264,7 +273,7 @@ export default function OrganizationsPage() {
               columns={columns}
               data={organizations}
               filterColumn="name"
-              filterPlaceholder="Buscar por nome ou plano..."
+              filterPlaceholder="Buscar por nome..."
             />
           )}
         </CardContent>
