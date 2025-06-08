@@ -426,7 +426,7 @@ export const acceptChallengeForEmployee = async (
   challengeId: string,
   employeeId: string,
   employeeName: string
-): Promise<ChallengeParticipation> => {
+): Promise<ChallengeParticipation> => { // Ensure it returns ChallengeParticipation
   const db = getDb();
   if (!db || !organizationId || !challengeId || !employeeId) {
     throw new Error('[ChallengeService] Missing required IDs for accepting challenge.');
@@ -441,24 +441,21 @@ export const acceptChallengeForEmployee = async (
   const now = serverTimestamp();
 
   if (snapshot.empty) {
-    // Create new participation
     const newParticipationData: Omit<ChallengeParticipation, 'id' | 'createdAt' | 'updatedAt'> = {
       challengeId,
       employeeId,
       employeeName,
       status: 'accepted',
-      acceptedAt: new Date(), // Will be converted by serverTimestamp effectively if 'now' is used in setDoc
+      acceptedAt: new Date(), 
       organizationId,
-      // Other fields like submissionText, score, etc., will be undefined initially
     };
     participationDocRef = await addDoc(collection(db, participationsPath), {
         ...newParticipationData,
         createdAt: now,
         updatedAt: now,
-        acceptedAt: now, // Ensure acceptedAt is set on creation
+        acceptedAt: now,
     });
   } else {
-    // Update existing participation if status is 'pending'
     participationDocRef = snapshot.docs[0].ref;
     const currentData = snapshot.docs[0].data() as ChallengeParticipation;
     if (currentData.status === 'pending') {
@@ -466,23 +463,25 @@ export const acceptChallengeForEmployee = async (
         status: 'accepted',
         acceptedAt: now,
         updatedAt: now,
-        employeeName: employeeName, // Ensure employeeName is updated/set
+        employeeName: employeeName, 
       });
     } else if (currentData.status !== 'accepted') {
       console.log(`[ChallengeService] Challenge ${challengeId} already in status ${currentData.status} for employee ${employeeId}.`);
     }
   }
 
-  const updatedDoc = await getDoc(participationDocRef);
-  if (!updatedDoc.exists()) throw new Error("[ChallengeService] Participation not found after accept operation.");
-  const data = updatedDoc.data()!;
+  const updatedDocSnap = await getDoc(participationDocRef); // Fetch the doc again
+  if (!updatedDocSnap.exists()) throw new Error("[ChallengeService] Participation not found after accept operation.");
+  const data = updatedDocSnap.data()!;
   return {
-    id: updatedDoc.id,
+    id: updatedDocSnap.id,
     ...data,
     organizationId,
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(),
     acceptedAt: data.acceptedAt instanceof Timestamp ? data.acceptedAt.toDate() : (data.acceptedAt ? new Date(data.acceptedAt) : undefined),
+    submittedAt: data.submittedAt instanceof Timestamp ? data.submittedAt.toDate() : (data.submittedAt ? new Date(data.submittedAt) : undefined),
+    evaluatedAt: data.evaluatedAt instanceof Timestamp ? data.evaluatedAt.toDate() : (data.evaluatedAt ? new Date(data.evaluatedAt) : undefined),
   } as ChallengeParticipation;
 };
 
@@ -521,10 +520,10 @@ export const submitChallengeForEmployee = async (
 
   const dataToUpdate: Partial<ChallengeParticipation> = {
     status: 'submitted',
-    submittedAt: new Date(), // Will be serverTimestamp
+    submittedAt: new Date(), 
     submissionText: submissionText || null,
     submissionFileUrl: submissionFileUrl || null,
-    updatedAt: new Date(), // Will be serverTimestamp
+    updatedAt: new Date(), 
   };
 
   await updateDoc(participationDocRef, {
@@ -572,7 +571,6 @@ export const getChallengeSettings = async (organizationId: string): Promise<Chal
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : undefined,
       } as ChallengeSettings;
     }
-    // Return default settings if none found in DB
     return {
         organizationId,
         rankingFactor: 1.0,
@@ -601,9 +599,9 @@ export const saveChallengeSettings = async (organizationId: string, settingsData
   try {
     await setDoc(settingsDocRef, {
       ...settingsData,
-      organizationId, // Ensure organizationId is stored within the document as well
+      organizationId, 
       updatedAt: serverTimestamp(),
-    }, { merge: true }); // Use merge to create if not exists, or update if exists
+    }, { merge: true }); 
   } catch (error) {
     console.error(`[ChallengeService] Error saving challenge settings for org ${organizationId}:`, error);
     throw error;

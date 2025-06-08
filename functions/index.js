@@ -2,6 +2,7 @@
 // Force re-deploy: v1.0.8
 const admin = require("firebase-admin");
 const util = require("util");
+const {onDocumentWritten, onDocumentCreated} = require("firebase-functions/v2/firestore");
 
 // Importações para Firebase Functions v2
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
@@ -757,4 +758,447 @@ exports.demoteAdminInMyOrg = onCall({
 
     return { success: true, message: `Administrador ${userToDemoteRecord.displayName || userIdToDemote} foi rebaixado para colaborador.` };
 });
+// --- Funções de Notificação ---
+
+/**
+ * Helper function to add a notification to Realtime Database for a specific user.
+ */
+async function addNotificationToRTDB(employeeId, notificationData) {
+    // admin SDK já deve estar inicializado globalmente.
+    const rtdb = admin.database();
+    const notificationsRef = rtdb.ref(`userNotifications/${employeeId}`);
     
+    // Verifique se o notificationData já tem um ID (caso de teste, por exemplo)
+    // Se não, gere um novo ID com push()
+    let newNotificationRef;
+    let notificationId;
+  
+    if (notificationData.id) {
+      notificationId = notificationData.id;
+      newNotificationRef = notificationsRef.child(notificationId);
+    } else {
+      newNotificationRef = notificationsRef.push();
+      notificationId = newNotificationRef.key;
+    }
+  
+    const payload = {
+      ...notificationData,
+      id: notificationId, // Garante que o ID está no payload
+      timestamp: new Date().toISOString(), // Usar ISO string para consistência
+      read: false,
+    };
+    
+    console.log(`[NotificationHelper] Attempting to add notification for employee ${employeeId} with ID ${notificationId}:`, payload);
+    try {
+      await newNotificationRef.set(payload);
+      console.log(`[NotificationHelper] Notification added successfully for ${employeeId} with ID ${notificationId}`);
+    } catch (error) {
+      console.error(`[NotificationHelper] Error setting notification for ${employeeId} with ID ${notificationId}:`, error);
+      throw error; // Re-throw para a função chamadora tratar
+    }
+  }
+  
+  /**
+   * Firestore Trigger: Sends a notification when an evaluation is written (created/updated).
+   */
+  exports.onEvaluationWritten = onDocumentWritten(
+    "organizations/{organizationId}/evaluations/{evaluationId}",
+    async (event) => {
+      const { organizationId, evaluationId } = event.params;
+      
+      if (!event.data) {
+          console.log(`[onEvaluationWritten] No data associated with event for evaluation ${evaluationId}. Event type: ${event.type}`);
+          return null;
+      }
+  
+      // Para onWrite, event.data é um objeto com 'before' e 'after' Change<DocumentSnapshot>
+      // Para onCreate, event.data.after existe. Para onDelete, event.data.before existe.
+      // Para onUpdate, ambos existem. Para onWrite, é mais seguro verificar event.data.after.
+      
+      const evaluationData = event.data.after.data(); // Dados após a escrita
+      const previousEvaluationData = event.data.before.data(); // Dados antes da escrita
+  
+      // Se não há dados após a escrita (ex: deletado), não faz nada
+      if (!evaluationData) {
+        console.log(`[onEvaluationWritten] Evaluation ${evaluationId} deleted or no data after write. No notification.`);
+        return null;
+      }
+  
+      // Lógica para evitar notificações repetidas se a avaliação não mudou significativamente
+      // Por exemplo, só notificar na primeira vez que score é definido, ou se o score mudou.
+      // Aqui, vamos simplificar e notificar se é uma nova avaliação ou se o score foi definido/alterado.
+      const isNewEvaluation = !event.data.before.exists;
+      const scoreChanged = previousEvaluationData?.score !== evaluationData.score;
+      const scoreNewlySet = !previousEvaluationData?.score && evaluationData.score !== undefined;
+  
+      if (!isNewEvaluation && !scoreChanged && !scoreNewlySet) {
+          console.log(`[onEvaluationWritten] Evaluation ${evaluationId} updated without significant change to score. No notification.`);
+          return null;
+      }
+  
+  
+      const employeeId = evaluationData.employeeId;
+      const taskId = evaluationData.taskId;
+      const score = evaluationData.score;
+  
+      if (!employeeId || !taskId || score === undefined) {
+        console.error(`[onEvaluationWritten] Missing employeeId, taskId, or score for evaluation ${evaluationId}. Cannot send notification.`);
+        return null;
+      }
+  
+      // Buscar nome da tarefa para a mensagem (opcional, mas melhora a notificação)
+      let taskTitle = `tarefa (ID: ${taskId})`;
+      try {
+        const taskDoc = await admin.firestore().doc(`organizations/${organizationId}/tasks/${taskId}`).get();
+        if (taskDoc.exists) {
+          taskTitle = taskDoc.data().title || taskTitle;
+        }
+      } catch (taskError) {
+        console.error(`[onEvaluationWritten] Error fetching task title for ${taskId}:`, taskError);
+      }
+  
+      const message = `Sua avaliação para "${taskTitle}" foi registrada com nota ${score}.`;
+      const notificationPayload = {
+        type: "evaluation",
+        message: message,
+        link: "/colaborador/avaliacoes", // Link para a página de avaliações
+        relatedId: evaluationId, // ID da avaliação
+        organizationId: organizationId, // Incluir orgId para possível depuração ou segmentação futura
+      };
+  
+      try {
+        await addNotificationToRTDB(employeeId, notificationPayload);
+        console.log(`[onEvaluationWritten] Notification sent to ${employeeId} for evaluation ${evaluationId}.`);
+      } catch (error) {
+        console.error(`[onEvaluationWritten] Failed to send notification for evaluation ${evaluationId}:`, error);
+      }
+      return null;
+    }
+  );
+  
+  /**
+ * Firestore Trigger: Sends a notification when an evaluation is written (created/updated).
+ */
+exports.onEvaluationWritten = onDocumentWritten(
+    "organizations/{organizationId}/evaluations/{evaluationId}",
+    async (event) => {
+      const { organizationId, evaluationId } = event.params;
+      
+      if (!event.data || !event.data.after.exists) { // Se foi deletado ou não há dados depois
+          console.log(`[onEvaluationWritten] Evaluation ${evaluationId} deleted or no data after write. No notification.`);
+          return null;
+      }
+  
+      const evaluationData = event.data.after.data();
+      const previousEvaluationData = event.data.before.exists ? event.data.before.data() : null;
+  
+      // Lógica para notificar apenas se o score foi definido pela primeira vez ou mudou
+      const isNewScore = !previousEvaluationData?.score && evaluationData.score !== undefined;
+      const scoreHasChanged = previousEvaluationData?.score !== evaluationData.score;
+  
+      if (!isNewScore && !scoreHasChanged) {
+          console.log(`[onEvaluationWritten] Evaluation ${evaluationId} updated, but score hasn't changed or wasn't newly set. No notification.`);
+          return null;
+      }
+  
+      const employeeId = evaluationData.employeeId;
+      const taskId = evaluationData.taskId;
+      const score = evaluationData.score;
+  
+      if (!employeeId || !taskId || score === undefined) {
+        console.error(`[onEvaluationWritten] Missing employeeId, taskId, or score for evaluation ${evaluationId}. Cannot send notification.`);
+        return null;
+      }
+  
+      let taskTitle = `tarefa (ID: ${taskId})`;
+      try {
+        const taskDoc = await admin.firestore().doc(`organizations/${organizationId}/tasks/${taskId}`).get();
+        if (taskDoc.exists) {
+          taskTitle = taskDoc.data().title || taskTitle;
+        }
+      } catch (taskError) {
+        console.error(`[onEvaluationWritten] Error fetching task title for ${taskId}:`, taskError);
+      }
+  
+      const message = `Sua avaliação para "${taskTitle}" foi registrada com nota ${score}.`;
+      const notificationPayload = {
+        type: "evaluation",
+        message: message,
+        link: "/colaborador/avaliacoes",
+        relatedId: evaluationId,
+        organizationId: organizationId,
+      };
+  
+      try {
+        await addNotificationToRTDB(employeeId, notificationPayload);
+        console.log(`[onEvaluationWritten] Notification sent to ${employeeId} for evaluation ${evaluationId}.`);
+      } catch (error) {
+        console.error(`[onEvaluationWritten] Failed to send notification for evaluation ${evaluationId}:`, error);
+      }
+      return null;
+    }
+  );
+
+  /**
+ * Firestore Trigger: Sends a notification when a challenge participation is evaluated.
+ */
+exports.onChallengeParticipationEvaluated = onDocumentWritten(
+    "organizations/{organizationId}/challengeParticipations/{participationId}",
+    async (event) => {
+      const { organizationId, participationId } = event.params;
+  
+      if (!event.data || !event.data.after.exists) {
+        console.log(`[onChallengeParticipationEvaluated] Participation ${participationId} deleted. No notification.`);
+        return null;
+      }
+  
+      const participationData = event.data.after.data();
+      const previousParticipationData = event.data.before.exists ? event.data.before.data() : null;
+  
+      // Notificar apenas se o status mudou para 'approved' ou 'rejected'
+      // e se o status anterior não era 'approved' ou 'rejected' (para evitar notificar em edições de feedback, por exemplo)
+      const evaluationJustHappened = 
+          (participationData.status === 'approved' || participationData.status === 'rejected') &&
+          (previousParticipationData?.status !== 'approved' && previousParticipationData?.status !== 'rejected');
+  
+      if (!evaluationJustHappened) {
+        console.log(`[onChallengeParticipationEvaluated] Participation ${participationId} status (${participationData.status}) not an evaluation trigger. No notification.`);
+        return null;
+      }
+  
+      const employeeId = participationData.employeeId;
+      const challengeId = participationData.challengeId;
+  
+      if (!employeeId || !challengeId) {
+        console.error(`[onChallengeParticipationEvaluated] Missing employeeId or challengeId for participation ${participationId}.`);
+        return null;
+      }
+  
+      let challengeTitle = `desafio (ID: ${challengeId})`;
+      try {
+        const challengeDoc = await admin.firestore().doc(`organizations/${organizationId}/challenges/${challengeId}`).get();
+        if (challengeDoc.exists) {
+          challengeTitle = challengeDoc.data().title || challengeTitle;
+        }
+      } catch (challengeError) {
+        console.error(`[onChallengeParticipationEvaluated] Error fetching challenge title for ${challengeId}:`, challengeError);
+      }
+  
+      let message = `Sua submissão para o desafio "${challengeTitle}" foi avaliada como ${participationData.status === 'approved' ? 'Aprovada' : 'Rejeitada'}.`;
+      if (participationData.status === 'approved' && participationData.score !== undefined) {
+        message += ` Você ganhou ${participationData.score} pontos!`;
+      }
+      if (participationData.feedback) {
+        message += ` Feedback: ${participationData.feedback}`;
+      }
+  
+      const notificationPayload = {
+        type: "challenge", // Pode ser 'challenge' ou um novo tipo 'challenge_result'
+        message: message,
+        link: "/colaborador/desafios", // Link para a página de desafios
+        relatedId: participationId,
+        organizationId: organizationId,
+      };
+  
+      try {
+        await addNotificationToRTDB(employeeId, notificationPayload);
+        console.log(`[onChallengeParticipationEvaluated] Notification sent to ${employeeId} for challenge participation ${participationId}.`);
+      } catch (error) {
+        console.error(`[onChallengeParticipationEvaluated] Failed to send notification for participation ${participationId}:`, error);
+      }
+      return null;
+    }
+  );
+
+  /**
+ * Firestore Trigger: Sends a notification when an award history entry is created (ranking confirmed for a period).
+ */
+  exports.onAwardHistoryCreatedV2 = onDocumentCreated(
+    "awardHistory/{historyId}", // Assumindo que 'awardHistory' é uma coleção raiz
+    async (event) => {
+      const { historyId } = event.params; // Parâmetros do path
+      
+      // Em onDocumentCreated, event.data contém o DocumentSnapshot do documento criado.
+      // Não há 'before' e 'after' como em onDocumentWritten.
+      if (!event.data) {
+        console.log(`[onAwardHistoryCreatedV2] No data associated with event for historyId ${historyId}. This should not happen for onCreate.`);
+        return null;
+      }
+  
+      const awardHistoryData = event.data.data(); // Dados do documento criado
+  
+      if (!awardHistoryData || !awardHistoryData.winners || awardHistoryData.winners.length === 0) {
+        console.log(`[onAwardHistoryCreatedV2] No winners found in award history ${historyId}. No notifications.`);
+        return null;
+      }
+  
+      const organizationId = awardHistoryData.organizationId; // Supondo que você armazene orgId no histórico
+      if (!organizationId) {
+          console.warn(`[onAwardHistoryCreatedV2] Missing organizationId in award history ${historyId}. Cannot determine target organization for user lookup.`);
+          // A lógica para buscar o orgId do usuário, se ausente, pode ser mantida.
+      }
+  
+      const { period, awardTitle, winners } = awardHistoryData;
+  
+      console.log(`[onAwardHistoryCreatedV2] Processing award history ${historyId} for period ${period}, award: ${awardTitle}.`);
+  
+      const notificationPromises = winners.map(async (winner) => {
+        if (!winner.employeeId) {
+          console.warn(`[onAwardHistoryCreatedV2] Winner entry missing employeeId in history ${historyId}:`, winner);
+          return null;
+        }
+        
+        let targetOrgId = organizationId;
+        if (!targetOrgId) {
+          try {
+              const userDoc = await admin.firestore().collection('users').doc(winner.employeeId).get();
+              if (userDoc.exists && userDoc.data().organizationId) {
+                  targetOrgId = userDoc.data().organizationId;
+              } else {
+                  console.warn(`[onAwardHistoryCreatedV2] Could not find organizationId for winner ${winner.employeeId}. Skipping notification.`);
+                  return null;
+              }
+          } catch (userFetchError) {
+              console.error(`[onAwardHistoryCreatedV2] Error fetching user to determine organizationId for winner ${winner.employeeId}:`, userFetchError);
+              return null;
+          }
+        }
+  
+        const message = `Parabéns! Você foi um dos vencedores da premiação "${awardTitle}" (${period}). Sua colocação: ${winner.rank}º (${winner.prize}).`;
+        const notificationPayload = {
+          type: "ranking",
+          message: message,
+          link: "/colaborador/ranking",
+          relatedId: historyId,
+          organizationId: targetOrgId,
+        };
+  
+        try {
+          // Assume que addNotificationToRTDB está definida em algum lugar no seu arquivo
+          return addNotificationToRTDB(winner.employeeId, notificationPayload);
+        } catch (error) {
+          console.error(`[onAwardHistoryCreatedV2] Failed to send ranking notification to ${winner.employeeName || winner.employeeId}:`, error);
+          return null;
+        }
+      });
+  
+      await Promise.all(notificationPromises.filter(p => p !== null));
+      console.log(`[onAwardHistoryCreatedV2] Finished processing notifications for award history ${historyId}.`);
+      return null; // Funções de gatilho geralmente retornam null ou uma Promise resolvida
+    }
+  );
+  
+
+  /**
+   * Firestore Trigger: Sends notifications when a challenge is published or becomes active.
+   */
+  exports.onChallengePublished = onDocumentWritten(
+    "organizations/{organizationId}/challenges/{challengeId}",
+    async (event) => {
+      const { organizationId, challengeId } = event.params;
+  
+      if (!event.data) {
+          console.log(`[onChallengePublished] No data associated with event for challenge ${challengeId}.`);
+          return null;
+      }
+      
+      const challengeDataAfter = event.data.after.data();
+      const challengeDataBefore = event.data.before.data();
+  
+      if (!challengeDataAfter) {
+        console.log(`[onChallengePublished] Challenge ${challengeId} deleted. No notification.`);
+        return null;
+      }
+  
+      const statusAfter = challengeDataAfter.status;
+      const statusBefore = challengeDataBefore ? challengeDataBefore.status : null;
+  
+      // Notificar se:
+      // 1. O desafio é novo e já está 'active' ou 'scheduled'.
+      // 2. O desafio foi atualizado e seu status mudou PARA 'active' ou 'scheduled' (e antes não era).
+      const isNewlyPublished = (!statusBefore || (statusBefore !== 'active' && statusBefore !== 'scheduled')) && 
+                               (statusAfter === 'active' || statusAfter === 'scheduled');
+  
+      if (!isNewlyPublished) {
+        console.log(`[onChallengePublished] Challenge ${challengeId} status (${statusAfter}) did not change to a publishable state or was already published. No notification.`);
+        return null;
+      }
+      
+      // Se 'scheduled', verificar se a data de início já passou ou é hoje.
+      if (statusAfter === 'scheduled') {
+        const startDate = new Date(challengeDataAfter.periodStartDate + "T00:00:00"); // Adicionar T00:00:00 para UTC
+        const today = new Date();
+        today.setHours(0,0,0,0); // Normalizar para o início do dia
+        
+        if (startDate > today) {
+          console.log(`[onChallengePublished] Challenge ${challengeId} is scheduled for the future (${challengeDataAfter.periodStartDate}). No notification yet.`);
+          return null;
+        }
+      }
+  
+      console.log(`[onChallengePublished] Challenge ${challengeId} is active/imminently scheduled. Processing notifications.`);
+  
+      const message = `Novo desafio disponível: "${challengeDataAfter.title}"! Participe e ganhe ${challengeDataAfter.points} pontos.`;
+      const notificationPayloadBase = {
+        type: "challenge",
+        message: message,
+        link: "/colaborador/desafios", // Link para a página de desafios
+        relatedId: challengeId,
+        organizationId: organizationId,
+      };
+  
+      const eligibility = challengeDataAfter.eligibility;
+      let targetEmployeeIds = [];
+  
+      if (eligibility.type === 'all') {
+        // Buscar todos os colaboradores ativos da organização
+        try {
+          const usersSnapshot = await admin.firestore().collection('users')
+            .where('organizationId', '==', organizationId)
+            .where('role', '==', 'collaborator')
+            .where('status', '==', 'active')
+            .get();
+          targetEmployeeIds = usersSnapshot.docs.map(doc => doc.id);
+        } catch (userFetchError) {
+          console.error(`[onChallengePublished] Error fetching all collaborators for org ${organizationId}:`, userFetchError);
+          return null;
+        }
+      } else if (eligibility.type === 'individual' && eligibility.entityIds) {
+        targetEmployeeIds = eligibility.entityIds;
+      } else if ((eligibility.type === 'department' || eligibility.type === 'role') && eligibility.entityIds) {
+        // Para department/role, buscar usuários que correspondem
+        const fieldToQuery = eligibility.type === 'department' ? 'department' : 'userRole';
+        try {
+          const usersSnapshot = await admin.firestore().collection('users')
+            .where('organizationId', '==', organizationId)
+            .where('role', '==', 'collaborator')
+            .where('status', '==', 'active')
+            .where(fieldToQuery, 'in', eligibility.entityIds) // Firestore 'in' query
+            .get();
+          targetEmployeeIds = usersSnapshot.docs.map(doc => doc.id);
+        } catch (userFetchError) {
+          console.error(`[onChallengePublished] Error fetching users for ${eligibility.type} ${eligibility.entityIds} in org ${organizationId}:`, userFetchError);
+          return null;
+        }
+      }
+  
+      if (targetEmployeeIds.length === 0) {
+        console.log(`[onChallengePublished] No target employees found for challenge ${challengeId}.`);
+        return null;
+      }
+  
+      console.log(`[onChallengePublished] Sending challenge notification to ${targetEmployeeIds.length} employees.`);
+      const notificationPromises = targetEmployeeIds.map(employeeId => 
+        addNotificationToRTDB(employeeId, notificationPayloadBase)
+      );
+  
+      try {
+        await Promise.all(notificationPromises);
+        console.log(`[onChallengePublished] All notifications sent for challenge ${challengeId}.`);
+      } catch (error) {
+        console.error(`[onChallengePublished] Failed to send one or more notifications for challenge ${challengeId}:`, error);
+      }
+      
+      return null;
+    }
+  );

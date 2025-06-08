@@ -129,7 +129,7 @@
      const isChallengeOver = isPast(endDate);
      const isChallengeNotStarted = isBefore(new Date(), startDate);
 
-     const canSubmit = participation?.status === 'accepted' &&
+     const canSubmit = (participation?.status === 'accepted' || (challenge.participationType === 'Obrigatório' && (!participation || participation.status === 'pending'))) &&
                        (challenge.status === 'active' || challenge.status === 'evaluating' || (challenge.status === 'scheduled' && !isChallengeNotStarted)) &&
                        (!isChallengeOver || challenge.status === 'evaluating');
 
@@ -199,17 +199,12 @@
                     <div className="relative h-32 sm:h-40 w-full flex-shrink-0">
                         <img src={challenge.imageUrl} alt={challenge.title} className="absolute inset-0 h-full w-full object-cover" data-ai-hint="challenge competition achievement"/>
                         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent"></div>
-                        {/* O DialogContent já tem um X, remover o daqui se não for para sobrepor a imagem */}
-                         {/* <Button variant="ghost" size="icon" className="absolute top-2 left-2 h-8 w-8 rounded-full bg-black/30 text-white hover:bg-black/50" onClick={() => onOpenChange(false)}>
-                             <ArrowLeft className="h-5 w-5"/><span className="sr-only">Voltar</span>
-                         </Button> */}
                      </div>
                   )}
                   {!challenge.imageUrl && (
                      <DialogHeader className='p-4 pb-2 border-b relative'>
                           <DialogTitle className="text-lg flex items-center gap-2"><Target className="h-5 w-5 flex-shrink-0 text-primary" /><span className="flex-1">{challenge.title}</span></DialogTitle>
                            <DialogDescription className="text-xs line-clamp-3 pt-1">{challenge.description}</DialogDescription>
-                         {/* Removido o DialogClose customizado daqui para evitar duplicidade com o X padrão do DialogContent */}
                      </DialogHeader>
                   )}
                  <ScrollArea className="flex-grow px-4 py-3">
@@ -287,7 +282,7 @@
                                  </div>
                               </>
                           )}
-                          {isPendingAcceptance && !canAccept && !isReadOnly && (
+                          {isPendingAcceptance && !canAccept && !canSubmit && (
                                 <>
                                  <Separator className="my-3"/>
                                   <div className="text-center text-muted-foreground text-xs p-3 bg-muted/50 rounded-md border">
@@ -299,9 +294,21 @@
                   </ScrollArea>
                   <DialogFooter className="mt-auto p-4 border-t bg-background gap-2 flex-col sm:flex-row">
                      {canAccept && onAccept && (<Button onClick={() => { onAccept(challenge.id); onOpenChange(false); }} className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white"><CheckCircle2 className="mr-2 h-4 w-4"/> Aceitar Desafio</Button>)}
-                     {canSubmit && onSubmit && (<Button onClick={handleSubmitModal} disabled={isSubmitting || (!submissionText && !submissionFile)} className="w-full sm:w-auto">{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{isSubmitting ? 'Enviando...' : 'Enviar Conclusão'}</Button>)}
+                     
+                     {canSubmit && onSubmit && (
+                        <Button onClick={handleSubmitModal} disabled={isSubmitting || (!submissionText?.trim() && !submissionFile)} className="w-full sm:w-auto">
+                            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {isSubmitting ? 'Enviando...' : 'Enviar Conclusão'}
+                        </Button>
+                     )}
+
                      {isReadOnly && (<Button disabled variant="outline" className="w-full sm:w-auto">{participation?.status === 'submitted' ? 'Enviado para Avaliação' : 'Avaliação Concluída'}</Button>)}
-                     {isPendingAcceptance && !canAccept && (<Button disabled variant="outline" className="w-full sm:w-auto">{isChallengeNotStarted ? 'Aguardando Início' : 'Desafio Indisponível'}</Button>)}
+                     
+                     {isPendingAcceptance && !canAccept && !canSubmit && (
+                        <Button disabled variant="outline" className="w-full sm:w-auto">
+                            {isChallengeNotStarted ? 'Aguardando Início' : isChallengeOver ? 'Desafio Encerrado' : 'Desafio Indisponível'}
+                        </Button>
+                     )}
                  </DialogFooter>
              </DialogContent>
          </Dialog>
@@ -332,26 +339,69 @@
              return;
          }
          setIsLoading(true);
-         console.log(`[CollabChallengesPage] loadChallengesData: Fetching for user ${CURRENT_EMPLOYEE_ID}, org ${organizationId}`);
          try {
-             const [challengesData, participationsData, userProfileData] = await Promise.all([
+             const [challengesData, initialParticipationsData, userProfileData] = await Promise.all([
                  getAllChallenges(organizationId),
                  getChallengeParticipationsByEmployee(organizationId, CURRENT_EMPLOYEE_ID),
                  getUserProfileData(CURRENT_EMPLOYEE_ID)
              ]);
-             console.log(`[CollabChallengesPage] Fetched ${challengesData.length} challenges, ${participationsData.length} participations.`);
-             console.log(`[CollabChallengesPage] User Profile:`, userProfileData);
-
-             setAllChallenges(challengesData);
-             setParticipations(participationsData);
+             
              setCurrentUserProfile(userProfileData);
+             let participationsToProcess = [...initialParticipationsData];
+             let needsFinalParticipationFetch = false;
+
+             if (userProfileData) {
+                 for (const challenge of challengesData) {
+                     const startDateValid = challenge.periodStartDate && isValid(parseISO(challenge.periodStartDate));
+                     const endDateValid = challenge.periodEndDate && isValid(parseISO(challenge.periodEndDate));
+                     if (!startDateValid || !endDateValid) continue;
+
+                     const endDate = parseISO(challenge.periodEndDate + "T23:59:59.999Z");
+                     const startDate = parseISO(challenge.periodStartDate);
+                     const isChallengePeriodOver = isPast(endDate);
+                     const isChallengeNotStartedYet = isBefore(new Date(), startDate);
+
+                     let isEligible = false;
+                     if (challenge.eligibility.type === 'all') isEligible = true;
+                     else if (challenge.eligibility.type === 'department' && userProfileData.department && challenge.eligibility.entityIds?.includes(userProfileData.department)) isEligible = true;
+                     else if (challenge.eligibility.type === 'role' && userProfileData.userRole && challenge.eligibility.entityIds?.includes(userProfileData.userRole)) isEligible = true;
+                     else if (challenge.eligibility.type === 'individual' && CURRENT_EMPLOYEE_ID && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID)) isEligible = true;
+                    
+                     if (isEligible && challenge.participationType === 'Obrigatório' &&
+                         (challenge.status === 'active' || (challenge.status === 'scheduled' && !isChallengeNotStartedYet)) &&
+                         !isChallengePeriodOver) {
+                        
+                         const currentParticipation = participationsToProcess.find(p => p.challengeId === challenge.id);
+                         if (!currentParticipation || currentParticipation.status === 'pending') {
+                             console.log(`[CollabChallengesPage] Auto-accepting mandatory challenge: ${challenge.title}`);
+                             try {
+                                 // Call acceptChallengeForEmployee but don't rely on its internal loadChallengesData
+                                 // We will fetch all participations once after the loop if any acceptances occurred.
+                                 await acceptChallengeForEmployee(organizationId, challenge.id, CURRENT_EMPLOYEE_ID, CURRENT_EMPLOYEE_NAME);
+                                 needsFinalParticipationFetch = true; 
+                             } catch (acceptError) {
+                                 console.error(`[CollabChallengesPage] Failed to auto-accept mandatory challenge ${challenge.id}:`, acceptError);
+                             }
+                         }
+                     }
+                 }
+             }
+
+             if (needsFinalParticipationFetch) {
+                 const finalParticipations = await getChallengeParticipationsByEmployee(organizationId, CURRENT_EMPLOYEE_ID);
+                 setParticipations(finalParticipations);
+             } else {
+                 setParticipations(initialParticipationsData);
+             }
+             setAllChallenges(challengesData);
+
          } catch (error) {
              console.error("[CollabChallengesPage] Erro ao carregar desafios e participações:", error);
              toast({ title: "Erro", description: "Não foi possível carregar seus desafios.", variant: "destructive" });
-         } finally {
-             setIsLoading(false);
-         }
-     }, [toast, CURRENT_EMPLOYEE_ID, organizationId, authIsLoading]);
+         } 
+         finally { setIsLoading(false); }
+     }, [toast, CURRENT_EMPLOYEE_ID, organizationId, authIsLoading, CURRENT_EMPLOYEE_NAME]);
+
 
      React.useEffect(() => {
          loadChallengesData();
@@ -359,11 +409,10 @@
 
      const handleAcceptChallenge = async (challengeId: string) => {
          if (!CURRENT_EMPLOYEE_ID || !organizationId) return;
-         // Consider adding a local loading state for the specific card or a global one for the modal action
          try {
              await acceptChallengeForEmployee(organizationId, challengeId, CURRENT_EMPLOYEE_ID, CURRENT_EMPLOYEE_NAME);
              toast({ title: "Desafio Aceito!", description: `Você começou o desafio: "${allChallenges.find(c => c.id === challengeId)?.title}".`, });
-             await loadChallengesData(); // Refresh data after action
+             await loadChallengesData(); // Recarregar para atualizar o estado
          } catch (error: any) {
              console.error("[CollabChallengesPage] Erro ao aceitar desafio:", error);
              toast({ title: "Erro", description: error.message || "Não foi possível aceitar o desafio.", variant: "destructive" });
@@ -372,10 +421,9 @@
 
       const handleSubmitChallenge = async (challengeId: string, submissionText?: string, fileUrl?: string) => {
          if (!CURRENT_EMPLOYEE_ID || !organizationId) return;
-          // Consider adding a local loading state for the specific card or a global one for the modal action
          try {
              await submitChallengeForEmployee(organizationId, challengeId, CURRENT_EMPLOYEE_ID, submissionText, fileUrl);
-             await loadChallengesData(); // Refresh data after action
+             await loadChallengesData(); // Recarregar para atualizar o estado
          } catch (error: any) {
              console.error("[CollabChallengesPage] Erro ao submeter desafio (na página):", error);
              // Toast for success/error is handled within the modal now
@@ -398,13 +446,11 @@
 
         allChallenges.forEach(challenge => {
             const participation = getParticipationForChallenge(challenge.id);
-            const participationStatus = participation?.status || 'pending';
+            let participationStatus = participation?.status || 'pending';
 
             const startDateValid = challenge.periodStartDate && isValid(parseISO(challenge.periodStartDate));
             const endDateValid = challenge.periodEndDate && isValid(parseISO(challenge.periodEndDate));
-            if (!startDateValid || !endDateValid) {
-                return;
-            }
+            if (!startDateValid || !endDateValid) return;
 
             const endDate = parseISO(challenge.periodEndDate + "T23:59:59.999Z");
             const startDate = parseISO(challenge.periodStartDate);
@@ -412,49 +458,49 @@
             const isChallengeNotStartedYet = isBefore(new Date(), startDate);
 
             let isEligible = false;
-            if (challenge.eligibility.type === 'all') {
-                isEligible = true;
-            } else if (currentUserProfile) {
-                if (challenge.eligibility.type === 'department' && currentUserProfile.department && challenge.eligibility.entityIds?.includes(currentUserProfile.department)) isEligible = true;
+            if (currentUserProfile) {
+                if (challenge.eligibility.type === 'all') isEligible = true;
+                else if (challenge.eligibility.type === 'department' && currentUserProfile.department && challenge.eligibility.entityIds?.includes(currentUserProfile.department)) isEligible = true;
                 else if (challenge.eligibility.type === 'role' && currentUserProfile.userRole && challenge.eligibility.entityIds?.includes(currentUserProfile.userRole)) isEligible = true;
                 else if (challenge.eligibility.type === 'individual' && CURRENT_EMPLOYEE_ID && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID)) isEligible = true;
-            } else if (challenge.eligibility.type === 'individual' && CURRENT_EMPLOYEE_ID && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID)) {
-                // Fallback for individual eligibility if profile is not yet loaded (though less likely now with profile in initial load)
+            } else if (challenge.eligibility.type === 'all' || (challenge.eligibility.type === 'individual' && CURRENT_EMPLOYEE_ID && challenge.eligibility.entityIds?.includes(CURRENT_EMPLOYEE_ID))) {
                 isEligible = true;
             }
 
-
-            if (!isEligible || challenge.status === 'draft' || challenge.status === 'archived') {
-                return;
+            if (!isEligible || challenge.status === 'draft' || challenge.status === 'archived') return;
+            
+            // If challenge is Obrigatório and participation is 'pending', treat it as 'accepted' for categorization.
+            // This ensures it appears in "Em Andamento" if active and eligible.
+            if (challenge.participationType === 'Obrigatório' && participationStatus === 'pending' &&
+                (challenge.status === 'active' || (challenge.status === 'scheduled' && !isChallengeNotStartedYet)) &&
+                !isChallengePeriodOver) {
+                // Logically treat as 'accepted' for categorization and UI, actual DB update is handled by loadChallengesData
+                // No need to change participationStatus variable here, the modal logic will handle it.
             }
 
-            // Categorization logic
+
             if (challenge.status === 'active' || (challenge.status === 'scheduled' && !isChallengeNotStartedYet)) {
-                if (participationStatus === 'pending' && !isChallengePeriodOver) {
+                if ((participationStatus === 'pending' && challenge.participationType === 'Opcional') && !isChallengePeriodOver) {
                     available.push(challenge);
-                } else if (participationStatus === 'accepted' || participationStatus === 'submitted') {
-                     // Keep in active if not over OR if it's over but still in 'evaluating' status
+                } else if (participationStatus === 'accepted' || participationStatus === 'submitted' || (participationStatus === 'pending' && challenge.participationType === 'Obrigatório')) {
                     if (!isChallengePeriodOver || challenge.status === 'evaluating') {
                         active.push(challenge);
-                    } else { // Period is over and not evaluating -> considered completed for the user
+                    } else { 
                         completed.push(challenge);
                     }
                 } else if (participationStatus === 'approved' || participationStatus === 'rejected') {
                     completed.push(challenge);
                 }
             } else if (challenge.status === 'evaluating') {
-                 if (participationStatus === 'accepted' || participationStatus === 'submitted') { // User's submission is awaiting evaluation
-                     active.push(challenge);
-                 } else if (participationStatus === 'approved' || participationStatus === 'rejected') { // User's submission was evaluated
-                     completed.push(challenge);
-                 }
-            } else if (challenge.status === 'completed') { // Challenge itself is globally completed
+                 if (participationStatus === 'accepted' || participationStatus === 'submitted' || (participationStatus === 'pending' && challenge.participationType === 'Obrigatório')) active.push(challenge);
+                 else if (participationStatus === 'approved' || participationStatus === 'rejected') completed.push(challenge);
+            } else if (challenge.status === 'completed') {
                 completed.push(challenge);
-            } else if (challenge.status === 'scheduled' && isChallengeNotStartedYet) { // Challenge is upcoming
-                if (participationStatus === 'pending') { // And user hasn't interacted
+            } else if (challenge.status === 'scheduled' && isChallengeNotStartedYet) {
+                if ((participationStatus === 'pending' && challenge.participationType === 'Opcional')) {
                     available.push(challenge);
-                } else if (participationStatus === 'accepted') { // User accepted early
-                    active.push(challenge); // Show as "Em Andamento" if accepted, even if not started
+                } else if (participationStatus === 'accepted' || (participationStatus === 'pending' && challenge.participationType === 'Obrigatório')) {
+                     active.push(challenge); 
                 }
             }
         });
@@ -596,4 +642,5 @@
              </div>
      );
  }
-
+    
+    

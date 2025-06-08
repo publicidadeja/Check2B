@@ -95,7 +95,7 @@ import {
     getChallengeSettings, // Added
     saveChallengeSettings, // Added
 } from '@/lib/challenge-service';
-import { mockEmployeesSimple } from '@/lib/mockData/challenges'; // For form select population
+//import { mockEmployeesSimple } from '@/lib/mockData/challenges'; // For form select population
 
 // Utility Functions moved to module scope
 const getStatusText = (status: Challenge['status']): string => {
