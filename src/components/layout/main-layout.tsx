@@ -50,7 +50,8 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { logoutUser, setAuthCookie } from '@/lib/auth'; // Assuming shared auth logic, added setAuthCookie
 import { useToast } from '@/hooks/use-toast';
-import { Logo } from '@/components/logo';
+import { Logo } from '@/components/logo'; // Simple icon logo
+import { Logo2b } from '@/components/logo2b'; // Text logo "Check2B"
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth'; // Import useAuth
@@ -130,15 +131,16 @@ export function MainLayout({ children }: MainLayoutProps) {
     <TooltipProvider>
       <SidebarProvider defaultOpen={!isMobile} collapsible={isMobile ? "offcanvas" : "icon"}>
         <Sidebar variant="sidebar" side="left" collapsible={isMobile ? "offcanvas" : "icon"}>
-          <SidebarHeader className="items-center justify-center gap-2 p-4">
-            <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
-              <Logo className="w-7 h-7 text-primary" />
-              <span className="text-xl font-semibold text-primary">Check2B</span>
+          <SidebarHeader className="items-start justify-start p-4 md:justify-center"> {/* Align items-start for mobile, justify-center for desktop */}
+            {/* Logo for expanded state (desktop) and mobile sheet */}
+            <div className="flex items-center gap-2 md:group-data-[state=collapsed]:hidden">
+              <Logo2b className="w-auto h-8 text-primary" /> {/* Used Logo2b */}
             </div>
-            <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=offcanvas]:hidden group-data-[state=expanded]:hidden hidden">
-              <Logo className="w-7 h-7 text-primary" />
+            {/* Icon-only logo for collapsed state (desktop) */}
+            <div className="hidden md:group-data-[state=collapsed]:flex items-center justify-center w-full">
+              <Logo className="w-7 h-7 text-primary" /> {/* Used simple Logo */}
             </div>
-            <SidebarTrigger className="group-data-[collapsible=offcanvas]:flex hidden ml-auto" />
+            <SidebarTrigger className="group-data-[collapsible=offcanvas]:flex hidden ml-auto md:hidden" /> {/* Ensure trigger is only for offcanvas or truly mobile */}
           </SidebarHeader>
           <SidebarSeparator />
           <SidebarContent className="p-2">
