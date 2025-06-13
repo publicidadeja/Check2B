@@ -1,4 +1,3 @@
-
 // src/components/layout/main-layout.tsx
 'use client';
 
@@ -51,7 +50,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { logoutUser, setAuthCookie } from '@/lib/auth'; // Assuming shared auth logic, added setAuthCookie
 import { useToast } from '@/hooks/use-toast';
 import { Logo } from '@/components/logo'; // Simple icon logo
-import { Logo2b } from '@/components/logo2b'; // Text logo "Check2B"
+import { Logo2b } from '@/components/logo2b'; // Text logo "Check2B" - Named import
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth'; // Import useAuth
@@ -131,16 +130,20 @@ export function MainLayout({ children }: MainLayoutProps) {
     <TooltipProvider>
       <SidebarProvider defaultOpen={!isMobile} collapsible={isMobile ? "offcanvas" : "icon"}>
         <Sidebar variant="sidebar" side="left" collapsible={isMobile ? "offcanvas" : "icon"}>
-          <SidebarHeader className="items-start justify-start p-4 md:justify-center"> {/* Align items-start for mobile, justify-center for desktop */}
-            {/* Logo for expanded state (desktop) and mobile sheet */}
-            <div className="flex items-center gap-2 md:group-data-[state=collapsed]:hidden">
-              <Logo2b className="w-auto h-8 text-primary" /> {/* Used Logo2b */}
+          <SidebarHeader className="items-center justify-start p-4 md:justify-center">
+            {/* Desktop: Expanded - Logo2b */}
+            <div className="hidden md:flex group-data-[state=collapsed]:hidden items-center justify-start w-full">
+              <Logo2b className="h-8 w-auto text-primary" />
             </div>
-            {/* Icon-only logo for collapsed state (desktop) */}
-            <div className="hidden md:group-data-[state=collapsed]:flex items-center justify-center w-full">
-              <Logo className="w-7 h-7 text-primary" /> {/* Used simple Logo */}
+            {/* Desktop: Collapsed - Logo */}
+            <div className="hidden group-data-[state=collapsed]:md:flex items-center justify-center w-full">
+              <Logo className="w-7 h-7 text-primary" />
             </div>
-            <SidebarTrigger className="group-data-[collapsible=offcanvas]:flex hidden ml-auto md:hidden" /> {/* Ensure trigger is only for offcanvas or truly mobile */}
+            {/* Mobile (Sheet): Logo2b */}
+            <div className="flex md:hidden items-center gap-2">
+               <Logo2b className="h-8 w-auto text-primary" />
+            </div>
+            <SidebarTrigger className="group-data-[collapsible=offcanvas]:flex hidden ml-auto md:hidden" />
           </SidebarHeader>
           <SidebarSeparator />
           <SidebarContent className="p-2">
@@ -184,7 +187,6 @@ export function MainLayout({ children }: MainLayoutProps) {
             <div className="flex items-center justify-between p-2 group-data-[collapsible=icon]:hidden">
               <div className="flex items-center gap-2">
                 <Avatar className="h-8 w-8">
-                  {/* Add user photo if available, otherwise initials */}
                   {/* <AvatarImage src={user?.photoURL} alt={userName} /> */}
                   <AvatarFallback>{getInitials(userName)}</AvatarFallback>
                 </Avatar>
@@ -225,7 +227,6 @@ export function MainLayout({ children }: MainLayoutProps) {
                 {getCurrentPageTitle()}
               </h1>
             </div>
-            {/* User Dropdown for smaller screens, or other actions */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
@@ -245,7 +246,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => router.push('/settings')}> {/* Assuming admin settings are at /settings */}
+                <DropdownMenuItem onClick={() => router.push('/settings')}>
                   <Settings className="mr-2 h-4 w-4" />
                   <span>Configurações</span>
                 </DropdownMenuItem>

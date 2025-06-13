@@ -1,4 +1,3 @@
-
 // src/components/layout/superadmin-layout.tsx
 'use client';
 
@@ -12,10 +11,10 @@ import {
   LogOut,
   Building,
   Users,
-  BarChart, // Changed from BarChart3
+  BarChart,
   LifeBuoy,
   DollarSign,
-  ShieldAlert, // Added for System Alerts/Health
+  ShieldAlert,
 } from 'lucide-react';
 
 import {
@@ -29,7 +28,7 @@ import {
   SidebarInset,
   SidebarTrigger,
   SidebarFooter,
-  SidebarSeparator, // Added Separator
+  SidebarSeparator,
 } from '@/components/ui/sidebar';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
@@ -37,8 +36,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { logoutUser } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
-import { Logo } from '@/components/logo'; // Simple icon logo
-import { Logo2b } from '@/components/logo2b'; // Text logo "Check2B"
+import { Logo } from '@/components/logo';
+import { Logo2b } from '@/components/logo2b'; // Named import
 import { useAuth } from '@/hooks/use-auth';
 import { LoadingSpinner } from '../ui/loading-spinner';
 import {
@@ -55,11 +54,10 @@ interface SuperAdminLayoutProps {
   children: ReactNode;
 }
 
-// Super Admin specific navigation items
 const navItems = [
   { href: '/superadmin', label: 'Visão Geral', icon: LayoutDashboard },
   { href: '/superadmin/organizations', label: 'Organizações', icon: Building },
-  { href: '/superadmin/users', label: 'Usuários Globais', icon: Users, disabled: true }, // Reverted to disabled
+  { href: '/superadmin/users', label: 'Usuários Globais', icon: Users, disabled: true },
   { href: '/superadmin/plans', label: 'Planos', icon: DollarSign },
   { href: '/superadmin/settings', label: 'Config. SaaS', icon: Settings, disabled: true },
   { href: '/superadmin/analytics', label: 'Analytics', icon: BarChart, disabled: true },
@@ -81,7 +79,7 @@ export function SuperAdminLayout({ children }: SuperAdminLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
-  const { user, role, isLoading: authLoading, isGuest } = useAuth(); // Get auth state
+  const { user, role, isLoading: authLoading, isGuest } = useAuth();
   const [isClient, setIsClient] = React.useState(false);
 
   React.useEffect(() => {
@@ -128,14 +126,18 @@ export function SuperAdminLayout({ children }: SuperAdminLayoutProps) {
     <TooltipProvider>
       <SidebarProvider defaultOpen={!isMobile} collapsible={isMobile ? "offcanvas" : "icon"}>
         <Sidebar variant="sidebar" side="left" collapsible={isMobile ? "offcanvas" : "icon"}>
-          <SidebarHeader className="items-start justify-start p-4 md:justify-center"> {/* Align items-start for mobile, justify-center for desktop */}
-             {/* Logo for expanded state (desktop) and mobile sheet */}
-            <div className="flex items-center gap-2 md:group-data-[state=collapsed]:hidden">
-              <Logo2b className="w-auto h-8 text-primary" />
+          <SidebarHeader className="items-center justify-start p-4 md:justify-center">
+            {/* Desktop: Expanded - Logo2b */}
+            <div className="hidden md:flex group-data-[state=collapsed]:hidden items-center justify-start w-full">
+              <Logo2b className="h-8 w-auto text-primary" />
             </div>
-            {/* Icon-only logo for collapsed state (desktop) */}
-            <div className="hidden md:group-data-[state=collapsed]:flex items-center justify-center w-full">
+            {/* Desktop: Collapsed - Logo */}
+            <div className="hidden group-data-[state=collapsed]:md:flex items-center justify-center w-full">
               <Logo className="w-7 h-7 text-primary" />
+            </div>
+            {/* Mobile (Sheet): Logo2b */}
+            <div className="flex md:hidden items-center gap-2">
+               <Logo2b className="h-8 w-auto text-primary" />
             </div>
              <SidebarTrigger className="group-data-[collapsible=offcanvas]:flex hidden ml-auto md:hidden" />
           </SidebarHeader>
@@ -222,7 +224,6 @@ export function SuperAdminLayout({ children }: SuperAdminLayoutProps) {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {/* Add any super admin specific dropdown items here if needed */}
                 <DropdownMenuItem onClick={handleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Sair</span>
