@@ -50,7 +50,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { logoutUser, setAuthCookie } from '@/lib/auth'; // Assuming shared auth logic, added setAuthCookie
 import { useToast } from '@/hooks/use-toast';
 import { Logo } from '@/components/logo'; // Simple icon logo
-import { Logo2b } from '@/components/logo2b'; // Text logo "Check2B" - Named import
+import Logo2b from '@/components/logo2b'; // Text logo "Check2B" - Importação Default
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth'; // Import useAuth
@@ -131,17 +131,17 @@ export function MainLayout({ children }: MainLayoutProps) {
       <SidebarProvider defaultOpen={!isMobile} collapsible={isMobile ? "offcanvas" : "icon"}>
         <Sidebar variant="sidebar" side="left" collapsible={isMobile ? "offcanvas" : "icon"}>
           <SidebarHeader className="items-center justify-start p-4 md:justify-center">
-            {/* Desktop: Expanded - Logo2b */}
+            {/* Desktop: Expanded - Logo2b (agora usando next/image) */}
             <div className="hidden md:flex group-data-[state=collapsed]:hidden items-center justify-start w-full">
-              <Logo2b className="h-8 w-auto text-primary" />
+              <Logo2b className="h-8 w-auto" />
             </div>
-            {/* Desktop: Collapsed - Logo */}
+            {/* Desktop: Collapsed - Logo (ícone) */}
             <div className="hidden group-data-[state=collapsed]:md:flex items-center justify-center w-full">
               <Logo className="w-7 h-7 text-primary" />
             </div>
-            {/* Mobile (Sheet): Logo2b */}
+            {/* Mobile (Sheet): Logo2b (agora usando next/image) */}
             <div className="flex md:hidden items-center gap-2">
-               <Logo2b className="h-8 w-auto text-primary" />
+               <Logo2b className="h-8 w-auto" />
             </div>
             <SidebarTrigger className="group-data-[collapsible=offcanvas]:flex hidden ml-auto md:hidden" />
           </SidebarHeader>
