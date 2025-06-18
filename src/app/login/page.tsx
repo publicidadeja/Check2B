@@ -2,6 +2,7 @@
 // src/app/login/page.tsx
 'use client';
 
+import Image from 'next/image';
 import * as React from 'react';
 import { Suspense } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -196,7 +197,14 @@ function LoginContent() {
   return (
      <Card className="w-full max-w-md shadow-xl border-none overflow-hidden rounded-xl bg-card">
          <div className="bg-gradient-to-br from-primary to-primary/80 dark:from-primary/90 dark:to-primary/70 p-6 text-center">
-              <Logo className="w-20 h-20 text-primary-foreground mx-auto mb-3 opacity-95"/>
+          <div style={{paddingTop:"10px", paddingBottom:"10px", display:"flex", justifyContent:"center" }}>
+          <Image
+                src="/logotipo.svg" // Caminho para a imagem do logo completo na pasta public
+                alt="Check2B Logo"
+                width={130}
+                height={100}
+                />
+          </div>
              <CardTitle className="text-xl font-bold text-primary-foreground">Bem-vindo ao Check2B</CardTitle>
              <CardDescription className="text-primary-foreground/80">Faça login para acessar seu painel.</CardDescription>
         </div>

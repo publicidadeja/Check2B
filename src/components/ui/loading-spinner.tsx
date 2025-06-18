@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import * as React from 'react';
 import { Logo } from '@/components/logo'; // Import the new logo
 import { cn } from '@/lib/utils';
@@ -19,7 +20,14 @@ export function LoadingSpinner({ size = 'md', className, text }: LoadingSpinnerP
 
   return (
     <div className={cn("flex flex-col items-center justify-center gap-3", className)}>
-      <Logo className={cn('animate-pulse', sizeClasses[size])} />
+      <div className={cn('animate-pulse', sizeClasses[size])}>
+      <Image
+              src="/logo.png" // Caminho para a imagem do logo completo na pasta public
+              alt="Check2B Logo"
+              width={80}
+              height={50}
+              />
+      </div>
       {text && <p className="text-sm text-muted-foreground animate-pulse">{text}</p>}
     </div>
   );
