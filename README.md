@@ -35,19 +35,23 @@ This is a Next.js application for managing daily employee evaluations using a ch
     # GOOGLE_GENAI_API_KEY=YOUR_GOOGLE_AI_API_KEY
 
     # reCAPTCHA v3 Site Key (Required for Firebase App Check)
+    # This is the "Chave do Site" (Site Key) obtained from the Google Cloud Console for reCAPTCHA v3.
     # See "Configuring Firebase App Check with reCAPTCHA v3" section below.
-    NEXT_PUBLIC_RECAPTCHA_SITE_KEY=YOUR_RECAPTCHA_V3_SITE_KEY_HERE
+    NEXT_PUBLIC_RECAPTCHA_SITE_KEY=SUA_CHAVE_DO_SITE_RECAPTCHA_VAI_AQUI
 
     # Firebase App Check Debug Token (Optional - Recommended for localhost development)
     # See "Configuring Firebase App Check with reCAPTCHA v3" section below.
     # NEXT_PUBLIC_APPCHECK_DEBUG_TOKEN=YOUR_APPCHECK_DEBUG_TOKEN_HERE
     ```
+    **Note on reCAPTCHA Keys:**
+    *   The `NEXT_PUBLIC_RECAPTCHA_SITE_KEY` is for the **Chave do Site (Site Key)**.
+    *   The **Chave Secreta (Secret Key)** for reCAPTCHA v3 is used by Google's services and Firebase App Check on the backend. You typically do **not** put the Secret Key directly into your Next.js application's environment variables for this setup. You provide it when registering your site with reCAPTCHA in the Google Cloud Console, and Firebase handles the server-side verification.
 
 3.  **Configuring Firebase App Check with reCAPTCHA v3:**
     *   Firebase App Check helps protect your backend resources (like Cloud Functions) from abuse. For web apps, it often uses reCAPTCHA v3.
     *   **CRUCIAL:** Several Cloud Functions in this project have `enforceAppCheck: true`. Without proper App Check setup, these functions will fail.
 
-    *   **3.1. Create a reCAPTCHA v3 Site Key:**
+    *   **3.1. Create a reCAPTCHA v3 Site Key and Secret Key:**
         *   Go to the [Google Cloud Console](https://console.cloud.google.com/).
         *   Select your Firebase project.
         *   Navigate to "Security" > "reCAPTCHA Enterprise" (or the classic reCAPTCHA admin page if you've used it before).
@@ -55,17 +59,17 @@ This is a Next.js application for managing daily employee evaluations using a ch
             *   Choose **reCAPTCHA v3**.
             *   Add `localhost` to the list of domains for development.
             *   Add your production domain(s) once you deploy (e.g., `your-app.com`).
-        *   After creation, copy the **Site Key**.
+        *   After creation, you will get a **Chave do Site (Site Key)** and a **Chave Secreta (Secret Key)**.
 
     *   **3.2. Add Site Key to Environment Variables:**
-        *   In your `.env` file, set `NEXT_PUBLIC_RECAPTCHA_SITE_KEY` to the Site Key you just copied.
+        *   In your `.env` file, set `NEXT_PUBLIC_RECAPTCHA_SITE_KEY` to the **Chave do Site (Site Key)** you just copied.
 
     *   **3.3. Configure App Check in Firebase Console:**
         *   Go to your [Firebase Console](https://console.firebase.google.com/) > Project.
         *   Navigate to "App Check" (under "Build" or "Release & Monitor").
         *   Click on the "Apps" tab. Find your web application in the list and click on it (or register it if not present).
         *   Under "Attestation providers", click on "reCAPTCHA v3".
-        *   Paste the **reCAPTCHA v3 Site Key** (the same one you put in your `.env` file) into the appropriate field.
+        *   Paste the **Chave do Site (Site Key)** (the same one you put in your `.env` file) into the appropriate field.
         *   Save the reCAPTCHA v3 configuration.
         *   **Important:** After configuring the provider, you need to **enforce** App Check for the services you want to protect (e.g., Cloud Functions, Firestore, Storage). In the "Services" tab of App Check, enable enforcement for "Cloud Functions" and any other services your app uses directly from the client that needs protection.
 
@@ -78,13 +82,13 @@ This is a Next.js application for managing daily employee evaluations using a ch
         *   The application code in `src/lib/firebase.ts` is already set up to use this environment variable if present on `localhost`.
 
     *   **3.5. Register Production Domains:**
-        *   **After deploying your application**, remember to go back to the Google Cloud Console (reCAPTCHA settings) and the Firebase Console (App Check settings for your web app) to add your **production domain(s)** to the list of allowed domains.
+        *   **After deploying your application**, remember to go back to the Google Cloud Console (reCAPTCHA settings for your key) and add your **production domain(s)** to the list of allowed domains. This ensures reCAPTCHA works on your live site.
 
 4.  **Create Users in Firebase Authentication:**
     *   **CRUCIAL:** For users to be able to log in, they **MUST** be created manually in the Firebase Console. Go to your Firebase project -> Authentication -> Users -> Add user.
     *   Use the email address intended for login (e.g., `admin@check2b.com`, `leocorax@gmail.com`) and set the password you want them to use.
-    *   The "Add Colaborador" feature in the admin panel **only adds mock data** for display; it **does not create authentication users**.
-    *   To assign roles (super_admin, admin, collaborator) for proper redirection and permissions, you **must** set Custom Claims for each user. This is typically done using the Firebase Admin SDK (e.g., in a Cloud Function or a separate backend script). The provided `setCustomUserClaimsFirebase` Cloud Function can be used by a Super Admin for this.
+    *   The "Add Colaborador" feature in the admin panel **only adds user profile data** to Firestore; it **does not create authentication users** nor set their passwords or roles for login.
+    *   To assign roles (super_admin, admin, collaborator) for proper redirection and permissions, you **must** set Custom Claims for each user. This is typically done using the Firebase Admin SDK (e.g., in a Cloud Function or a separate backend script). The provided `setCustomUserClaimsFirebase` Cloud Function can be used by a Super Admin for this purpose.
 
 5.  **Run the Development Server:**
     ```bash
@@ -106,7 +110,7 @@ This is a Next.js application for managing daily employee evaluations using a ch
     *   `login`: Login page.
 *   `src/components/`: Reusable UI components.
     *   `ui/`: Components from shadcn/ui.
-    *   `layout/`: Layout components (MainLayout, EmployeeLayout, SuperAdminLayout).
+    *   `layout/`: Layout components (MainLayout, MobileLayout, SuperAdminLayout).
     *   Specific components (e.g., `employee/`, `task/`, `challenge/`, `department/`, `role/`, `organization/`, `plan/`).
 *   `src/lib/`: Utility functions and core logic (e.g., `auth.ts`, `firebase.ts`, service files for Firestore collections).
 *   `src/hooks/`: Custom React hooks.
