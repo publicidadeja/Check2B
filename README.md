@@ -64,28 +64,27 @@ This is a Next.js application for managing daily employee evaluations using a ch
     *   **3.2. Add Site Key to Environment Variables:**
         *   In your `.env` file (and on your Vercel deployment environment variables), set `NEXT_PUBLIC_RECAPTCHA_SITE_KEY` to the **Chave do Site (Site Key)** you just copied.
 
-    *   **3.3. Configure App Check in Firebase Console:**
+    *   **3.3. Configure App Check Provider in Firebase Console:**
         *   Go to your [Firebase Console](https://console.firebase.google.com/) > Project.
         *   Navigate to "App Check" (under "Build" or "Release & Monitor" in the left sidebar).
-        *   Click on the "Apps" tab. Find your web application in the list and click on it (or register it if not present).
+        *   Click on the **"Apps"** tab. Find your web application in the list and click on it (or register it if not present).
         *   Under "Provedores de atestado", click on "reCAPTCHA v3".
         *   Paste the **Chave do Site (Site Key)** (the same one you put in your `.env` file) into the appropriate field.
         *   Save the reCAPTCHA v3 configuration.
-        *   **Importante (Aplicar App Check aos Serviços):** Depois de configurar o provedor (reCAPTCHA v3), o próximo passo crucial é **ativar a aplicação do App Check** para os serviços do Firebase que você deseja proteger.
-            *   Ainda na seção 'App Check' do console do Firebase (onde você acabou de configurar o provedor), procure uma lista ou cartões representando os serviços do Firebase (por exemplo, Cloud Functions, Realtime Database, Cloud Storage, Cloud Firestore). Esta seção pode se chamar "Serviços" ou estar integrada na página principal do App Check.
-            *   Clique em cada serviço que sua aplicação utiliza e para o qual você deseja proteção (especialmente **Cloud Functions**, pois as funções deste projeto têm `enforceAppCheck: true`).
-            *   Dentro da configuração de cada serviço, você encontrará um botão ou chave para **'Aplicar' (Enforce)** ou **'Ativar aplicação de políticas'**. Certifique-se de que esta opção esteja ativada.
-            *   Se você não aplicar o App Check aos seus Cloud Functions, as chamadas para eles serão bloqueadas.
 
-    *   **3.4. (Optional but Recommended for Localhost) App Check Debug Token:**
+    *   **3.4. Understanding App Check Enforcement for Services:**
+        *   **For Cloud Functions (Callable):** The enforcement is primarily handled **in your code**. In `functions/index.js`, your callable functions use `onCall({ enforceAppCheck: true }, ...)`. If you've configured the reCAPTCHA v3 provider correctly in the "Apps" tab (step 3.3), App Check will be active for these functions. There is no separate "Aplicar" button for Cloud Functions in the "APIs" tab of the App Check console like there is for Firestore or Storage.
+        *   **For Other Services (Firestore, Storage, Realtime Database):** If you want to protect these services with App Check, you would navigate to the **"APIs"** tab in the App Check section of the Firebase Console (as seen in your screenshot). There, you would select the service (e.g., "Cloud Firestore") and click "Aplicar" or "Monitorar" to enable App Check enforcement or monitoring for that specific service. This project currently does not have specific App Check rules for Firestore/Storage, relying on Security Rules for those.
+
+    *   **3.5. (Optional but Recommended for Localhost) App Check Debug Token:**
         *   For testing on `localhost`, App Check might block requests unless you use a debug token.
-        *   In the Firebase Console > App Check > Apps tab > Your Web App > (click the three-dot menu) > "Manage debug tokens".
+        *   In the Firebase Console > App Check > **"Apps"** tab > Your Web App > (click the three-dot menu) > "Manage debug tokens".
         *   Click "Add debug token" and generate a new token.
         *   Copy this token and add it to your `.env` file:
             `NEXT_PUBLIC_APPCHECK_DEBUG_TOKEN=PASTE_YOUR_DEBUG_TOKEN_HERE`
         *   The application code in `src/lib/firebase.ts` is already set up to use this environment variable if present on `localhost`.
 
-    *   **3.5. Register Production Domains:**
+    *   **3.6. Register Production Domains (reCAPTCHA Console):**
         *   **After deploying your application**, remember to go back to the Google Cloud Console (reCAPTCHA settings for your key) and add your **production domain(s)** (e.g., `your-app.vercel.app`, `your-custom-domain.com`) to the list of allowed domains for your reCAPTCHA key. This ensures reCAPTCHA works on your live site.
 
 4.  **Create Users in Firebase Authentication:**
@@ -151,11 +150,10 @@ This project uses Firebase Cloud Functions (v2) for backend operations that requ
 *   **Notification Triggers:** Firestore triggers (`onEvaluationWritten`, `onChallengeParticipationEvaluated`, `onAwardHistoryCreatedV2`, `onChallengePublished`) that automatically send real-time notifications to users based on events in the database.
 
 **Important for Cloud Functions:**
-*   **App Check Enforcement:** Many of these functions use `enforceAppCheck: true`. This means that **Firebase App Check must be correctly configured with reCAPTCHA v3 for your web app**, otherwise, these functions will fail with permission errors. Follow the "Configuring Firebase App Check with reCAPTCHA v3" section carefully.
+*   **App Check Enforcement:** Many of these functions use `enforceAppCheck: true`. This means that **Firebase App Check must be correctly configured with reCAPTCHA v3 for your web app (in the "Apps" tab of App Check settings)**, otherwise, these functions will fail with permission errors. Follow the "Configuring Firebase App Check with reCAPTCHA v3" section carefully.
 *   **Deployment:** Deploy functions using `firebase deploy --only functions`.
 *   **Logging:** Check Firebase Functions logs in the Google Cloud Console for debugging.
 
 ## Important Notes on User Management & Authentication (docs/important_notes.md)
 
 Please refer to `docs/important_notes.md` for a detailed explanation of the distinction between **Employee Data Management** within the app and **Firebase Authentication User Management & Custom Claims**, which are crucial for login and role-based access.
-
