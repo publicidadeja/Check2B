@@ -1,5 +1,6 @@
+
 // functions/index.js
-// Force re-deploy: v1.0.8
+// Force re-deploy: v1.0.9
 const admin = require("firebase-admin");
 const util = require("util");
 const {onDocumentWritten, onDocumentCreated} = require("firebase-functions/v2/firestore");
@@ -51,6 +52,13 @@ exports.setCustomUserClaimsFirebase = onCall({
   if (!auth) {
     throw new HttpsError("unauthenticated", "A função só pode ser chamada por usuários autenticados.");
   }
+
+  // App Check verification: request.app will be undefined if token is missing or invalid.
+  if (app === undefined) {
+    console.error("[setCustomUserClaimsFirebase] App Check token missing or invalid. Throwing unauthenticated.");
+    throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
+  }
+
 
   const callerUid = auth.uid;
   let callerClaims = auth.token || {};
@@ -118,54 +126,33 @@ exports.createOrganizationAdmin = onCall({
 }, async (request) => {
   const data = request.data;
   const auth = request.auth;
-  const app = request.app;
+  const app = request.app; // App Check token context
 
   console.log('[createOrganizationAdmin] Function called with data:', JSON.stringify(data));
-  console.log('[createOrganizationAdmin] Full context object keys:', Object.keys(request)); 
-  console.log('[createOrganizationAdmin] context.app (inspected):', util.inspect(app, { depth: null }));
-  console.log(`[createOrganizationAdmin] Caller UID: ${auth?.uid || 'N/A'}`);
-    if (auth && auth.token && typeof auth.token === 'object') {
-        console.log('[createOrganizationAdmin] Caller token claims (decoded):');
-        for (const key in auth.token) {
-            if (Object.prototype.hasOwnProperty.call(auth.token, key)) {
-                 try {
-                    const value = auth.token[key];
-                    console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value, {depth: 2}) : value}`);
-                } catch (e) {
-                    console.log(`  ${key}: [Could not stringify/inspect value for this claim]`);
-                }
-            }
-        }
-    } else if (auth && auth.token) {
-        console.log('[createOrganizationAdmin] Caller token (RAW, not an object, or unexpected type):', auth.token);
-    } else {
-        console.log('[createOrganizationAdmin] Caller token (auth.token) is undefined or null.');
-    }
+  console.log('[createOrganizationAdmin] Full context object keys:', Object.keys(request));
+  console.log('[createOrganizationAdmin] context.auth (decoded token claims):', util.inspect(auth?.token, { depth: null }));
+  console.log('[createOrganizationAdmin] context.app (App Check token verification):', util.inspect(app, { depth: null }));
+
+  if (!auth) {
+    console.error('[createOrganizationAdmin] Unauthenticated. Auth object missing.');
+    throw new HttpsError('unauthenticated', 'A função só pode ser chamada por usuários autenticados.');
+  }
+
+  // App Check verification: request.app will be undefined if token is missing or invalid.
+  if (app === undefined) {
+    console.error("[createOrganizationAdmin] App Check token missing or invalid. Throwing unauthenticated.");
+    throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
+  }
 
   let hasSuperAdminRole = false;
-  if (auth && auth.token && typeof auth.token === 'object' && auth.token.role === 'super_admin') {
+  if (auth.token && typeof auth.token === 'object' && auth.token.role === 'super_admin') {
       hasSuperAdminRole = true;
   }
-
-  console.log(`[createOrganizationAdmin] Verificação de Permissão: auth existe? ${!!auth}`);
-  if(auth && auth.token) {
-      console.log(`[createOrganizationAdmin] Verificação de Permissão: auth.token existe? ${!!auth.token}`);
-      if(typeof auth.token === 'object') {
-          console.log(`[createOrganizationAdmin] Verificação de Permissão: typeof auth.token é 'object'? true`);
-          console.log(`[createOrganizationAdmin] Verificação de Permissão: auth.token.role é '${auth.token.role}' (tipo: ${typeof auth.token.role})`);
-      } else {
-          console.log(`[createOrganizationAdmin] Verificação de Permissão: typeof auth.token NÃO é 'object'.`);
-      }
-  }
-  console.log(`[createOrganizationAdmin] Verificação de Permissão: hasSuperAdminRole é ${hasSuperAdminRole}`);
 
   if (!hasSuperAdminRole) {
     const callerUid = auth?.uid || 'N/A';
     const receivedRole = auth?.token?.role || 'N/A (token or role missing)';
     console.error(`[createOrganizationAdmin] PERMISSION DENIED. Caller UID: ${callerUid}. Role recebida: ${receivedRole}. Esperado 'super_admin'.`);
-    if (auth && auth.token) {
-        console.log('[createOrganizationAdmin] Denied token claims (inspected):', util.inspect(auth.token, { depth: null }));
-    }
     throw new HttpsError('permission-denied', 'Apenas Super Admins podem criar administradores de organização.');
   }
 
@@ -267,7 +254,12 @@ exports.createOrganizationUser = onCall({
         console.error('[createOrganizationUser] Unauthenticated or token missing.');
         throw new HttpsError('unauthenticated', 'A função só pode ser chamada por usuários autenticados.');
     }
-    
+    // App Check verification: request.app will be undefined if token is missing or invalid.
+    if (app === undefined) {
+        console.error("[createOrganizationUser] App Check token missing or invalid. Throwing unauthenticated.");
+        throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
+    }
+
     const callerClaims = auth.token || {};
     const { name, email, password, organizationId, department, role: userRole, photoUrl, admissionDate, status = 'active' } = data;
 
@@ -368,6 +360,11 @@ exports.deleteOrganizationUser = onCall({
         console.error('[deleteOrganizationUser] Unauthenticated or token missing.');
         throw new HttpsError('unauthenticated', 'Autenticação é necessária.');
     }
+    // App Check verification
+    if (app === undefined) {
+        console.error("[deleteOrganizationUser] App Check token missing or invalid. Throwing unauthenticated.");
+        throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
+    }
     
     const callerClaims = auth.token || {};
     const { userId, organizationId: targetOrganizationId } = data;
@@ -462,6 +459,11 @@ exports.toggleUserStatusFirebase = onCall({
     console.error('[toggleUserStatusFirebase] Unauthenticated or token missing.');
     throw new HttpsError("unauthenticated", "A função só pode ser chamada por usuários autenticados.");
   }
+  // App Check verification
+  if (app === undefined) {
+      console.error("[toggleUserStatusFirebase] App Check token missing or invalid. Throwing unauthenticated.");
+      throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
+  }
 
   const callerClaims = auth.token || {};
   const { userId, status } = data;
@@ -543,6 +545,11 @@ exports.removeAdminFromOrganizationFirebase = onCall({
         console.error('[removeAdminFromOrganizationFirebase] Unauthenticated or token missing.');
         throw new HttpsError('unauthenticated', 'Ação requer autenticação.');
     }
+    // App Check verification
+    if (app === undefined) {
+        console.error("[removeAdminFromOrganizationFirebase] App Check token missing or invalid. Throwing unauthenticated.");
+        throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
+    }
     
     const callerClaims = auth.token || {};
     if (callerClaims.role !== 'super_admin') {
@@ -620,6 +627,12 @@ exports.addAdminToMyOrg = onCall({
     if (!auth || !auth.token) {
         throw new HttpsError('unauthenticated', 'Autenticação é necessária.');
     }
+    // App Check verification
+    if (app === undefined) {
+        console.error("[addAdminToMyOrg] App Check token missing or invalid. Throwing unauthenticated.");
+        throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
+    }
+
     if (auth.token.role !== 'admin') {
         throw new HttpsError('permission-denied', 'Apenas administradores podem adicionar outros admins à sua organização.');
     }
@@ -701,6 +714,12 @@ exports.demoteAdminInMyOrg = onCall({
     if (!auth || !auth.token) {
         throw new HttpsError('unauthenticated', 'Autenticação é necessária.');
     }
+    // App Check verification
+    if (app === undefined) {
+        console.error("[demoteAdminInMyOrg] App Check token missing or invalid. Throwing unauthenticated.");
+        throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
+    }
+
     if (auth.token.role !== 'admin') {
         throw new HttpsError('permission-denied', 'Apenas administradores podem rebaixar outros admins da sua organização.');
     }
@@ -802,84 +821,6 @@ async function addNotificationToRTDB(employeeId, notificationData) {
    * Firestore Trigger: Sends a notification when an evaluation is written (created/updated).
    */
   exports.onEvaluationWritten = onDocumentWritten(
-    "organizations/{organizationId}/evaluations/{evaluationId}",
-    async (event) => {
-      const { organizationId, evaluationId } = event.params;
-      
-      if (!event.data) {
-          console.log(`[onEvaluationWritten] No data associated with event for evaluation ${evaluationId}. Event type: ${event.type}`);
-          return null;
-      }
-  
-      // Para onWrite, event.data é um objeto com 'before' e 'after' Change<DocumentSnapshot>
-      // Para onCreate, event.data.after existe. Para onDelete, event.data.before existe.
-      // Para onUpdate, ambos existem. Para onWrite, é mais seguro verificar event.data.after.
-      
-      const evaluationData = event.data.after.data(); // Dados após a escrita
-      const previousEvaluationData = event.data.before.data(); // Dados antes da escrita
-  
-      // Se não há dados após a escrita (ex: deletado), não faz nada
-      if (!evaluationData) {
-        console.log(`[onEvaluationWritten] Evaluation ${evaluationId} deleted or no data after write. No notification.`);
-        return null;
-      }
-  
-      // Lógica para evitar notificações repetidas se a avaliação não mudou significativamente
-      // Por exemplo, só notificar na primeira vez que score é definido, ou se o score mudou.
-      // Aqui, vamos simplificar e notificar se é uma nova avaliação ou se o score foi definido/alterado.
-      const isNewEvaluation = !event.data.before.exists;
-      const scoreChanged = previousEvaluationData?.score !== evaluationData.score;
-      const scoreNewlySet = !previousEvaluationData?.score && evaluationData.score !== undefined;
-  
-      if (!isNewEvaluation && !scoreChanged && !scoreNewlySet) {
-          console.log(`[onEvaluationWritten] Evaluation ${evaluationId} updated without significant change to score. No notification.`);
-          return null;
-      }
-  
-  
-      const employeeId = evaluationData.employeeId;
-      const taskId = evaluationData.taskId;
-      const score = evaluationData.score;
-  
-      if (!employeeId || !taskId || score === undefined) {
-        console.error(`[onEvaluationWritten] Missing employeeId, taskId, or score for evaluation ${evaluationId}. Cannot send notification.`);
-        return null;
-      }
-  
-      // Buscar nome da tarefa para a mensagem (opcional, mas melhora a notificação)
-      let taskTitle = `tarefa (ID: ${taskId})`;
-      try {
-        const taskDoc = await admin.firestore().doc(`organizations/${organizationId}/tasks/${taskId}`).get();
-        if (taskDoc.exists) {
-          taskTitle = taskDoc.data().title || taskTitle;
-        }
-      } catch (taskError) {
-        console.error(`[onEvaluationWritten] Error fetching task title for ${taskId}:`, taskError);
-      }
-  
-      const message = `Sua avaliação para "${taskTitle}" foi registrada com nota ${score}.`;
-      const notificationPayload = {
-        type: "evaluation",
-        message: message,
-        link: "/colaborador/avaliacoes", // Link para a página de avaliações
-        relatedId: evaluationId, // ID da avaliação
-        organizationId: organizationId, // Incluir orgId para possível depuração ou segmentação futura
-      };
-  
-      try {
-        await addNotificationToRTDB(employeeId, notificationPayload);
-        console.log(`[onEvaluationWritten] Notification sent to ${employeeId} for evaluation ${evaluationId}.`);
-      } catch (error) {
-        console.error(`[onEvaluationWritten] Failed to send notification for evaluation ${evaluationId}:`, error);
-      }
-      return null;
-    }
-  );
-  
-  /**
- * Firestore Trigger: Sends a notification when an evaluation is written (created/updated).
- */
-exports.onEvaluationWritten = onDocumentWritten(
     "organizations/{organizationId}/evaluations/{evaluationId}",
     async (event) => {
       const { organizationId, evaluationId } = event.params;
@@ -1202,3 +1143,4 @@ exports.onChallengeParticipationEvaluated = onDocumentWritten(
       return null;
     }
   );
+
