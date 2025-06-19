@@ -68,12 +68,27 @@ export const saveAward = async (db: Firestore, awardData: Omit<Award, 'id'> | Aw
   let docRef;
   let idToSave = 'id' in awardData ? awardData.id : undefined;
 
-  const dataForFirestore: any = { ...awardData };
-  if (dataForFirestore.specificMonth && dataForFirestore.specificMonth instanceof Date) {
-    dataForFirestore.specificMonth = Timestamp.fromDate(dataForFirestore.specificMonth);
-  }
+  // Clone awardData to avoid mutating the input, and prepare for Firestore
+  const dataForFirestore: { [key: string]: any } = { ...awardData };
+  
+  // Remove 'id' from the data to be saved, as it's used for doc path or auto-generated
   if ('id' in dataForFirestore) {
     delete dataForFirestore.id;
+  }
+
+  // Convert specificMonth: Date to Firestore Timestamp if it exists,
+  // otherwise ensure it's null if undefined or explicitly null from input.
+  if (dataForFirestore.specificMonth && dataForFirestore.specificMonth instanceof Date) {
+    dataForFirestore.specificMonth = Timestamp.fromDate(dataForFirestore.specificMonth);
+  } else {
+    // If specificMonth is undefined (e.g. for recurring awards) or already null, set it to null.
+    // This ensures 'undefined' is not sent to Firestore.
+    dataForFirestore.specificMonth = null;
+  }
+
+  // If the award is recurring, ensure specificMonth is indeed null.
+  if (dataForFirestore.isRecurring === true) {
+    dataForFirestore.specificMonth = null;
   }
 
 
@@ -81,6 +96,8 @@ export const saveAward = async (db: Firestore, awardData: Omit<Award, 'id'> | Aw
     docRef = doc(db, 'awards', idToSave);
     await setDoc(docRef, dataForFirestore, { merge: true });
   } else {
+    // For new documents, ensure createdAt is also set if not already present.
+    // (Assuming awardData might not have it yet for new awards)
     docRef = await addDoc(awardsCollectionRef, dataForFirestore);
     idToSave = docRef.id;
   }
@@ -536,6 +553,3 @@ export const calculateMonthlyRanking = async (organizationId: string, currentPer
         throw error;
     }
 };
-
-
-    
