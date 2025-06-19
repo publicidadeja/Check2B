@@ -58,20 +58,24 @@ This is a Next.js application for managing daily employee evaluations using a ch
         *   Create a new key:
             *   Choose **reCAPTCHA v3**.
             *   Add `localhost` to the list of domains for development.
-            *   Add your production domain(s) once you deploy (e.g., `your-app.com`).
+            *   Add your production domain(s) once you deploy (e.g., `your-app.com`, `*.vercel.app`).
         *   After creation, you will get a **Chave do Site (Site Key)** and a **Chave Secreta (Secret Key)**.
 
     *   **3.2. Add Site Key to Environment Variables:**
-        *   In your `.env` file, set `NEXT_PUBLIC_RECAPTCHA_SITE_KEY` to the **Chave do Site (Site Key)** you just copied.
+        *   In your `.env` file (and on your Vercel deployment environment variables), set `NEXT_PUBLIC_RECAPTCHA_SITE_KEY` to the **Chave do Site (Site Key)** you just copied.
 
     *   **3.3. Configure App Check in Firebase Console:**
         *   Go to your [Firebase Console](https://console.firebase.google.com/) > Project.
-        *   Navigate to "App Check" (under "Build" or "Release & Monitor").
+        *   Navigate to "App Check" (under "Build" or "Release & Monitor" in the left sidebar).
         *   Click on the "Apps" tab. Find your web application in the list and click on it (or register it if not present).
-        *   Under "Attestation providers", click on "reCAPTCHA v3".
+        *   Under "Provedores de atestado", click on "reCAPTCHA v3".
         *   Paste the **Chave do Site (Site Key)** (the same one you put in your `.env` file) into the appropriate field.
         *   Save the reCAPTCHA v3 configuration.
-        *   **Important:** After configuring the provider, you need to **enforce** App Check for the services you want to protect (e.g., Cloud Functions, Firestore, Storage). In the "Services" tab of App Check, enable enforcement for "Cloud Functions" and any other services your app uses directly from the client that needs protection.
+        *   **Importante (Aplicar App Check aos Serviços):** Depois de configurar o provedor (reCAPTCHA v3), o próximo passo crucial é **ativar a aplicação do App Check** para os serviços do Firebase que você deseja proteger.
+            *   Ainda na seção 'App Check' do console do Firebase (onde você acabou de configurar o provedor), procure uma lista ou cartões representando os serviços do Firebase (por exemplo, Cloud Functions, Realtime Database, Cloud Storage, Cloud Firestore). Esta seção pode se chamar "Serviços" ou estar integrada na página principal do App Check.
+            *   Clique em cada serviço que sua aplicação utiliza e para o qual você deseja proteção (especialmente **Cloud Functions**, pois as funções deste projeto têm `enforceAppCheck: true`).
+            *   Dentro da configuração de cada serviço, você encontrará um botão ou chave para **'Aplicar' (Enforce)** ou **'Ativar aplicação de políticas'**. Certifique-se de que esta opção esteja ativada.
+            *   Se você não aplicar o App Check aos seus Cloud Functions, as chamadas para eles serão bloqueadas.
 
     *   **3.4. (Optional but Recommended for Localhost) App Check Debug Token:**
         *   For testing on `localhost`, App Check might block requests unless you use a debug token.
@@ -82,7 +86,7 @@ This is a Next.js application for managing daily employee evaluations using a ch
         *   The application code in `src/lib/firebase.ts` is already set up to use this environment variable if present on `localhost`.
 
     *   **3.5. Register Production Domains:**
-        *   **After deploying your application**, remember to go back to the Google Cloud Console (reCAPTCHA settings for your key) and add your **production domain(s)** to the list of allowed domains. This ensures reCAPTCHA works on your live site.
+        *   **After deploying your application**, remember to go back to the Google Cloud Console (reCAPTCHA settings for your key) and add your **production domain(s)** (e.g., `your-app.vercel.app`, `your-custom-domain.com`) to the list of allowed domains for your reCAPTCHA key. This ensures reCAPTCHA works on your live site.
 
 4.  **Create Users in Firebase Authentication:**
     *   **CRUCIAL:** For users to be able to log in, they **MUST** be created manually in the Firebase Console. Go to your Firebase project -> Authentication -> Users -> Add user.
@@ -154,3 +158,4 @@ This project uses Firebase Cloud Functions (v2) for backend operations that requ
 ## Important Notes on User Management & Authentication (docs/important_notes.md)
 
 Please refer to `docs/important_notes.md` for a detailed explanation of the distinction between **Employee Data Management** within the app and **Firebase Authentication User Management & Custom Claims**, which are crucial for login and role-based access.
+
