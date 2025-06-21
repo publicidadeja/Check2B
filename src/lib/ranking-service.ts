@@ -68,36 +68,36 @@ export const saveAward = async (db: Firestore, awardData: Omit<Award, 'id'> | Aw
   let docRef;
   let idToSave = 'id' in awardData ? awardData.id : undefined;
 
-  // Clone awardData to avoid mutating the input, and prepare for Firestore
+  // Clone awardData to avoid mutating the input, and prepare it for Firestore
   const dataForFirestore: { [key: string]: any } = { ...awardData };
-  
-  // Remove 'id' from the data to be saved, as it's used for doc path or auto-generated
-  if ('id' in dataForFirestore) {
+
+  // Remove the 'id' property if it exists, as it's the doc name, not field data
+  if (idToSave) {
     delete dataForFirestore.id;
   }
-
-  // Convert specificMonth: Date to Firestore Timestamp if it exists,
-  // otherwise ensure it's null if undefined or explicitly null from input.
-  if (dataForFirestore.specificMonth && dataForFirestore.specificMonth instanceof Date) {
+  
+  // Sanitize optional fields to be null instead of undefined before saving
+  if (dataForFirestore.isRecurring || dataForFirestore.specificMonth === undefined) {
+    dataForFirestore.specificMonth = null;
+  } else if (dataForFirestore.specificMonth instanceof Date) {
     dataForFirestore.specificMonth = Timestamp.fromDate(dataForFirestore.specificMonth);
-  } else {
-    // If specificMonth is undefined (e.g. for recurring awards) or already null, set it to null.
-    // This ensures 'undefined' is not sent to Firestore.
-    dataForFirestore.specificMonth = null;
   }
 
-  // If the award is recurring, ensure specificMonth is indeed null.
-  if (dataForFirestore.isRecurring === true) {
-    dataForFirestore.specificMonth = null;
+  if (dataForFirestore.valuesPerPosition === undefined || dataForFirestore.winnerCount <= 1) {
+    dataForFirestore.valuesPerPosition = null;
   }
-
+  
+  if (dataForFirestore.monetaryValue === undefined) dataForFirestore.monetaryValue = null;
+  if (dataForFirestore.nonMonetaryValue === undefined) dataForFirestore.nonMonetaryValue = null;
+  if (dataForFirestore.imageUrl === undefined) dataForFirestore.imageUrl = null;
+  if (dataForFirestore.eligibilityCriteria === undefined) dataForFirestore.eligibilityCriteria = false;
 
   if (idToSave) {
     docRef = doc(db, 'awards', idToSave);
     await setDoc(docRef, dataForFirestore, { merge: true });
   } else {
-    // For new documents, ensure createdAt is also set if not already present.
-    // (Assuming awardData might not have it yet for new awards)
+    // For new documents, add createdAt
+    dataForFirestore.createdAt = Timestamp.now();
     docRef = await addDoc(awardsCollectionRef, dataForFirestore);
     idToSave = docRef.id;
   }
@@ -114,6 +114,7 @@ export const saveAward = async (db: Firestore, awardData: Omit<Award, 'id'> | Aw
     specificMonth: savedData?.specificMonth instanceof Timestamp ? savedData.specificMonth.toDate() : savedData?.specificMonth,
   } as Award;
 };
+
 
 /**
  * Fetches a single award by its ID from Firestore.
@@ -366,7 +367,7 @@ export const getRankingSettings = async (organizationId: string): Promise<Rankin
 export const saveRankingSettings = async (organizationId: string, settingsData: RankingSettingsData): Promise<void> => {
   const db = getDb();
   if (!db || !organizationId) {
-    throw new Error('[RankingService] Firestore not initialized or organizationId missing. Cannot save ranking settings.');
+    throw new Error('[RankingService] Firestore not initialized. Cannot save ranking settings.');
   }
   console.log(`[RankingService - saveRankingSettings] Saving for org: ${organizationId}`, settingsData);
   const settingsDocRef = doc(db, `organizations/${organizationId}/rankingManagement`, RANKING_CONFIG_DOC_ID);
@@ -553,3 +554,6 @@ export const calculateMonthlyRanking = async (organizationId: string, currentPer
         throw error;
     }
 };
+
+
+    
