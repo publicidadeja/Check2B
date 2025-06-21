@@ -35,11 +35,12 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import type { Organization } from '@/app/(superadmin)/superadmin/organizations/page';
+import type { Plan } from '@/types/plan'; // Import Plan type
 
 
 const organizationSchema = z.object({
   name: z.string().min(2, { message: 'Nome da organização deve ter pelo menos 2 caracteres.' }),
-  plan: z.enum(['basic', 'premium', 'enterprise'], { required_error: "Plano é obrigatório." }),
+  plan: z.string({ required_error: "Plano é obrigatório." }).min(1, "Plano é obrigatório."), // Changed to string
   status: z.enum(['active', 'inactive', 'pending'], { required_error: "Status é obrigatório." }),
 });
 
@@ -47,6 +48,7 @@ type OrganizationFormData = z.infer<typeof organizationSchema>;
 
 interface OrganizationFormProps {
   organization?: Organization | null;
+  plans: Plan[]; // Receive plans as a prop
   onSave: (data: OrganizationFormData) => Promise<void>;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -54,6 +56,7 @@ interface OrganizationFormProps {
 
 export function OrganizationForm({
     organization,
+    plans,
     onSave,
     open: controlledOpen,
     onOpenChange: controlledOnOpenChange,
@@ -69,7 +72,7 @@ export function OrganizationForm({
     resolver: zodResolver(organizationSchema),
     defaultValues: {
       name: '',
-      plan: 'basic',
+      plan: '', // Default to empty string
       status: 'pending',
     },
   });
@@ -79,13 +82,13 @@ export function OrganizationForm({
       if (organization) {
         form.reset({
           name: organization.name || '',
-          plan: organization.plan || 'basic',
+          plan: organization.plan || '',
           status: organization.status || 'pending',
         });
       } else {
         form.reset({
           name: '',
-          plan: 'basic',
+          plan: '',
           status: 'pending',
         });
       }
@@ -148,9 +151,15 @@ export function OrganizationForm({
                           <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="basic">Básico</SelectItem>
-                          <SelectItem value="premium">Premium</SelectItem>
-                          <SelectItem value="enterprise">Enterprise</SelectItem>
+                          {plans.length === 0 ? (
+                            <SelectItem value="loading" disabled>Carregando planos...</SelectItem>
+                          ) : (
+                            plans.map((plan) => (
+                              <SelectItem key={plan.id} value={plan.name}>
+                                {plan.name}
+                              </SelectItem>
+                            ))
+                          )}
                         </SelectContent>
                       </Select>
                       <FormMessage />

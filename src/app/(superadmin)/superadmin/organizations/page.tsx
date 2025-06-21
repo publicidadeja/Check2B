@@ -1,4 +1,3 @@
-
 // src/app/(superadmin)/superadmin/organizations/page.tsx
 'use client';
 
@@ -25,11 +24,13 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import Link from 'next/link';
 import { getAllOrganizations, saveOrganization as saveOrganizationToFirestore, deleteOrganizationFromFirestore, updateOrganizationStatusInFirestore } from '@/lib/organization-service';
+import { getAllPlans } from '@/lib/plan-service'; // Import plan service
+import type { Plan } from '@/types/plan'; // Import Plan type
 
 export interface Organization {
   id: string;
   name: string;
-  plan: 'basic' | 'premium' | 'enterprise';
+  plan: string; // Changed from enum to string
   status: 'active' | 'inactive' | 'pending';
   createdAt: Date;
   adminCount?: number;
@@ -41,6 +42,7 @@ type OrganizationFormData = Pick<Organization, 'name' | 'plan' | 'status'>;
 
 export default function OrganizationsPage() {
   const [organizations, setOrganizations] = React.useState<Organization[]>([]);
+  const [plans, setPlans] = React.useState<Plan[]>([]); // State for plans
   const [isLoading, setIsLoading] = React.useState(true);
   const [selectedOrganization, setSelectedOrganization] = React.useState<Organization | null>(null);
   const [isFormOpen, setIsFormOpen] = React.useState(false);
@@ -150,22 +152,26 @@ export default function OrganizationsPage() {
     },
   ];
 
-  const loadOrganizations = React.useCallback(async () => {
+  const loadData = React.useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await getAllOrganizations();
-      setOrganizations(data.sort((a,b) => a.name.localeCompare(b.name)));
+      const [orgData, planData] = await Promise.all([
+        getAllOrganizations(),
+        getAllPlans()
+      ]);
+      setOrganizations(orgData.sort((a,b) => a.name.localeCompare(b.name)));
+      setPlans(planData.filter(p => p.status === 'active')); // Only show active plans
     } catch (error) {
-      console.error("Falha ao carregar organizações:", error);
-      toast({ title: "Erro", description: "Falha ao carregar organizações.", variant: "destructive" });
+      console.error("Falha ao carregar organizações ou planos:", error);
+      toast({ title: "Erro", description: "Falha ao carregar dados da página.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
   }, [toast]);
 
   React.useEffect(() => {
-    loadOrganizations();
-  }, [loadOrganizations]);
+    loadData();
+  }, [loadData]);
 
   const handleSaveOrg = async (data: OrganizationFormData) => {
     setIsLoading(true); // Consider a more specific saving flag if needed
@@ -176,7 +182,7 @@ export default function OrganizationsPage() {
       await saveOrganizationToFirestore(orgPayload as any);
       setIsFormOpen(false);
       setSelectedOrganization(null);
-      await loadOrganizations();
+      await loadData();
       toast({
         title: "Sucesso!",
         description: `Organização ${selectedOrganization ? 'atualizada' : 'criada'} com sucesso.`,
@@ -213,7 +219,7 @@ export default function OrganizationsPage() {
       try {
         await deleteOrganizationFromFirestore(organizationToDelete.id);
         toast({ title: "Sucesso", description: "Organização removida com sucesso." });
-        await loadOrganizations();
+        await loadData();
       } catch (error: any) {
         console.error("Falha ao remover organização:", error);
         toast({ title: "Erro", description: error.message || "Falha ao remover organização.", variant: "destructive" });
@@ -235,7 +241,7 @@ export default function OrganizationsPage() {
       try {
           await updateOrganizationStatusInFirestore(org.id, newStatus);
           toast({ title: "Sucesso", description: `Status da organização ${org.name} alterado para ${getStatusText(newStatus)}.` });
-          await loadOrganizations();
+          await loadData();
       } catch (error: any) {
           console.error("Falha ao alterar status:", error);
           toast({ title: "Erro", description: error.message || "Falha ao alterar status.", variant: "destructive" });
@@ -289,6 +295,7 @@ export default function OrganizationsPage() {
 
        <OrganizationForm
           organization={selectedOrganization}
+          plans={plans}
           onSave={handleSaveOrg}
           open={isFormOpen}
           onOpenChange={setIsFormOpen}
@@ -313,4 +320,3 @@ export default function OrganizationsPage() {
     </div>
   );
 }
-
