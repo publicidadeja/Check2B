@@ -1,45 +1,64 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users: Users can only read/update their own document.
-    match /users/{userId} {
-      allow read, update: if request.auth != null && request.auth.uid == userId;
-      // Creation/deletion handled by Cloud Functions.
-    }
-
-    // Organizations: Can only be read/written by Super Admins.
+    // Organizations: Only super admins can manage.
     match /organizations/{orgId} {
-      allow read, write: if request.auth != null && request.auth.token.role == 'super_admin';
-
-      // Subcollections (Tasks, Departments, etc.)
-      match /{subcollection}/{docId} {
-        // Admins of the specific organization can manage these resources.
-        allow read, write: if request.auth != null && request.auth.token.organizationId == orgId && request.auth.token.role == 'admin';
-        // Collaborators can read resources of their own organization.
-        allow read: if request.auth != null && request.auth.token.organizationId == orgId && request.auth.token.role == 'collaborator';
-      }
+      allow read, write: if request.auth.token.role == 'super_admin';
     }
     
-    // Awards: Temporarily allow any authenticated user to write for debugging.
-    // Admins and Super Admins can write, anyone authenticated can read.
+    // Plans: Only super admins can manage.
+    match /plans/{planId} {
+        allow read, write: if request.auth.token.role == 'super_admin';
+    }
+
+    // Award History: Can be read by any authenticated user, only written by admins.
+    match /awardHistory/{historyId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth.token.role in ['super_admin', 'admin'];
+    }
+
+    // Awards: Read by any authenticated user, written by admins/super_admins.
     match /awards/{awardId} {
       allow read: if request.auth != null;
-      // TEMPORARY RULE FOR DEBUGGING
-      allow write: if request.auth != null;
-      // ORIGINAL RULE: allow write: if request.auth.token.role == 'super_admin' || request.auth.token.role == 'admin';
+      allow write: if request.auth.token.role in ['super_admin', 'admin'];
     }
 
-    // Award History: Can be read by anyone authenticated, written only by admins/super_admins
-    match /awardHistory/{historyId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth.token.role == 'super_admin' || request.auth.token.role == 'admin';
+    // Settings (General, Ranking, etc.): Read/write by admins of that org.
+    match /organizations/{orgId}/appSettings/{docId} {
+        allow read, write: if request.auth.token.role == 'admin' && request.auth.token.organizationId == orgId;
+    }
+    match /organizations/{orgId}/rankingManagement/{docId} {
+        allow read, write: if request.auth.token.role == 'admin' && request.auth.token.organizationId == orgId;
+    }
+    match /organizations/{orgId}/challengeManagement/{docId} {
+        allow read, write: if request.auth.token.role == 'admin' && request.auth.token.organizationId == orgId;
     }
 
-    // Plans: Can be read by anyone authenticated, written only by super_admins
-    match /plans/{planId} {
-        allow read: if request.auth != null;
-        allow write: if request.auth.token.role == 'super_admin';
+    // Org-specific data (Tasks, Roles, Departments): Read by any user in the org, write by admins of that org.
+    match /organizations/{orgId}/{collection}/{docId} {
+      allow read: if request.auth.token.organizationId == orgId;
+      allow write: if request.auth.token.role == 'admin' && request.auth.token.organizationId == orgId;
+    }
+
+    // Users collection:
+    match /users/{userId} {
+      // Read: A user can read their own profile. Admins/super_admins can read any profile.
+      allow read: if request.auth.uid == userId || request.auth.token.role in ['admin', 'super_admin'];
+
+      // Update: A user can update their own profile. Admins/super_admins can update any profile.
+      // Note: Cloud Functions are used for role/status changes, which use the Admin SDK and bypass these rules.
+      // This rule is for direct client-side updates (e.g., phone number, notification settings).
+      allow update: if request.auth.uid == userId || request.auth.token.role in ['admin', 'super_admin'];
+
+      // Create: Allow users to create their own profile document, typically after signup.
+      // The Cloud Function handles creation for admins/super_admins.
+      allow create: if request.auth.uid == userId;
+
+      // Delete: Only super admins should be able to delete users directly from DB (if ever needed).
+      // Deletion is handled by a Cloud Function for security.
+      allow delete: if request.auth.token.role == 'super_admin';
     }
   }
 }
