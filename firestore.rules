@@ -1,73 +1,45 @@
-
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-  
-    // Por padrão, nega todas as leituras e escritas
-    match /{document=**} {
-      allow read, write: if false;
-    }
 
-    // Regras da coleção de usuários
-    // Permite que usuários autenticados leiam perfis
-    // Permite que um usuário atualize seu próprio perfil
-    // Permite que admins/super_admins gerenciem qualquer perfil
+    // Users: Users can only read/update their own document.
     match /users/{userId} {
-      allow read: if request.auth != null;
-      allow update: if request.auth.uid == userId 
-                      || request.auth.token.role in ['admin', 'super_admin'];
-      allow create, delete: if request.auth.token.role in ['admin', 'super_admin'];
+      allow read, update: if request.auth != null && request.auth.uid == userId;
+      // Creation/deletion handled by Cloud Functions.
     }
 
-    // Regras da coleção de organizações
-    // Permite que Super Admins gerenciem todas as organizações
-    // Permite que Admins leiam os dados da sua própria organização
+    // Organizations: Can only be read/written by Super Admins.
     match /organizations/{orgId} {
-      allow read: if request.auth.token.role == 'super_admin' 
-                    || (request.auth.token.role == 'admin' && request.auth.token.organizationId == orgId);
-      allow write: if request.auth.token.role == 'super_admin';
-    }
+      allow read, write: if request.auth != null && request.auth.token.role == 'super_admin';
 
-    // Regras para subcoleções dentro de uma organização (tasks, roles, departments, etc.)
-    match /organizations/{orgId}/{subcollection}/{docId} {
-        // Admins da organização e super admins têm acesso total
-        allow read, write: if request.auth != null && (
-                            request.auth.token.role == 'super_admin' ||
-                            (request.auth.token.role == 'admin' && request.auth.token.organizationId == orgId)
-                          );
-        // Colaboradores podem ler a maioria dos dados da sua própria organização
-        allow read: if request.auth != null && 
-                     request.auth.token.role == 'collaborator' && 
-                     request.auth.token.organizationId == orgId;
+      // Subcollections (Tasks, Departments, etc.)
+      match /{subcollection}/{docId} {
+        // Admins of the specific organization can manage these resources.
+        allow read, write: if request.auth != null && request.auth.token.organizationId == orgId && request.auth.token.role == 'admin';
+        // Collaborators can read resources of their own organization.
+        allow read: if request.auth != null && request.auth.token.organizationId == orgId && request.auth.token.role == 'collaborator';
+      }
     }
     
-    // Regra específica para Colaboradores criarem/atualizarem suas participações em desafios
-    match /organizations/{orgId}/challengeParticipations/{participationId} {
-        allow write: if request.auth != null && request.auth.uid == request.resource.data.employeeId;
-    }
-
-    // Regras para coleções de nível raiz como 'awards' e 'plans'
+    // Awards: Temporarily allow any authenticated user to write for debugging.
+    // Admins and Super Admins can write, anyone authenticated can read.
     match /awards/{awardId} {
-        // Qualquer usuário autenticado pode ler as premiações
-        allow read: if request.auth != null;
-        // Apenas admins e super admins podem criar, editar ou deletar
-        allow write: if request.auth.token.role in ['admin', 'super_admin'];
+      allow read: if request.auth != null;
+      // TEMPORARY RULE FOR DEBUGGING
+      allow write: if request.auth != null;
+      // ORIGINAL RULE: allow write: if request.auth.token.role == 'super_admin' || request.auth.token.role == 'admin';
     }
-    
+
+    // Award History: Can be read by anyone authenticated, written only by admins/super_admins
+    match /awardHistory/{historyId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth.token.role == 'super_admin' || request.auth.token.role == 'admin';
+    }
+
+    // Plans: Can be read by anyone authenticated, written only by super_admins
     match /plans/{planId} {
-        // Qualquer usuário autenticado pode ver os planos
         allow read: if request.auth != null;
-        // Apenas super admins podem gerenciar os planos
         allow write: if request.auth.token.role == 'super_admin';
     }
-    
-    match /awardHistory/{historyId} {
-        // Qualquer usuário autenticado pode ler o histórico
-        allow read: if request.auth != null;
-        // Admins e super admins podem escrever no histórico (confirmar vencedores)
-        allow write: if request.auth.token.role in ['admin', 'super_admin'];
-    }
-
   }
 }
