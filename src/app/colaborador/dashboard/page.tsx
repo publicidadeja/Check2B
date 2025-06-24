@@ -1,4 +1,3 @@
-
  'use client';
 
  import * as React from 'react';
@@ -19,7 +18,7 @@
    TrendingUp,
    Target, 
    Info,   
-   Loader2,
+   // Loader2, // Loader2 might not be directly used here anymore for the card's pending icon
    TrendingDown, 
    Minus, 
    ListChecks, 
@@ -31,6 +30,7 @@
    Eye, 
    ArrowRight,
    Frown, 
+   Clock, // Added Clock
  } from 'lucide-react';
  import { Progress } from '@/components/ui/progress';
  import { Badge } from '@/components/ui/badge';
@@ -53,6 +53,15 @@
  import { getTasksForEmployeeOnDate, getEvaluationsForDay, getEvaluationsForOrganizationInPeriod } from '@/lib/evaluation-service';
  import { getAllChallenges, getChallengeParticipationsByEmployee } from '@/lib/challenge-service';
  import { getGeneralSettings } from '@/lib/settings-service';
+  import {
+   Dialog,
+   DialogContent,
+   DialogDescription,
+   DialogHeader,
+   DialogTitle,
+   DialogClose,
+   DialogFooter, 
+ } from '@/components/ui/dialog';
 
 
  interface EmployeeDashboardData {
@@ -75,6 +84,8 @@
      const [data, setData] = React.useState<EmployeeDashboardData | null>(null);
      const [isLoading, setIsLoading] = React.useState(true);
      const { toast } = useToast();
+     const [selectedTask, setSelectedTask] = React.useState<Task | null>(null);
+     const [isInfoModalOpen, setIsInfoModalOpen] = React.useState(false);
      
      const CURRENT_EMPLOYEE_ID = user?.uid;
      const employeeDisplayName = user?.displayName || "Colaborador";
@@ -237,6 +248,11 @@
         }
     };
 
+    const handleViewTaskInfo = (task: Task) => {
+        setSelectedTask(task);
+        setIsInfoModalOpen(true);
+    };
+
     const IllustrationCard = ({ children, className }: { children: React.ReactNode, className?: string }) => (
          <Card className={cn("shadow-lg overflow-hidden border-none relative bg-gradient-to-br from-teal-600 to-cyan-700 dark:from-teal-700 dark:to-cyan-800 text-primary-foreground rounded-xl", className)}>
              <div className="absolute inset-0 opacity-[0.03] mix-blend-overlay" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")" }}></div>
@@ -262,7 +278,8 @@
                           <div className="flex flex-col items-center justify-center text-center p-3 rounded-lg bg-white/10 backdrop-blur-sm border border-white/20">
                               <Label className="text-[10px] uppercase tracking-wider text-primary-foreground/70 mb-1 font-medium">Hoje</Label>
                               {data.todayStatus === 'evaluated' && <CheckCircle className="h-7 w-7 text-emerald-300 mb-0.5" />}
-                              {data.todayStatus === 'pending' && <Loader2 className="h-7 w-7 text-yellow-300 animate-spin mb-0.5" />}
+                              {data.todayStatus === 'pending' && data.tasksToday.length > 0 && <ListChecks className="h-7 w-7 text-yellow-400 dark:text-yellow-500 mb-0.5" />}
+                              {data.todayStatus === 'pending' && data.tasksToday.length === 0 && <Clock className="h-7 w-7 text-yellow-400 dark:text-yellow-500 mb-0.5" />}
                               {data.todayStatus === 'no_tasks' && <CalendarCheck className="h-7 w-7 text-primary-foreground/60 mb-0.5" />}
                               <Badge variant={data.todayStatus === 'evaluated' ? 'default' : data.todayStatus === 'pending' ? 'secondary' : 'outline'} className={cn("text-[9px] px-1.5 py-0.5 leading-tight", data.todayStatus === 'evaluated' && 'bg-emerald-500 text-white border-emerald-400', data.todayStatus === 'pending' && 'bg-yellow-400 text-yellow-900 border-yellow-300', data.todayStatus === 'no_tasks' && 'bg-white/10 text-primary-foreground/80 border-white/20')}>
                                 {data.todayStatus === 'evaluated' ? 'Avaliado' : data.todayStatus === 'pending' ? 'Pendente' : 'Sem Tarefas'}
@@ -332,13 +349,12 @@
                                         </div>
                                          <Tooltip>
                                              <TooltipTrigger asChild>
-                                                  <span className="ml-auto text-muted-foreground flex-shrink-0 cursor-help">
-                                                      <Info className="h-4 w-4" />
-                                                   </span>
+                                                 <Button variant="ghost" size="icon" className="h-6 w-6 ml-auto flex-shrink-0 text-muted-foreground hover:text-primary" onClick={() => handleViewTaskInfo(task)}>
+                                                     <Info className="h-4 w-4" />
+                                                 </Button>
                                              </TooltipTrigger>
-                                             <TooltipContent side="left" className="max-w-[200px] text-xs z-50">
-                                                 <p className="font-semibold mb-1">Critério (Nota 10):</p>
-                                                 <p>{task.criteria}</p>
+                                             <TooltipContent side="left">
+                                                 <p>Ver critério</p>
                                              </TooltipContent>
                                          </Tooltip>
                                      </li>
@@ -387,9 +403,28 @@
                          )}
                      </CardContent>
                  </Card>
+                 <Dialog open={isInfoModalOpen} onOpenChange={setIsInfoModalOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>{selectedTask?.title}</DialogTitle>
+                            <DialogDescription>
+                                Critério para cumprimento e obtenção de nota 10.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="py-4">
+                            <p className="text-sm text-foreground">{selectedTask?.criteria}</p>
+                        </div>
+                        <DialogFooter>
+                            <DialogClose asChild>
+                                <Button type="button" variant="secondary">
+                                    Fechar
+                                </Button>
+                            </DialogClose>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
              </div>
          </TooltipProvider>
      );
  }
-
     
