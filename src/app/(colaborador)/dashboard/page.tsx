@@ -18,7 +18,7 @@
    TrendingUp,
    Target, 
    Info,   
-   // Loader2, // Loader2 might not be directly used here anymore for the card's pending icon
+   Loader2, 
    TrendingDown, 
    Minus, 
    ListChecks, 
@@ -278,8 +278,7 @@
                           <div className="flex flex-col items-center justify-center text-center p-3 rounded-lg bg-white/10 backdrop-blur-sm border border-white/20">
                               <Label className="text-[10px] uppercase tracking-wider text-primary-foreground/70 mb-1 font-medium">Hoje</Label>
                               {data.todayStatus === 'evaluated' && <CheckCircle className="h-7 w-7 text-emerald-300 mb-0.5" />}
-                              {data.todayStatus === 'pending' && data.tasksToday.length > 0 && <ListChecks className="h-7 w-7 text-yellow-400 dark:text-yellow-500 mb-0.5" />}
-                              {data.todayStatus === 'pending' && data.tasksToday.length === 0 && <Clock className="h-7 w-7 text-yellow-400 dark:text-yellow-500 mb-0.5" />}
+                              {data.todayStatus === 'pending' && <Loader2 className="h-7 w-7 text-yellow-400 dark:text-yellow-500 animate-spin mb-0.5" />}
                               {data.todayStatus === 'no_tasks' && <CalendarCheck className="h-7 w-7 text-primary-foreground/60 mb-0.5" />}
                               <Badge variant={data.todayStatus === 'evaluated' ? 'default' : data.todayStatus === 'pending' ? 'secondary' : 'outline'} className={cn("text-[9px] px-1.5 py-0.5 leading-tight", data.todayStatus === 'evaluated' && 'bg-emerald-500 text-white border-emerald-400', data.todayStatus === 'pending' && 'bg-yellow-400 text-yellow-900 border-yellow-300', data.todayStatus === 'no_tasks' && 'bg-white/10 text-primary-foreground/80 border-white/20')}>
                                 {data.todayStatus === 'evaluated' ? 'Avaliado' : data.todayStatus === 'pending' ? 'Pendente' : 'Sem Tarefas'}
