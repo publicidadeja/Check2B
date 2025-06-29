@@ -48,6 +48,7 @@
     submitChallengeForEmployee,
     uploadChallengeSubmissionFile
  } from '@/lib/challenge-service';
+ import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 
 
  interface ChallengeDetailsModalProps {
@@ -194,6 +195,15 @@
      return (
          <Dialog open={isOpen} onOpenChange={onOpenChange}>
              <DialogContent className="sm:max-w-md max-h-[90svh] flex flex-col p-0">
+                  {/* Accessibility Fix: Ensure Title/Description are always present */}
+                  {challenge.imageUrl && (
+                    <VisuallyHidden>
+                        <DialogHeader>
+                            <DialogTitle>{challenge.title}</DialogTitle>
+                            <DialogDescription>{challenge.description}</DialogDescription>
+                        </DialogHeader>
+                    </VisuallyHidden>
+                  )}
                   {challenge.imageUrl && (
                     <div className="relative h-32 sm:h-40 w-full flex-shrink-0">
                         <img src={challenge.imageUrl} alt={challenge.title} className="absolute inset-0 h-full w-full object-cover" data-ai-hint="challenge competition achievement"/>
@@ -641,4 +651,3 @@
              </div>
      );
  }
-    
