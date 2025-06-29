@@ -2,6 +2,7 @@
 'use client';
 
 import * as React from 'react';
+import Image from 'next/image';
 import { format, parseISO, subMonths, addMonths, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -856,7 +857,9 @@ const AwardHistory = () => {
                                             {entry.deliveryPhotoUrl && (
                                                 <div className="mt-2">
                                                     <strong>Foto da Entrega:</strong><br/>
-                                                    <img src={entry.deliveryPhotoUrl} alt={`Entrega ${entry.awardTitle} ${entry.period}`} className="mt-1 rounded-md max-h-32 border object-cover" data-ai-hint="award ceremony" />
+                                                    <div className="relative mt-1 w-full h-32">
+                                                        <Image src={entry.deliveryPhotoUrl} alt={`Entrega ${entry.awardTitle} ${entry.period}`} fill className="rounded-md border object-cover" data-ai-hint="award ceremony" />
+                                                    </div>
                                                 </div>
                                             )}
                                             {entry.notes && <p className="text-xs text-muted-foreground pt-1"><strong>Observações:</strong> {entry.notes}</p>}
@@ -903,7 +906,9 @@ const AwardHistory = () => {
                         {selectedEntryForPhoto?.deliveryPhotoUrl && !photoFile && (
                             <div>
                                 <Label className="text-xs text-muted-foreground">Foto Atual:</Label>
-                                <img src={selectedEntryForPhoto.deliveryPhotoUrl} alt="Foto atual da entrega" className="mt-1 rounded-md max-h-40 border" data-ai-hint="award ceremony" />
+                                <div className="relative mt-1 w-full h-40">
+                                    <Image src={selectedEntryForPhoto.deliveryPhotoUrl} alt="Foto atual da entrega" fill className="rounded-md border object-cover" data-ai-hint="award ceremony" />
+                                </div>
                             </div>
                         )}
                     </div>
@@ -1333,5 +1338,3 @@ export default function RankingPage() {
     </div>
   );
 }
-
-    

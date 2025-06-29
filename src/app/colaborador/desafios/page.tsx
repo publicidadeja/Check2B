@@ -1,7 +1,9 @@
+
  'use client';
 
  import * as React from 'react';
  import Link from 'next/link'; // Added import
+ import Image from 'next/image'; // Import next/image
  import { Target, CheckCircle, Clock, Award, History, Filter, Loader2, Info, ArrowRight, FileText, Upload, Link as LinkIcon, Calendar, Trophy, Eye, ArrowLeft, Frown, CalendarDays, ListFilter, Search, X, CheckCircle2 } from 'lucide-react';
  import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
  import {
@@ -206,7 +208,7 @@
                   )}
                   {challenge.imageUrl && (
                     <div className="relative h-32 sm:h-40 w-full flex-shrink-0">
-                        <img src={challenge.imageUrl} alt={challenge.title} className="absolute inset-0 h-full w-full object-cover" data-ai-hint="challenge competition achievement"/>
+                        <Image src={challenge.imageUrl} alt={challenge.title} fill className="object-cover" data-ai-hint="challenge competition achievement"/>
                         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent"></div>
                      </div>
                   )}
@@ -567,7 +569,7 @@
          return (
                <Card key={challenge.id} className="shadow-sm flex flex-col bg-card hover:shadow-lg transition-shadow duration-200 overflow-hidden border rounded-lg">
                  <div className="relative h-24 w-full bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30">
-                     {challenge.imageUrl ? (<img src={challenge.imageUrl} alt="" className="h-full w-full object-cover opacity-80" data-ai-hint="abstract challenge goal achievement"/>)
+                     {challenge.imageUrl ? (<Image src={challenge.imageUrl} alt="" fill className="object-cover opacity-80" data-ai-hint="abstract challenge goal achievement"/>)
                       : (<div className="flex items-center justify-center h-full"><Target className="h-10 w-10 text-purple-300 dark:text-purple-700" /></div>)}
                       <Badge variant={statusVariant} className="absolute top-2 right-2 text-[9px] px-1.5 py-0.5 leading-tight shadow">{statusText}</Badge>
                  </div>
