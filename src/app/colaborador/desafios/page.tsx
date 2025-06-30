@@ -1,4 +1,5 @@
 
+
  'use client';
 
  import * as React from 'react';
@@ -207,7 +208,7 @@
                     </VisuallyHidden>
                   )}
                   {challenge.imageUrl && (
-                    <div className="relative h-32 sm:h-40 w-full flex-shrink-0">
+                    <div className="relative h-32 sm:h-40 w-full flex-shrink-0 overflow-hidden rounded-t-lg">
                         <Image src={challenge.imageUrl} alt={challenge.title} fill className="object-cover" data-ai-hint="challenge competition achievement"/>
                         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent"></div>
                      </div>
