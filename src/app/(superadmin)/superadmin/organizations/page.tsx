@@ -139,7 +139,6 @@ export default function OrganizationsPage() {
                 <DropdownMenuItem
                   onClick={() => handleDeleteClick(org)}
                   className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                  disabled={org.id === 'org_default' || totalUsers > 0}
                 >
                   <Trash2 className="mr-2 h-4 w-4" /> Remover
                 </DropdownMenuItem>
