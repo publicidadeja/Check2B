@@ -1,7 +1,7 @@
-
 'use client';
 
 import * as React from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import {
   Filter,
   Calendar as CalendarIcon,
@@ -13,7 +13,8 @@ import {
   ListFilter,
   Info,
   Frown,
-  Link as LinkIcon, // Added LinkIcon
+  Link as LinkIcon,
+  ArrowLeft, // Added
 } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -89,6 +90,12 @@ interface EmployeeEvaluationState extends UserProfile {
 
 export default function EvaluationsPage() {
   const { organizationId, user: currentUser, isLoading: authLoading } = useAuth();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const employeeIdFromQuery = searchParams.get('employeeId');
+  const employeeNameFromQuery = searchParams.get('employeeName');
+
   const [selectedDate, setSelectedDate] = React.useState<Date>(new Date());
   const [employeesToEvaluate, setEmployeesToEvaluate] = React.useState<EmployeeEvaluationState[]>([]);
   const [isLoadingData, setIsLoadingData] = React.useState(true);
@@ -289,11 +296,14 @@ export default function EvaluationsPage() {
 
    const filteredEmployees = React.useMemo(() => {
     return employeesToEvaluate.filter(emp => {
+        if (employeeIdFromQuery) {
+            return emp.uid === employeeIdFromQuery;
+        }
         const matchesDept = selectedDepartments.size === 0 || (emp.department && selectedDepartments.has(emp.department));
         const matchesRole = selectedRoles.size === 0 || (emp.userRole && selectedRoles.has(emp.userRole));
         return matchesDept && matchesRole;
     });
-   }, [employeesToEvaluate, selectedDepartments, selectedRoles]);
+   }, [employeesToEvaluate, selectedDepartments, selectedRoles, employeeIdFromQuery]);
 
 
   if (authLoading) {
@@ -316,13 +326,30 @@ export default function EvaluationsPage() {
         <TooltipProvider>
             <div className="flex flex-col h-full">
             <div className="flex flex-col md:flex-row items-center justify-between mb-6 gap-4">
-                <h1 className="text-2xl font-semibold">Avaliações Diárias</h1>
+                <div className="flex items-center gap-2">
+                    {employeeIdFromQuery && (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button variant="outline" size="icon" onClick={() => router.push('/employees')} className="h-9 w-9">
+                                    <ArrowLeft className="h-4 w-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>Voltar para Colaboradores</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    )}
+                    <h1 className="text-2xl font-semibold">
+                        {employeeIdFromQuery ? `Avaliações de: ${decodeURIComponent(employeeNameFromQuery || '')}` : 'Avaliações Diárias'}
+                    </h1>
+                </div>
                 <div className="flex items-center gap-2 flex-wrap">
                 <Popover>
                     <PopoverTrigger asChild>
                     <Button
                         variant={'outline'}
                         className="w-[240px] justify-start text-left font-normal"
+                        disabled={!!employeeIdFromQuery}
                     >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {selectedDate ? format(selectedDate, 'PPP', { locale: ptBR }) : <span>Escolha uma data</span>}
@@ -341,7 +368,7 @@ export default function EvaluationsPage() {
 
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button variant="outline">
+                            <Button variant="outline" disabled={!!employeeIdFromQuery}>
                             <ListFilter className="mr-2 h-4 w-4" /> Filtros ({selectedDepartments.size + selectedRoles.size})
                             </Button>
                         </DropdownMenuTrigger>
@@ -383,7 +410,7 @@ export default function EvaluationsPage() {
                 ) : filteredEmployees.length === 0 ? (
                      <div className="col-span-full text-center text-muted-foreground py-10">
                          <Frown className="mx-auto h-10 w-10 mb-2" />
-                         <p>Nenhum colaborador encontrado para os filtros e data selecionados.</p>
+                         <p>{employeeIdFromQuery ? 'Nenhuma avaliação encontrada para este colaborador na data selecionada.' : 'Nenhum colaborador encontrado para os filtros e data selecionados.'}</p>
                      </div>
                 ) : (
                     filteredEmployees.map(employee => (
@@ -504,4 +531,3 @@ export default function EvaluationsPage() {
     </div>
   );
 }
-

@@ -1,9 +1,9 @@
-
 // src/app/(admin)/employees/page.tsx
 'use client';
 
 import * as React from 'react';
 import { PlusCircle, MoreHorizontal, Edit, Trash2, Eye, UserX, UserCheck, Loader2, Users, Frown, AlertTriangle } from 'lucide-react';
+import Link from 'next/link'; // Added Link
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -93,7 +93,11 @@ function EmployeeProfileView({ employee, open, onOpenChange }: EmployeeProfileVi
                         </span>
                     </div>
                      <div className="pt-4 text-center">
-                        <Button variant="outline" size="sm" disabled>Ver Histórico de Desempenho</Button>
+                        <Button variant="outline" size="sm" asChild>
+                            <Link href={`/evaluations?employeeId=${employee.uid}&employeeName=${encodeURIComponent(employee.name)}`}>
+                                Ver Histórico de Desempenho
+                            </Link>
+                        </Button>
                     </div>
                 </div>
                  <DialogFooter className="sm:justify-center">
@@ -439,4 +443,3 @@ export default function EmployeesPage() {
     </div>
   );
 }
-
