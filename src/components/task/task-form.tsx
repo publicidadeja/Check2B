@@ -1,3 +1,4 @@
+
 // src/components/task/task-form.tsx
 'use client';
 
@@ -127,20 +128,16 @@ export function TaskForm({
 
   const onSubmit = async (data: TaskFormData) => {
     setIsSaving(true);
-    // Prepare data for saving: if assignedTo is our placeholder or null, send undefined
+    // Prepare data for saving. If "Global" is selected, assignedTo should be null.
     const dataToSave = {
         ...data,
-        assignedTo: data.assignedTo === GLOBAL_ASSIGNMENT_VALUE ? undefined : data.assignedTo,
-        assignedEntityId: data.assignedTo && data.assignedTo !== GLOBAL_ASSIGNMENT_VALUE ? data.assignedEntityId : undefined,
+        assignedTo: data.assignedTo === GLOBAL_ASSIGNMENT_VALUE ? null : data.assignedTo,
     };
 
-    // Remove keys with undefined values before saving to Firestore
-    Object.keys(dataToSave).forEach(keyStr => {
-        const key = keyStr as keyof typeof dataToSave;
-        if (dataToSave[key] === undefined) {
-            delete dataToSave[key];
-        }
-    });
+    // If assignedTo is cleared (is null), also clear assignedEntityId.
+    if (!dataToSave.assignedTo) {
+        dataToSave.assignedEntityId = '';
+    }
 
     try {
       await onSave(dataToSave); 
@@ -351,3 +348,5 @@ export function TaskForm({
     </Dialog>
   );
 }
+
+    

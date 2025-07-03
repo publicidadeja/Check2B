@@ -87,7 +87,7 @@ export const getTasksByOrganization = async (organizationId: string): Promise<Ta
  * @param taskData The task data to save. Includes ID for updates.
  * @returns Promise resolving to the saved or updated Task object.
  */
-export const saveTask = async (organizationId: string, taskData: Partial<Omit<Task, 'id' | 'organizationId' | 'createdAt' | 'updatedAt'>> & { id?: string }): Promise<Task> => {
+export const saveTaskToFirestore = async (organizationId: string, taskData: Partial<Omit<Task, 'id' | 'organizationId' | 'createdAt' | 'updatedAt'>> & { id?: string }): Promise<Task> => {
   const db = getDb();
   if (!db) {
     throw new Error('Firestore not initialized. Cannot save task.');
@@ -98,44 +98,29 @@ export const saveTask = async (organizationId: string, taskData: Partial<Omit<Ta
 
   const { id, ...formData } = taskData;
 
-  // Prepare data for Firestore, removing undefined fields
-  const dataForFirestore: any = {
-    title: formData.title,
-    description: formData.description,
-    criteria: formData.criteria,
-    periodicity: formData.periodicity,
-    // organizationId is not part of the document data itself, it's part of the path
+  // Prepare data for Firestore. It should be clean from the form.
+  // We'll set null for fields that should be cleared.
+  const dataForFirestore: { [key: string]: any } = {
+    ...formData,
+    updatedAt: serverTimestamp(),
   };
 
-  if (formData.category && formData.category.trim() !== '') {
-    dataForFirestore.category = formData.category;
+  // Ensure `assignedEntityId` is null if `assignedTo` is null or undefined.
+  if (!dataForFirestore.assignedTo) {
+    dataForFirestore.assignedTo = null;
+    dataForFirestore.assignedEntityId = null;
   }
-  if (formData.priority) {
-    dataForFirestore.priority = formData.priority;
-  }
-  if (formData.assignedTo && formData.assignedTo.trim() !== '') {
-    dataForFirestore.assignedTo = formData.assignedTo;
-    if (formData.assignedEntityId && formData.assignedEntityId.trim() !== '') {
-      dataForFirestore.assignedEntityId = formData.assignedEntityId;
-    } else {
-      // If assignedTo is set, but assignedEntityId is missing, it's an invalid state.
-      // Depending on rules, you might throw an error or clear assignedTo as well.
-      // For now, let's clear assignedTo if assignedEntityId is missing for a specific assignment.
-      delete dataForFirestore.assignedTo;
-    }
-  } else {
-    // If assignedTo is not set or empty, ensure assignedEntityId is also not set.
-    delete dataForFirestore.assignedTo;
-    delete dataForFirestore.assignedEntityId;
-  }
-  
-  // Add/Update timestamps
-  dataForFirestore.updatedAt = serverTimestamp();
 
+  // Sanitize other optional fields to be null if they are empty strings or undefined
+  dataForFirestore.category = formData.category || null;
+  dataForFirestore.priority = formData.priority || null;
+  dataForFirestore.assignedEntityId = formData.assignedEntityId || null;
+  
   let docRef;
   if (id) {
     // Update existing task
     docRef = doc(db, `organizations/${organizationId}/tasks`, id);
+    // Use updateDoc to avoid overwriting createdAt, etc.
     await updateDoc(docRef, dataForFirestore);
   } else {
     // Create new task
@@ -200,3 +185,5 @@ export const countTasksByOrganization = async (organizationId: string): Promise<
     throw error;
   }
 };
+
+    

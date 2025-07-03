@@ -39,7 +39,7 @@ import { DataTable } from '@/components/ui/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { useAuth } from '@/hooks/use-auth';
-import { getTasksByOrganization, saveTask as saveTaskToFirestore, deleteTask as deleteTaskFromFirestore } from '@/lib/task-service';
+import { getTasksByOrganization, saveTaskToFirestore, deleteTask as deleteTaskFromFirestore } from '@/lib/task-service';
 
 export default function TasksPage() {
   const { organizationId, role: adminRole } = useAuth();
@@ -150,32 +150,35 @@ export default function TasksPage() {
     loadTasks();
   }, [loadTasks]);
 
-  const handleSaveTask = async (data: any) => { // data is TaskFormData from TaskForm
-     if (!organizationId) {
-         toast({ title: "Erro", description: "ID da organização não disponível.", variant: "destructive" });
-         return;
-     }
-     const taskDataToSave: Omit<Task, 'id' | 'organizationId'> | Task = selectedTask
-        ? { ...selectedTask, ...data, organizationId } 
-        : { ...data, organizationId }; 
+  const handleSaveTask = async (data: any) => {
+    if (!organizationId) {
+      toast({ title: "Erro", description: "ID da organização não disponível.", variant: "destructive" });
+      return;
+    }
+    
+    // The `data` from the form is the complete source of truth.
+    // For editing, we just add the existing task's ID.
+    const taskDataToSave = selectedTask
+      ? { ...data, id: selectedTask.id }
+      : data;
 
-     try {
-        await saveTaskToFirestore(organizationId, taskDataToSave);
-        setIsFormOpen(false);
-        setSelectedTask(null);
-        await loadTasks();
-        toast({
-          title: "Sucesso!",
-          description: `Tarefa ${selectedTask ? 'atualizada' : 'criada'} com sucesso.`,
-        });
-     } catch (error) {
-        console.error("Erro ao salvar tarefa:", error);
-        toast({
-          title: "Erro!",
-          description: `Falha ao ${selectedTask ? 'atualizar' : 'criar'} tarefa. Tente novamente.`,
-          variant: "destructive",
-        });
-     }
+    try {
+      await saveTaskToFirestore(organizationId, taskDataToSave);
+      setIsFormOpen(false);
+      setSelectedTask(null);
+      await loadTasks();
+      toast({
+        title: "Sucesso!",
+        description: `Tarefa ${selectedTask ? 'atualizada' : 'criada'} com sucesso.`,
+      });
+    } catch (error) {
+      console.error("Erro ao salvar tarefa:", error);
+      toast({
+        title: "Erro!",
+        description: `Falha ao ${selectedTask ? 'atualizar' : 'criar'} tarefa. Tente novamente.`,
+        variant: "destructive",
+      });
+    }
   };
 
  const handleDeleteClick = (task: Task) => {
@@ -301,5 +304,7 @@ export default function TasksPage() {
     </div>
   );
 }
+
+    
 
     
