@@ -14,4 +14,5 @@ export interface UserProfile {
   userRole?: string; // Cargo/Função específica do usuário, ex: "Desenvolvedor Backend"
   phone?: string;
   admissionDate?: string; // YYYY-MM-DD, usado no EmployeeForm
+  fcmTokens?: string[]; // Array of Firebase Cloud Messaging tokens for push notifications
 }

@@ -2,7 +2,7 @@
 // src/lib/user-service.ts
 import { getDb, getFirebaseApp } from './firebase';
 import type { UserProfile } from '@/types/user';
-import { collection, getDocs, query, where, doc, setDoc, deleteDoc, getDoc, updateDoc, Timestamp, getCountFromServer, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, setDoc, deleteDoc, getDoc, updateDoc, Timestamp, getCountFromServer, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import type { NotificationFormData } from '@/app/colaborador/perfil/page';
 
@@ -336,4 +336,35 @@ export const countActiveUsersByOrganization = async (organizationId: string, rol
   }
 };
     
+/**
+ * Saves a new Firebase Cloud Messaging (FCM) token for a user.
+ * Ensures that no duplicate tokens are added.
+ * @param userId The ID of the user.
+ * @param fcmToken The new FCM token from the device.
+ * @returns Promise resolving on successful save.
+ */
+export const saveUserFcmToken = async (userId: string, fcmToken: string): Promise<void> => {
+  const db = getDb();
+  if (!db) {
+    throw new Error('[UserService] Firestore not initialized. Cannot save FCM token.');
+  }
+  if (!userId || !fcmToken) {
+    throw new Error('[UserService] User ID and FCM Token are required.');
+  }
+  console.log(`[UserService] Saving FCM token for user UID: ${userId}`);
+  const userDocRef = doc(db, 'users', userId);
+  
+  try {
+    // Use arrayUnion to atomically add a new token to the array if it's not already present.
+    // This is more efficient and safer than reading, modifying, and writing the array manually.
+    await updateDoc(userDocRef, {
+        fcmTokens: arrayUnion(fcmToken),
+        updatedAt: serverTimestamp(),
+    });
+    console.log(`[UserService] Successfully saved/updated FCM token for user ${userId}`);
+  } catch (error) {
+    console.error(`[UserService] Error saving FCM token for user ${userId}:`, error);
+    throw error;
+  }
+};
     
