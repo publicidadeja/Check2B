@@ -101,6 +101,7 @@ export interface RankingEntry {
 
 export interface AwardHistoryEntry {
     id: string;
+    organizationId: string;
     period: string;
     awardTitle: string;
     winners: { rank: number; employeeName: string; prize: string }[];
@@ -746,14 +747,14 @@ const AwardHistory = () => {
     }, []);
 
      const loadHistory = React.useCallback(async () => {
-        if (!db) {
-            toast({ title: "Erro de Conexão", description: "Não foi possível conectar ao banco de dados para carregar histórico.", variant: "destructive" });
+        if (!db || !organizationId) {
+            if (!db) toast({ title: "Erro de Conexão", description: "Não foi possível conectar ao banco de dados.", variant: "destructive" });
             setIsLoading(false);
             return;
         }
         setIsLoading(true);
         try {
-            const data = await getAwardHistory(db);
+            const data = await getAwardHistory(db, organizationId);
             setHistory(data);
         } catch (error) {
              console.error("Falha ao carregar histórico:", error);
@@ -761,11 +762,11 @@ const AwardHistory = () => {
         } finally {
              setIsLoading(false);
         }
-     }, [toast, db]);
+     }, [toast, db, organizationId]);
 
       React.useEffect(() => {
-        if(db) loadHistory();
-    }, [loadHistory, db]);
+        if(db && organizationId) loadHistory();
+    }, [loadHistory, db, organizationId]);
 
 
      const handleExportHistory = () => {
@@ -1189,6 +1190,7 @@ const RankingDashboard = () => {
             const historyEntryData: Omit<AwardHistoryEntry, 'id' | 'createdAt'> = {
                 period: periodStr,
                 awardTitle: activeAward.title,
+                organizationId: organizationId,
                 winners: winnersToSave.map(winner => ({
                     rank: winner.rank,
                     employeeName: winner.employeeName,

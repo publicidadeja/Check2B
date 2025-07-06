@@ -235,18 +235,19 @@ export const saveAwardHistory = async (db: Firestore, historyEntryData: Omit<Awa
 };
 
 /**
- * Fetches all award history entries from Firestore, ordered by period descending.
+ * Fetches all award history entries from Firestore for a specific organization, ordered by period descending.
  * @param db Firestore instance.
+ * @param organizationId The ID of the organization to filter history for.
  * @returns Promise resolving to an array of AwardHistoryEntry objects.
  */
-export const getAwardHistory = async (db: Firestore): Promise<AwardHistoryEntry[]> => {
-    if (!db) {
-        console.error('[RankingService] Firestore not initialized. Cannot fetch award history.');
+export const getAwardHistory = async (db: Firestore, organizationId: string): Promise<AwardHistoryEntry[]> => {
+    if (!db || !organizationId) {
+        console.error('[RankingService] Firestore or Organization ID missing. Cannot fetch award history.');
         return [];
     }
-    console.log('[RankingService] Fetching award history.');
+    console.log(`[RankingService] Fetching award history for org: ${organizationId}.`);
     const historyCollectionRef = collection(db, 'awardHistory');
-    const q = query(historyCollectionRef, orderBy("period", "desc")); // Ensure period is in YYYY-MM format for correct sorting
+    const q = query(historyCollectionRef, where("organizationId", "==", organizationId), orderBy("period", "desc"));
     const snapshot = await getDocs(q);
 
     return snapshot.docs.map(docSnapshot => {
@@ -259,6 +260,7 @@ export const getAwardHistory = async (db: Firestore): Promise<AwardHistoryEntry[
         } as AwardHistoryEntry;
     });
 };
+
 
 /**
  * Uploads an award delivery photo to Firebase Storage.
