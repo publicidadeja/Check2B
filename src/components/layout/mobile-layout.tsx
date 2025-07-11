@@ -50,6 +50,7 @@ import {
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Logo } from '@/components/logo';
 import { useAuth } from '@/hooks/use-auth';
+import { saveUserFcmToken } from '@/lib/user-service'; // Importar a função para salvar o token
 
 interface MobileLayoutProps {
   children: ReactNode;
@@ -104,6 +105,35 @@ export function MobileLayout({ children }: MobileLayoutProps) {
   const currentUserId = user?.uid;
   const currentUserDisplayName = user?.displayName;
   const currentUserPhotoUrl = user?.photoURL;
+
+  // Efeito para expor a função de salvar token ao WebView
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && currentUserId) {
+        (window as any).saveFcmToken = async (token: string) => {
+            console.log(`[WebView Bridge] Received FCM token: ${token}`);
+            if (token && currentUserId) {
+                try {
+                    await saveUserFcmToken(currentUserId, token);
+                    console.log(`[WebView Bridge] FCM token saved successfully for user ${currentUserId}.`);
+                    return "Token saved successfully.";
+                } catch (error) {
+                    console.error("[WebView Bridge] Failed to save FCM token:", error);
+                    return `Error saving token: ${error}`;
+                }
+            } else {
+                 console.warn("[WebView Bridge] Invalid token or user ID provided.");
+                 return "Invalid token or user ID.";
+            }
+        };
+    }
+    // Cleanup a função quando o componente desmontar ou o usuário mudar
+    return () => {
+        if (typeof window !== 'undefined') {
+            delete (window as any).saveFcmToken;
+        }
+    };
+  }, [currentUserId]);
+
 
   React.useEffect(() => {
     console.log("[MobileLayout Notifications] State Updated. isLoadingNotifications:", isLoadingNotifications, "Count:", notifications.length, "Error:", notificationError);
@@ -191,7 +221,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
             },
             (error) => {
                 if (loadingTimeout) clearTimeout(loadingTimeout);
-                console.error(`[MobileLayout Notifications] Error listening for user ${currentUserId}:`, error);
+                console.error(`[MobileLayout Notifications] Firebase onValue error for user ${currentUserId}:`, error);
                 initialLoadCompleteRef.current = false;
                 setIsLoadingNotifications(false);
                 setNotificationError(error.message || "Erro ao carregar notificações.");
