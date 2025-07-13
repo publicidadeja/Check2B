@@ -21,7 +21,7 @@ setGlobalOptions({region: "us-central1"});
  * Can only be called by an authenticated user (preferably a Super Admin).
  */
 exports.setCustomUserClaimsFirebase = onCall({
-    enforceAppCheck: true, 
+    enforceAppCheck: false, 
 }, async (request) => {
   const data = request.data;
   const auth = request.auth;
@@ -54,10 +54,10 @@ exports.setCustomUserClaimsFirebase = onCall({
   }
 
   // App Check verification: request.app will be undefined if token is missing or invalid.
-  if (app === undefined) {
-    console.error("[setCustomUserClaimsFirebase] App Check token missing or invalid. Throwing unauthenticated.");
-    throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
-  }
+  // if (app === undefined) {
+  //   console.error("[setCustomUserClaimsFirebase] App Check token missing or invalid. Throwing unauthenticated.");
+  //   throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
+  // }
 
 
   const callerUid = auth.uid;
@@ -122,7 +122,7 @@ exports.setCustomUserClaimsFirebase = onCall({
 
 
 exports.createOrganizationAdmin = onCall({
-    enforceAppCheck: true,
+    enforceAppCheck: false,
 }, async (request) => {
   const data = request.data;
   const auth = request.auth;
@@ -139,10 +139,10 @@ exports.createOrganizationAdmin = onCall({
   }
 
   // App Check verification: request.app will be undefined if token is missing or invalid.
-  if (app === undefined) {
-    console.error("[createOrganizationAdmin] App Check token missing or invalid. Throwing unauthenticated.");
-    throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
-  }
+  // if (app === undefined) {
+  //   console.error("[createOrganizationAdmin] App Check token missing or invalid. Throwing unauthenticated.");
+  //   throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
+  // }
 
   let hasSuperAdminRole = false;
   if (auth.token && typeof auth.token === 'object' && auth.token.role === 'super_admin') {
@@ -222,7 +222,7 @@ exports.createOrganizationAdmin = onCall({
 
 
 exports.createOrganizationUser = onCall({
-    enforceAppCheck: true,
+    enforceAppCheck: false,
 }, async (request) => {
     const data = request.data;
     const auth = request.auth;
@@ -255,10 +255,10 @@ exports.createOrganizationUser = onCall({
         throw new HttpsError('unauthenticated', 'A função só pode ser chamada por usuários autenticados.');
     }
     // App Check verification: request.app will be undefined if token is missing or invalid.
-    if (app === undefined) {
-        console.error("[createOrganizationUser] App Check token missing or invalid. Throwing unauthenticated.");
-        throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
-    }
+    // if (app === undefined) {
+    //     console.error("[createOrganizationUser] App Check token missing or invalid. Throwing unauthenticated.");
+    //     throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
+    // }
 
     const callerClaims = auth.token || {};
     const { name, email, password, organizationId, department, role: userRole, photoUrl, admissionDate, status = 'active' } = data;
@@ -328,7 +328,7 @@ exports.createOrganizationUser = onCall({
 
 
 exports.deleteOrganizationUser = onCall({
-    enforceAppCheck: true,
+    enforceAppCheck: false,
 }, async (request) => {
     const data = request.data;
     const auth = request.auth;
@@ -361,10 +361,10 @@ exports.deleteOrganizationUser = onCall({
         throw new HttpsError('unauthenticated', 'Autenticação é necessária.');
     }
     // App Check verification
-    if (app === undefined) {
-        console.error("[deleteOrganizationUser] App Check token missing or invalid. Throwing unauthenticated.");
-        throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
-    }
+    // if (app === undefined) {
+    //     console.error("[deleteOrganizationUser] App Check token missing or invalid. Throwing unauthenticated.");
+    //     throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
+    // }
     
     const callerClaims = auth.token || {};
     const { userId, organizationId: targetOrganizationId } = data;
@@ -427,7 +427,7 @@ exports.deleteOrganizationUser = onCall({
 
 
 exports.toggleUserStatusFirebase = onCall({
-    enforceAppCheck: true,
+    enforceAppCheck: false,
 }, async (request) => {
   const data = request.data;
   const auth = request.auth;
@@ -460,10 +460,10 @@ exports.toggleUserStatusFirebase = onCall({
     throw new HttpsError("unauthenticated", "A função só pode ser chamada por usuários autenticados.");
   }
   // App Check verification
-  if (app === undefined) {
-      console.error("[toggleUserStatusFirebase] App Check token missing or invalid. Throwing unauthenticated.");
-      throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
-  }
+  // if (app === undefined) {
+  //     console.error("[toggleUserStatusFirebase] App Check token missing or invalid. Throwing unauthenticated.");
+  //     throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
+  // }
 
   const callerClaims = auth.token || {};
   const { userId, status } = data;
@@ -513,7 +513,7 @@ exports.toggleUserStatusFirebase = onCall({
 
 
 exports.removeAdminFromOrganizationFirebase = onCall({
-    enforceAppCheck: true,
+    enforceAppCheck: false,
 }, async (request) => {
     const data = request.data;
     const auth = request.auth;
@@ -546,10 +546,10 @@ exports.removeAdminFromOrganizationFirebase = onCall({
         throw new HttpsError('unauthenticated', 'Ação requer autenticação.');
     }
     // App Check verification
-    if (app === undefined) {
-        console.error("[removeAdminFromOrganizationFirebase] App Check token missing or invalid. Throwing unauthenticated.");
-        throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
-    }
+    // if (app === undefined) {
+    //     console.error("[removeAdminFromOrganizationFirebase] App Check token missing or invalid. Throwing unauthenticated.");
+    //     throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
+    // }
     
     const callerClaims = auth.token || {};
     if (callerClaims.role !== 'super_admin') {
@@ -613,7 +613,7 @@ exports.removeAdminFromOrganizationFirebase = onCall({
 
 
 exports.addAdminToMyOrg = onCall({
-    enforceAppCheck: true,
+    enforceAppCheck: false,
 }, async (request) => {
     const data = request.data; // { name, email, password }
     const auth = request.auth; // { uid, token: { role, organizationId, ... } }
@@ -628,10 +628,10 @@ exports.addAdminToMyOrg = onCall({
         throw new HttpsError('unauthenticated', 'Autenticação é necessária.');
     }
     // App Check verification
-    if (app === undefined) {
-        console.error("[addAdminToMyOrg] App Check token missing or invalid. Throwing unauthenticated.");
-        throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
-    }
+    // if (app === undefined) {
+    //     console.error("[addAdminToMyOrg] App Check token missing or invalid. Throwing unauthenticated.");
+    //     throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
+    // }
 
     if (auth.token.role !== 'admin') {
         throw new HttpsError('permission-denied', 'Apenas administradores podem adicionar outros admins à sua organização.');
@@ -700,7 +700,7 @@ exports.addAdminToMyOrg = onCall({
 });
 
 exports.demoteAdminInMyOrg = onCall({
-    enforceAppCheck: true,
+    enforceAppCheck: false,
 }, async (request) => {
     const data = request.data; // { userIdToDemote }
     const auth = request.auth; // { uid, token: { role, organizationId, ... } }
@@ -715,10 +715,10 @@ exports.demoteAdminInMyOrg = onCall({
         throw new HttpsError('unauthenticated', 'Autenticação é necessária.');
     }
     // App Check verification
-    if (app === undefined) {
-        console.error("[demoteAdminInMyOrg] App Check token missing or invalid. Throwing unauthenticated.");
-        throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
-    }
+    // if (app === undefined) {
+    //     console.error("[demoteAdminInMyOrg] App Check token missing or invalid. Throwing unauthenticated.");
+    //     throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
+    // }
 
     if (auth.token.role !== 'admin') {
         throw new HttpsError('permission-denied', 'Apenas administradores podem rebaixar outros admins da sua organização.');
