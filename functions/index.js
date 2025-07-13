@@ -782,13 +782,12 @@ exports.demoteAdminInMyOrg = onCall({
 /**
  * Helper: Send Push Notification via FCM
  */
-async function sendPushNotification(employeeId, title, body, link) {
+async function sendPushNotification(employeeId, title, body, link, organizationId) {
   if (!employeeId) {
     console.warn('[sendPushNotification] employeeId is missing. Skipping.');
     return;
   }
 
-  // Get user's FCM tokens from Firestore
   const userDoc = await admin.firestore().collection('users').doc(employeeId).get();
   if (!userDoc.exists) {
     console.warn(`[sendPushNotification] User document for ${employeeId} not found. Skipping.`);
@@ -796,7 +795,7 @@ async function sendPushNotification(employeeId, title, body, link) {
   }
 
   const userData = userDoc.data();
-  const tokens = userData.fcmTokens; // Assuming tokens are stored in an array field 'fcmTokens'
+  const tokens = userData.fcmTokens; 
 
   if (!tokens || !Array.isArray(tokens) || tokens.length === 0) {
     console.log(`[sendPushNotification] No FCM tokens found for user ${employeeId}. Skipping.`);
@@ -808,12 +807,24 @@ async function sendPushNotification(employeeId, title, body, link) {
       title: title,
       body: body,
     },
-    webpush: { // Specific config for web push
-        fcm_options: {
-            link: link || 'https://check2b-e4453.web.app/colaborador/dashboard' // Fallback link
-        }
+    data: { // Add the 'data' payload here
+      userIdTarget: employeeId,
+      link: link || '/colaborador/dashboard',
+      organizationId: organizationId || '',
+      // You can add other custom data here
+      // "screen": "/some_screen_path", 
     },
-    tokens: tokens, // Use 'tokens' for multicast messaging
+    tokens: tokens,
+    android: { // Optional: Higher priority for Android delivery
+      priority: 'high',
+    },
+    apns: { // Optional: APNS specific settings
+        payload: {
+            aps: {
+                'content-available': 1, // Wakes up app for data processing
+            },
+        },
+    },
   };
 
   try {
@@ -924,7 +935,7 @@ async function addNotificationToRTDB(employeeId, notificationData) {
       try {
         await addNotificationToRTDB(employeeId, notificationPayload);
         console.log(`[onEvaluationWritten] RTDB Notification sent to ${employeeId} for evaluation ${evaluationId}.`);
-        await sendPushNotification(employeeId, "Nova Avaliação", message, "/colaborador/avaliacoes");
+        await sendPushNotification(employeeId, "Nova Avaliação", message, "/colaborador/avaliacoes", organizationId);
       } catch (error) {
         console.error(`[onEvaluationWritten] Failed to send notification for evaluation ${evaluationId}:`, error);
       }
@@ -994,7 +1005,7 @@ exports.onChallengeParticipationEvaluated = onDocumentWritten(
       try {
         await addNotificationToRTDB(employeeId, notificationPayload);
         console.log(`[onChallengeParticipationEvaluated] RTDB Notification sent to ${employeeId} for challenge participation ${participationId}.`);
-        await sendPushNotification(employeeId, "Desafio Avaliado", message, "/colaborador/desafios");
+        await sendPushNotification(employeeId, "Desafio Avaliado", message, "/colaborador/desafios", organizationId);
       } catch (error) {
         console.error(`[onChallengeParticipationEvaluated] Failed to send notification for participation ${participationId}:`, error);
       }
@@ -1064,7 +1075,7 @@ exports.onChallengeParticipationEvaluated = onDocumentWritten(
   
         try {
           await addNotificationToRTDB(winner.employeeId, notificationPayload);
-          await sendPushNotification(winner.employeeId, "Você foi Premiado!", message, "/colaborador/ranking");
+          await sendPushNotification(winner.employeeId, "Você foi Premiado!", message, "/colaborador/ranking", targetOrgId);
         } catch (error) {
           console.error(`[onAwardHistoryCreatedV2] Failed to send ranking notification to ${winner.employeeName || winner.employeeId}:`, error);
           return null;
@@ -1173,7 +1184,7 @@ exports.onChallengeParticipationEvaluated = onDocumentWritten(
       console.log(`[onChallengePublished] Sending challenge notification to ${targetEmployeeIds.length} employees.`);
       const notificationPromises = targetEmployeeIds.map(async (employeeId) => {
         await addNotificationToRTDB(employeeId, notificationPayloadBase);
-        await sendPushNotification(employeeId, "Novo Desafio Disponível", message, "/colaborador/desafios");
+        await sendPushNotification(employeeId, "Novo Desafio Disponível", message, "/colaborador/desafios", organizationId);
       });
   
       try {
