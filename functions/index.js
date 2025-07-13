@@ -848,29 +848,25 @@ async function sendPushNotification(employeeId, title, body, link, organizationI
  * Helper function to add a notification to Realtime Database for a specific user.
  */
 async function addNotificationToRTDB(employeeId, notificationData) {
-    // admin SDK já deve estar inicializado globalmente.
+    if (!admin.apps.length) {
+        console.error('[NotificationHelper] Firebase Admin not initialized. Cannot add notification.');
+        return;
+    }
     const rtdb = admin.database();
     const notificationsRef = rtdb.ref(`userNotifications/${employeeId}`);
     
-    let newNotificationRef;
-    let notificationId;
-  
-    if (notificationData.id) {
-      notificationId = notificationData.id;
-      newNotificationRef = notificationsRef.child(notificationId);
-    } else {
-      newNotificationRef = notificationsRef.push();
-      notificationId = newNotificationRef.key;
-    }
+    // Always generate a new unique ID using push()
+    const newNotificationRef = notificationsRef.push();
+    const notificationId = newNotificationRef.key;
   
     const payload = {
       ...notificationData,
-      id: notificationId, // Garante que o ID está no payload
-      timestamp: new Date().toISOString(), // Usar ISO string para consistência
+      id: notificationId, // Ensure the new unique ID is in the payload
+      timestamp: new Date().toISOString(),
       read: false,
     };
     
-    console.log(`[NotificationHelper] Attempting to add notification for employee ${employeeId} with ID ${notificationId}:`, payload);
+    console.log(`[NotificationHelper] Attempting to add notification for employee ${employeeId} with new ID ${notificationId}:`, payload);
     try {
       await newNotificationRef.set(payload);
       console.log(`[NotificationHelper] Notification added successfully for ${employeeId} with ID ${notificationId}`);
@@ -878,7 +874,7 @@ async function addNotificationToRTDB(employeeId, notificationData) {
       console.error(`[NotificationHelper] Error setting notification for ${employeeId} with ID ${notificationId}:`, error);
       throw error;
     }
-  }
+}
   
   /**
    * Firestore Trigger: Sends a notification when an evaluation is written (created/updated).
