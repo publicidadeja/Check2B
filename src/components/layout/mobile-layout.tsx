@@ -110,19 +110,20 @@ export function MobileLayout({ children }: MobileLayoutProps) {
   React.useEffect(() => {
     if (typeof window !== 'undefined' && currentUserId) {
         (window as any).saveFcmToken = async (token: string) => {
-            console.log(`[WebView Bridge] Received FCM token: ${token}`);
+            console.log(`[WebView Bridge] Função 'saveFcmToken' foi chamada.`);
             if (token && currentUserId) {
+                console.log(`[WebView Bridge] Recebido FCM token: ${token} para o usuário: ${currentUserId}.`);
                 try {
                     await saveUserFcmToken(currentUserId, token);
-                    console.log(`[WebView Bridge] FCM token saved successfully for user ${currentUserId}.`);
-                    return "Token saved successfully.";
+                    console.log(`[WebView Bridge] SUCESSO: Token FCM salvo para o usuário ${currentUserId}.`);
+                    return "Token salvo com sucesso.";
                 } catch (error) {
-                    console.error("[WebView Bridge] Failed to save FCM token:", error);
-                    return `Error saving token: ${error}`;
+                    console.error("[WebView Bridge] ERRO ao salvar token FCM:", error);
+                    return `Erro ao salvar token: ${error}`;
                 }
             } else {
-                 console.warn("[WebView Bridge] Invalid token or user ID provided.");
-                 return "Invalid token or user ID.";
+                 console.warn("[WebView Bridge] Token inválido ou ID do usuário não fornecido.");
+                 return "Token inválido ou ID do usuário não fornecido.";
             }
         };
     }
@@ -268,7 +269,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
   };
 
   const handleDeleteNotification = async (notificationId: string, e?: React.MouseEvent) => {
-    e?.stopPropagation();
+    e.stopPropagation();
     if (isGuest || !currentUserId) return;
     try {
       await deleteNotification(currentUserId, notificationId);
