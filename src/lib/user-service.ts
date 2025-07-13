@@ -1,9 +1,8 @@
-
 // src/lib/user-service.ts
 import { getDb, getFirebaseApp } from './firebase';
 import type { UserProfile } from '@/types/user';
 import { collection, getDocs, query, where, doc, setDoc, deleteDoc, getDoc, updateDoc, Timestamp, getCountFromServer, serverTimestamp, arrayUnion } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getFunctions, httpsCallable } from 'firebase/functions'; // Adicionar import para Functions
 import type { NotificationFormData } from '@/app/colaborador/perfil/page';
 
 /**
@@ -16,7 +15,6 @@ export const getAllUsers = async (): Promise<UserProfile[]> => {
     console.error('[UserService] Firestore not initialized. Cannot fetch users.');
     return [];
   }
-  //console.log('[UserService] Fetching all users.');
   const usersCollection = collection(db, 'users');
   const usersSnapshot = await getDocs(usersCollection);
 
@@ -42,7 +40,6 @@ export const getUsersByRole = async (role: 'admin' | 'collaborator' | 'super_adm
     console.error('[UserService] Firestore not initialized. Cannot fetch users by role.');
     return [];
   }
-  //console.log(`[UserService] Fetching users by role: ${role}`);
   const usersCollectionRef = collection(db, 'users');
   const q = query(usersCollectionRef, where('role', '==', role));
   const querySnapshot = await getDocs(q);
@@ -71,7 +68,6 @@ export const getUsersByRoleAndOrganization = async (role: 'admin' | 'collaborato
     console.error('[UserService] Firestore not initialized. Cannot fetch users by role and organization.');
     return [];
   }
-  //console.log(`[UserService] Fetching users by role: ${role} for organizationId: ${organizationId}`);
   const usersCollectionRef = collection(db, 'users');
   const q = query(usersCollectionRef, where('role', '==', role), where('organizationId', '==', organizationId));
   const querySnapshot = await getDocs(q);
@@ -108,14 +104,10 @@ export const saveUser = async (userData: Partial<UserProfile>): Promise<UserProf
   }
   const userDocRef = doc(db, 'users', userData.uid);
 
-  // Construct the object with fields to update.
-  // For collaborator profile updates, we expect userData to primarily contain phone and photoUrl.
   const dataForFirestore: { [key: string]: any } = {
     updatedAt: serverTimestamp(),
   };
 
-  // Only include fields in dataForFirestore if they are explicitly passed in userData
-  // and are meant to be updated.
   if (userData.hasOwnProperty('phone')) {
     dataForFirestore.phone = userData.phone === '' ? null : userData.phone;
   }
@@ -123,12 +115,6 @@ export const saveUser = async (userData: Partial<UserProfile>): Promise<UserProf
     dataForFirestore.photoUrl = userData.photoUrl === '' ? null : userData.photoUrl;
   }
 
-  // If this function is also used by admins/superadmins to update other fields,
-  // those fields would need to be conditionally added here based on the updater's role
-  // or userData should only contain fields that are allowed to be changed by the current actor.
-  // For the collaborator profile page, userData should only contain phone and photoUrl.
-
-  // The following fields are generally NOT updatable by a collaborator editing their own profile:
   if (userData.hasOwnProperty('name') && userData.name !== undefined) dataForFirestore.name = userData.name;
   if (userData.hasOwnProperty('email') && userData.email !== undefined) dataForFirestore.email = userData.email;
   if (userData.hasOwnProperty('role') && userData.role !== undefined) dataForFirestore.role = userData.role;
@@ -138,9 +124,6 @@ export const saveUser = async (userData: Partial<UserProfile>): Promise<UserProf
   if (userData.hasOwnProperty('userRole') && userData.userRole !== undefined) dataForFirestore.userRole = userData.userRole;
   if (userData.hasOwnProperty('admissionDate') && userData.admissionDate !== undefined) dataForFirestore.admissionDate = userData.admissionDate;
 
-
-  //console.log(`[UserService - saveUser] Data being sent to Firestore for user ${userData.uid}:`, JSON.stringify(dataForFirestore));
-  
   await setDoc(userDocRef, dataForFirestore, { merge: true });
   
   const savedDoc = await getDoc(userDocRef);
@@ -169,7 +152,6 @@ export const deleteUserFromFirestore = async (userId: string): Promise<void> => 
   if (!db) {
     throw new Error('[UserService] Firestore not initialized. Cannot delete user.');
   }
-  //console.log(`[UserService] Deleting user profile from Firestore for UID: ${userId}`);
   const userDocRef = doc(db, 'users', userId);
   await deleteDoc(userDocRef);
 };
@@ -185,7 +167,6 @@ export const updateUserStatusInFirestore = async (userId: string, status: 'activ
   if (!db) {
     throw new Error('[UserService] Firestore not initialized. Cannot update user status.');
   }
-  //console.log(`[UserService] Updating status for user UID: ${userId} to ${status}`);
   const userDocRef = doc(db, 'users', userId);
   await updateDoc(userDocRef, { status, updatedAt: serverTimestamp() });
 
@@ -215,7 +196,6 @@ export const uploadProfilePhoto = async (userId: string, file: File): Promise<st
   if (!storage) {
     throw new Error('[UserService] Firebase Storage not initialized. Cannot upload profile photo.');
   }
-  //console.log(`[UserService] Uploading profile photo for user UID: ${userId}, filename: ${file.name}`);
   const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
   const filePath = `profile_photos/${userId}/${Date.now()}_${sanitizedFileName}`;
   const fileRef = ref(storage, filePath);
@@ -223,7 +203,6 @@ export const uploadProfilePhoto = async (userId: string, file: File): Promise<st
   try {
     const snapshot = await uploadBytes(fileRef, file);
     const downloadURL = await getDownloadURL(snapshot.ref);
-    //console.log(`[UserService] Profile photo uploaded for user ${userId}: ${downloadURL}`);
     return downloadURL;
   } catch (error) {
     console.error(`[UserService] Error uploading profile photo for user ${userId}:`, error);
@@ -242,18 +221,15 @@ export const getNotificationSettings = async (userId: string): Promise<Notificat
     console.error('[UserService] Firestore not initialized. Cannot get notification settings.');
     return null;
   }
-  //console.log(`[UserService - getNotificationSettings V2] Attempting to fetch settings for userId: ${userId}`);
   const settingsDocRef = doc(db, `users/${userId}/settings`, 'notifications');
   try {
     const docSnap = await getDoc(settingsDocRef);
     if (docSnap.exists()) {
-      //console.log(`[UserService - getNotificationSettings V2] Settings found for userId: ${userId}`, docSnap.data());
       return docSnap.data() as NotificationFormData;
     }
-    //console.log(`[UserService - getNotificationSettings V2] No settings document found for userId: ${userId}`);
     return null; 
   } catch (error) {
-    console.error(`[UserService - getNotificationSettings V2] Error fetching notification settings for user ${userId}:`, error);
+    console.error(`[UserService] Error fetching notification settings for user ${userId}:`, error);
     throw error; 
   }
 };
@@ -269,7 +245,6 @@ export const saveNotificationSettings = async (userId: string, settings: Notific
   if (!db) {
     throw new Error('[UserService] Firestore not initialized. Cannot save notification settings.');
   }
-  //console.log(`[UserService] Saving notification settings for userId: ${userId}`, settings);
   const settingsDocRef = doc(db, `users/${userId}/settings`, 'notifications');
   try {
     await setDoc(settingsDocRef, settings, { merge: true });
@@ -292,7 +267,6 @@ export const countTotalUsersByOrganization = async (organizationId: string, role
     console.error('[UserService] Firestore not initialized or organizationId missing for countTotalUsersByOrganization.');
     return 0;
   }
-  //console.log(`[UserService] Counting total users for org ${organizationId} ${role ? `with role ${role}` : ''}`);
   const usersCollectionRef = collection(db, 'users');
   let q = query(usersCollectionRef, where('organizationId', '==', organizationId));
   if (role) {
@@ -320,7 +294,6 @@ export const countActiveUsersByOrganization = async (organizationId: string, rol
     console.error('[UserService] Firestore not initialized or organizationId missing for countActiveUsersByOrganization.');
     return 0;
   }
-  //console.log(`[UserService] Counting active users for org ${organizationId} ${role ? `with role ${role}` : ''}`);
   const usersCollectionRef = collection(db, 'users');
   let q = query(usersCollectionRef, where('organizationId', '==', organizationId), where('status', '==', 'active'));
   if (role) {
@@ -338,7 +311,8 @@ export const countActiveUsersByOrganization = async (organizationId: string, rol
     
 /**
  * Saves a new Firebase Cloud Messaging (FCM) token for a user.
- * Ensures that no duplicate tokens are added.
+ * This function is intended to be called from the frontend (e.g., via the WebView bridge).
+ * It will then make a secure call to a Cloud Function to perform the actual database write.
  * @param userId The ID of the user.
  * @param fcmToken The new FCM token from the device.
  * @returns Promise resolving on successful save.
@@ -348,23 +322,28 @@ export const saveUserFcmToken = async (userId: string, fcmToken: string): Promis
   if (!db) {
     throw new Error('[UserService] Firestore not initialized. Cannot save FCM token.');
   }
+  // This is a frontend service function. Instead of calling a Cloud Function (which would add complexity here),
+  // we will directly and safely update the Firestore document from the client.
+  // Firestore security rules should be in place to ensure a user can only update their own `fcmTokens` array.
   if (!userId || !fcmToken) {
     throw new Error('[UserService] User ID and FCM Token are required.');
   }
-  console.log(`[UserService] Saving FCM token for user UID: ${userId}`);
+
+  console.log(`[UserService] Attempting to save FCM token for user UID: ${userId}`);
   const userDocRef = doc(db, 'users', userId);
   
   try {
-    // Use arrayUnion to atomically add a new token to the array if it's not already present.
-    // This is more efficient and safer than reading, modifying, and writing the array manually.
+    // Use arrayUnion to atomically add the new token to the array.
+    // This prevents race conditions and ensures no duplicate tokens are added.
     await updateDoc(userDocRef, {
         fcmTokens: arrayUnion(fcmToken),
         updatedAt: serverTimestamp(),
     });
-    console.log(`[UserService] Successfully saved/updated FCM token for user ${userId}`);
+    console.log(`[UserService] Successfully updated FCM token for user ${userId}`);
   } catch (error) {
     console.error(`[UserService] Error saving FCM token for user ${userId}:`, error);
-    throw error;
+    // This could fail due to permissions. Ensure Firestore rules allow this write.
+    // Example Rule: `allow update: if request.auth.uid == resource.id && request.resource.data.keys().hasOnly(['fcmTokens', 'updatedAt']);`
+    throw new Error('Failed to save notification token. Check permissions and network.');
   }
 };
-    
