@@ -10,4 +10,5 @@ export const mockEmployees: Employee[] = [
   { id: '4', name: 'Davi Costa', email: 'davi.costa@check2b.com', phone: '41988887777', department: 'Vendas', role: 'Executivo de Contas', admissionDate: '2021-11-01', isActive: true, photoUrl: 'https://picsum.photos/id/338/80/80', organizationId: DEFAULT_ORG_ID },
   { id: '5', name: 'Eva Pereira', email: 'eva.pereira@check2b.com', phone: '51977776666', department: 'Engenharia', role: 'Desenvolvedora Frontend', admissionDate: '2023-03-22', isActive: true, photoUrl: 'https://picsum.photos/id/349/80/80', organizationId: DEFAULT_ORG_ID },
   { id: '6', name: 'Leo Corax', email: 'leocorax@gmail.com', phone: '99999999999', department: 'Engenharia', role: 'Desenvolvedor Frontend', admissionDate: '2024-01-01', isActive: true, photoUrl: 'https://placehold.co/80x80.png', organizationId: DEFAULT_ORG_ID },
+  { id: 'wgpM4OgAVFSVhM8NXKVpVwx0mCl2', name: 'Leo Corax', email: 'leocorax@gmail.com', phone: '99999999999', department: 'Engenharia', role: 'Desenvolvedor Frontend', admissionDate: '2024-01-01', isActive: true, photoUrl: 'https://placehold.co/80x80.png', organizationId: DEFAULT_ORG_ID },
 ];
