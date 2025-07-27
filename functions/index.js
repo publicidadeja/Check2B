@@ -411,7 +411,7 @@ exports.toggleUserStatusFirebase = onCall({
   if (auth && auth.token && typeof auth.token === 'object') {
     console.log('[toggleUserStatusFirebase] Caller token claims (decoded):');
     for (const key in auth.token) {
-        if (Object.prototype.hasOwnProperty.call(token, key)) {
+        if (Object.prototype.hasOwnProperty.call(auth.token, key)) {
             try {
                 const value = auth.token[key];
                 console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value, {depth: 2}) : value}`);
@@ -492,7 +492,7 @@ exports.removeAdminFromOrganizationFirebase = onCall({
     if (auth && auth.token && typeof auth.token === 'object') {
         console.log('[removeAdminFromOrganizationFirebase] Caller token claims (decoded):');
         for (const key in auth.token) {
-            if (Object.prototype.hasOwnProperty.call(token, key)) {
+            if (Object.prototype.hasOwnProperty.call(auth.token, key)) {
                  try {
                     const value = auth.token[key];
                     console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value, {depth: 2}) : value}`);
