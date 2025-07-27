@@ -108,14 +108,14 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
   // Efeito para expor a função de salvar token ao WebView
   React.useEffect(() => {
-    if (typeof window !== 'undefined' && currentUserId) {
-        (window as any).saveFcmToken = async (token: string) => {
+    if (typeof window !== 'undefined') {
+        (window as any).saveFcmToken = async (token: string, userId: string) => {
             console.log(`[WebView Bridge] Função 'saveFcmToken' foi chamada.`);
-            if (token && currentUserId) {
-                console.log(`[WebView Bridge] Recebido FCM token: ${token} para o usuário: ${currentUserId}.`);
+            if (token && userId) {
+                console.log(`[WebView Bridge] Recebido FCM token: ${token} para o usuário: ${userId}.`);
                 try {
-                    await saveUserFcmToken(currentUserId, token);
-                    console.log(`[WebView Bridge] SUCESSO: Token FCM salvo para o usuário ${currentUserId}.`);
+                    await saveUserFcmToken(userId, token);
+                    console.log(`[WebView Bridge] SUCESSO: Token FCM salvo para o usuário ${userId}.`);
                     return "Token salvo com sucesso.";
                 } catch (error) {
                     console.error("[WebView Bridge] ERRO ao salvar token FCM:", error);
@@ -127,13 +127,13 @@ export function MobileLayout({ children }: MobileLayoutProps) {
             }
         };
     }
-    // Cleanup a função quando o componente desmontar ou o usuário mudar
+    // Cleanup a função quando o componente desmontar
     return () => {
         if (typeof window !== 'undefined') {
             delete (window as any).saveFcmToken;
         }
     };
-  }, [currentUserId]);
+  }, []); // Empty dependency array ensures this runs only once
 
 
   React.useEffect(() => {
@@ -511,5 +511,3 @@ export function MobileLayout({ children }: MobileLayoutProps) {
     </TooltipProvider>
   );
 }
-
-    
