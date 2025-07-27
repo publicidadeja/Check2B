@@ -1,6 +1,6 @@
 
 // functions/index.js
-// Force re-deploy: v1.0.12
+// Force re-deploy: v1.0.13
 const admin = require("firebase-admin");
 const util = require("util");
 const {onDocumentWritten, onDocumentCreated} = require("firebase-functions/v2/firestore");
@@ -729,35 +729,26 @@ exports.demoteAdminInMyOrg = onCall({
 // --- Funções de Notificação ---
 
 /**
- * Helper: Send Push Notification via FCM
+ * Helper: Send Push Notification via FCM.
+ * This version sends notifications to a TOPIC instead of direct tokens.
  */
 async function sendPushNotification(employeeId, title, body, link, organizationId) {
   if (!employeeId) {
-    console.warn('[sendPushNotification] employeeId is missing. Skipping.');
+    console.warn('[sendPushNotification] employeeId is missing. Cannot send notification.');
     return;
   }
 
-  const userDoc = await admin.firestore().collection('users').doc(employeeId).get();
-  if (!userDoc.exists) {
-    console.warn(`[sendPushNotification] User document for ${employeeId} not found. Skipping.`);
-    return;
-  }
+  // Your Flutter app subscribes to topics like 'user_USER_ID'.
+  const userTopic = `user_${employeeId}`;
 
-  const userData = userDoc.data();
-  const tokens = userData.fcmTokens; 
-
-  if (!tokens || !Array.isArray(tokens) || tokens.length === 0) {
-    console.log(`[sendPushNotification] No FCM tokens found for user ${employeeId}. Skipping.`);
-    return;
-  }
-
+  // This is the payload that will be sent.
   const messagePayload = {
     notification: {
       title: title,
       body: body,
     },
     data: {
-      userIdTarget: employeeId,
+      userIdTarget: employeeId, // This is crucial for your background handler
       link: link || '/colaborador/dashboard',
       organizationId: organizationId || '',
     },
@@ -771,23 +762,15 @@ async function sendPushNotification(employeeId, title, body, link, organizationI
         },
       },
     },
-    tokens: tokens,
+    topic: userTopic, // <<< THIS IS THE KEY CHANGE. We send to a topic now.
   };
 
   try {
-    console.log(`[sendPushNotification] Sending FCM message to ${tokens.length} tokens for user ${employeeId}.`);
-    const response = await admin.messaging().sendEachForMulticast(messagePayload);
-    console.log(`[sendPushNotification] FCM response: ${response.successCount} messages sent successfully.`);
-    if (response.failureCount > 0) {
-        response.responses.forEach((resp, idx) => {
-            if (!resp.success) {
-                console.error(`[sendPushNotification] FCM send failure for token ${tokens[idx]}:`, resp.error);
-                // TODO: Add logic to clean up invalid tokens from user's profile
-            }
-        });
-    }
+    console.log(`[sendPushNotification] Sending FCM message to TOPIC: ${userTopic}.`);
+    await admin.messaging().send(messagePayload);
+    console.log(`[sendPushNotification] FCM message for topic ${userTopic} sent successfully.`);
   } catch (error) {
-    console.error(`[sendPushNotification] Error sending FCM message to user ${employeeId}:`, error);
+    console.error(`[sendPushNotification] Error sending FCM message to topic ${userTopic}:`, error);
   }
 }
 
