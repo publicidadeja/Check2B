@@ -748,6 +748,7 @@ async function sendPushNotification(employeeId, title, body, link, organizationI
         }
         const userData = userDoc.data();
         tokens = userData.fcmTokens; // Assuming tokens are stored in an array field named 'fcmTokens'
+        console.log(`[sendPushNotification] Found user data for ${employeeId}. Tokens:`, tokens);
     } catch (error) {
         console.error(`[sendPushNotification] Error fetching user document for ${employeeId}:`, error);
         return;
