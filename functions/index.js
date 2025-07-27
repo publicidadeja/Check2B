@@ -1,6 +1,6 @@
 
 // functions/index.js
-// Force re-deploy: v1.0.14
+// Force re-deploy: v1.0.15 FINAL
 const admin = require("firebase-admin");
 const util = require("util");
 const {onDocumentWritten, onDocumentCreated} = require("firebase-functions/v2/firestore");
