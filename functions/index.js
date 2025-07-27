@@ -738,7 +738,6 @@ async function sendPushNotification(employeeId, title, body, link, organizationI
         return;
     }
 
-    // 1. Fetch the user document to get the FCM tokens
     let tokens;
     try {
         const userDoc = await admin.firestore().collection('users').doc(employeeId).get();
@@ -747,20 +746,18 @@ async function sendPushNotification(employeeId, title, body, link, organizationI
             return;
         }
         const userData = userDoc.data();
-        tokens = userData.fcmTokens; // Assuming tokens are stored in an array field named 'fcmTokens'
+        tokens = userData.fcmTokens; 
         console.log(`[sendPushNotification] Found user data for ${employeeId}. Tokens:`, tokens);
     } catch (error) {
         console.error(`[sendPushNotification] Error fetching user document for ${employeeId}:`, error);
         return;
     }
 
-    // 2. Check if there are any tokens to send to
     if (!tokens || !Array.isArray(tokens) || tokens.length === 0) {
         console.log(`[sendPushNotification] No FCM tokens found for user ${employeeId}.`);
         return;
     }
 
-    // 3. Construct the multicast message payload
     const messagePayload = {
         notification: {
             title: title,
@@ -781,7 +778,7 @@ async function sendPushNotification(employeeId, title, body, link, organizationI
                 },
             },
         },
-        tokens: tokens, // Pass the array of tokens here
+        tokens: tokens, 
     };
 
     try {
@@ -1149,5 +1146,3 @@ exports.onChallengeParticipationEvaluated = onDocumentWritten(
       return null;
     }
   );
-
-    
