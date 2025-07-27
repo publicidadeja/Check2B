@@ -1,6 +1,6 @@
 
 // functions/index.js
-// Force re-deploy: v1.0.13
+// Force re-deploy: v1.0.14
 const admin = require("firebase-admin");
 const util = require("util");
 const {onDocumentWritten, onDocumentCreated} = require("firebase-functions/v2/firestore");
@@ -411,7 +411,7 @@ exports.toggleUserStatusFirebase = onCall({
   if (auth && auth.token && typeof auth.token === 'object') {
     console.log('[toggleUserStatusFirebase] Caller token claims (decoded):');
     for (const key in auth.token) {
-        if (Object.prototype.hasOwnProperty.call(auth.token, key)) {
+        if (Object.prototype.hasOwnProperty.call(token, key)) {
             try {
                 const value = auth.token[key];
                 console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value, {depth: 2}) : value}`);
@@ -492,7 +492,7 @@ exports.removeAdminFromOrganizationFirebase = onCall({
     if (auth && auth.token && typeof auth.token === 'object') {
         console.log('[removeAdminFromOrganizationFirebase] Caller token claims (decoded):');
         for (const key in auth.token) {
-            if (Object.prototype.hasOwnProperty.call(auth.token, key)) {
+            if (Object.prototype.hasOwnProperty.call(token, key)) {
                  try {
                     const value = auth.token[key];
                     console.log(`  ${key}: ${typeof value === 'object' ? util.inspect(value, {depth: 2}) : value}`);
@@ -730,49 +730,75 @@ exports.demoteAdminInMyOrg = onCall({
 
 /**
  * Helper: Send Push Notification via FCM.
- * This version sends notifications to a TOPIC instead of direct tokens.
+ * This version fetches the user's FCM tokens from their Firestore document and sends a multicast message.
  */
 async function sendPushNotification(employeeId, title, body, link, organizationId) {
-  if (!employeeId) {
-    console.warn('[sendPushNotification] employeeId is missing. Cannot send notification.');
-    return;
-  }
+    if (!employeeId) {
+        console.warn('[sendPushNotification] employeeId is missing. Cannot send notification.');
+        return;
+    }
 
-  // Your Flutter app subscribes to topics like 'user_USER_ID'.
-  const userTopic = `user_${employeeId}`;
+    // 1. Fetch the user document to get the FCM tokens
+    let tokens;
+    try {
+        const userDoc = await admin.firestore().collection('users').doc(employeeId).get();
+        if (!userDoc.exists) {
+            console.warn(`[sendPushNotification] User document for ${employeeId} not found. Cannot send notification.`);
+            return;
+        }
+        const userData = userDoc.data();
+        tokens = userData.fcmTokens; // Assuming tokens are stored in an array field named 'fcmTokens'
+    } catch (error) {
+        console.error(`[sendPushNotification] Error fetching user document for ${employeeId}:`, error);
+        return;
+    }
 
-  // This is the payload that will be sent.
-  const messagePayload = {
-    notification: {
-      title: title,
-      body: body,
-    },
-    data: {
-      userIdTarget: employeeId, // This is crucial for your background handler
-      link: link || '/colaborador/dashboard',
-      organizationId: organizationId || '',
-    },
-    android: {
-      priority: 'high',
-    },
-    apns: {
-      payload: {
-        aps: {
-          'content-available': 1,
+    // 2. Check if there are any tokens to send to
+    if (!tokens || !Array.isArray(tokens) || tokens.length === 0) {
+        console.log(`[sendPushNotification] No FCM tokens found for user ${employeeId}.`);
+        return;
+    }
+
+    // 3. Construct the multicast message payload
+    const messagePayload = {
+        notification: {
+            title: title,
+            body: body,
         },
-      },
-    },
-    topic: userTopic, // <<< THIS IS THE KEY CHANGE. We send to a topic now.
-  };
+        data: {
+            userIdTarget: employeeId,
+            link: link || '/colaborador/dashboard',
+            organizationId: organizationId || '',
+        },
+        android: {
+            priority: 'high',
+        },
+        apns: {
+            payload: {
+                aps: {
+                    'content-available': 1,
+                },
+            },
+        },
+        tokens: tokens, // Pass the array of tokens here
+    };
 
-  try {
-    console.log(`[sendPushNotification] Sending FCM message to TOPIC: ${userTopic}.`);
-    await admin.messaging().send(messagePayload);
-    console.log(`[sendPushNotification] FCM message for topic ${userTopic} sent successfully.`);
-  } catch (error) {
-    console.error(`[sendPushNotification] Error sending FCM message to topic ${userTopic}:`, error);
-  }
+    try {
+        console.log(`[sendPushNotification] Sending FCM multicast message to ${tokens.length} tokens for user ${employeeId}.`);
+        const response = await admin.messaging().sendEachForMulticast(messagePayload);
+        console.log(`[sendPushNotification] FCM response: ${response.successCount} messages sent successfully for user ${employeeId}.`);
+        if (response.failureCount > 0) {
+            response.responses.forEach((resp, idx) => {
+                if (!resp.success) {
+                    console.error(`[sendPushNotification] FCM send failure for token ${tokens[idx]}:`, resp.error);
+                }
+            });
+        }
+    } catch (error) {
+        console.error(`[sendPushNotification] CRITICAL Error sending FCM multicast message to user ${employeeId}:`, error);
+    }
 }
+
 
 /**
  * Helper function to add a notification to Realtime Database for a specific user.
@@ -1034,7 +1060,7 @@ exports.onChallengeParticipationEvaluated = onDocumentWritten(
         console.log(`[onChallengePublished] Challenge ${challengeId} deleted. No notification.`);
         return null;
       }
-  
+      
       const statusAfter = challengeDataAfter.status;
       const statusBefore = challengeDataBefore ? challengeDataBefore.status : null;
   
@@ -1122,3 +1148,5 @@ exports.onChallengeParticipationEvaluated = onDocumentWritten(
       return null;
     }
   );
+
+    
