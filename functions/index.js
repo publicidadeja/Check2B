@@ -1,6 +1,6 @@
 
 // functions/index.js
-// Force re-deploy: v1.0.15 FINAL
+// Force re-deploy: v1.0.16 FINAL
 const admin = require("firebase-admin");
 const util = require("util");
 const {onDocumentWritten, onDocumentCreated} = require("firebase-functions/v2/firestore");
@@ -754,7 +754,7 @@ async function sendPushNotification(employeeId, title, body, link, organizationI
     }
 
     if (!tokens || !Array.isArray(tokens) || tokens.length === 0) {
-        console.log(`[sendPushNotification] No FCM tokens found for user ${employeeId}.`);
+        console.log(`[sendPushNotification] No FCM tokens found for user ${employeeId}. Skipping.`);
         return;
     }
 
@@ -767,6 +767,7 @@ async function sendPushNotification(employeeId, title, body, link, organizationI
             userIdTarget: employeeId,
             link: link || '/colaborador/dashboard',
             organizationId: organizationId || '',
+            click_action: "FLUTTER_NOTIFICATION_CLICK", // Standard action for Flutter
         },
         android: {
             priority: 'high',
@@ -775,6 +776,7 @@ async function sendPushNotification(employeeId, title, body, link, organizationI
             payload: {
                 aps: {
                     'content-available': 1,
+                     sound: 'default' // Garante som no iOS
                 },
             },
         },
@@ -1146,3 +1148,5 @@ exports.onChallengeParticipationEvaluated = onDocumentWritten(
       return null;
     }
   );
+
+    
