@@ -63,14 +63,6 @@ export const loginUser = async (email: string, password: string): Promise<{ user
 
     console.log(`[Auth] User profile fetched: Role=${role}, OrgID=${organizationId}`);
 
-    // Call the JavaScript channel to notify the Flutter app AFTER successful login and data fetch.
-    if (window.FlutterLogin && typeof window.FlutterLogin.postMessage === 'function') {
-        console.log(`[Auth] Notifying Flutter app via FlutterLogin channel for user: ${user.uid}`);
-        window.FlutterLogin.postMessage(user.uid);
-    } else {
-        console.log("[Auth] FlutterLogin channel not detected on window object.");
-    }
-
     const idToken = await user.getIdToken(true);
     setAuthCookie(idToken, role, organizationId, user.uid);
 
