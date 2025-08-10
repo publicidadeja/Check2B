@@ -1,22 +1,42 @@
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
-import 'package:check2b_mobile_app/services/push_notification_service.dart';
-import 'package:check2b_mobile_app/services/user_manager.dart';
+import 'package:flutter/services.dart';
 
-// --- BACKGROUND HANDLER ---
+// Caminhos corrigidos baseados na estrutura do seu projeto
+import 'java/services/push_notification_service.dart';
+import 'java/services/user_manager.dart';
+
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   print('📱➡️ Mensagem em segundo plano recebida (HANDLER): ${message.messageId}');
-  // A lógica de filtragem de usuário pode ser adicionada aqui se necessário,
-  // mas geralmente o backend já envia para o token/tópico correto.
+
+  final UserManager userManager = UserManager();
+  final String? lastLoggedInUserId = await userManager.getLastUserId();
+  final String? targetUserId = message.data['userIdTarget'];
+
+  print('Handler BG - Target UserID do payload: $targetUserId');
+  print('Handler BG - Último UserID logado localmente: $lastLoggedInUserId');
+
+  if (targetUserId != null && targetUserId.isNotEmpty && targetUserId == lastLoggedInUserId) {
+    print('✅ Handler BG: Notificação para o usuário ativo ($lastLoggedInUserId): ${message.notification?.title}');
+  } else {
+    if (targetUserId == null || targetUserId.isEmpty) {
+      print('⚠️ Handler BG: Notificação recebida sem userIdTarget no payload de dados.');
+    } else if (lastLoggedInUserId == null) {
+      print('⚠️ Handler BG: Notificação recebida para $targetUserId, mas nenhum usuário logado localmente.');
+    } else {
+      print('⚠️ Handler BG: Notificação para $targetUserId, mas o usuário ativo é $lastLoggedInUserId. Ignorando.');
+    }
+  }
 }
 
-// Global instance of PushNotificationService
+// Global instance of PushNotificationService to access the token
 final PushNotificationService pushService = PushNotificationService();
 
 void main() async {
@@ -80,74 +100,71 @@ class WebViewPage extends StatefulWidget {
 class _WebViewPageState extends State<WebViewPage> {
   late final WebViewController _controller;
   final UserManager _userManager = UserManager();
+  final String _flutterReceiverChannel = "FlutterReceiver";
 
   @override
   void initState() {
     super.initState();
 
-    _controller = WebViewController()
+    // Lógica de comunicação revisada
+    final WebViewController controller = WebViewController();
+
+    controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0x00000000))
-      // Adiciona o canal de comunicação ANTES de carregar a página
-      ..addJavaScriptChannel(
-        'FlutterChannel',
-        onMessageReceived: (JavaScriptMessage message) {
-          final String userId = message.message;
-          print('✅ Handshake: UID recebido da página web: $userId');
-          // Agora que temos o UID, podemos salvar o token FCM
-          _saveTokenForUser(userId);
-        },
-      )
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (int progress) {},
           onPageStarted: (String url) {},
           onPageFinished: (String url) {
             print("🌐 Página WebView carregada: $url");
-            _handlePageFinished(url); // Passa a URL para o manipulador
+            // Agora o app Flutter anuncia sua presença na webview
+            _announceFlutterPresence(controller);
           },
           onWebResourceError: (WebResourceError error) {
             print("❌ Erro no WebView: Code=${error.errorCode}, Description='${error.description}', URL='${error.url}'");
           },
         ),
       )
-      ..setOnConsoleMessage((JavaScriptConsoleMessage consoleMessage) {
-        print('CONTEÚDO DO CONSOLE WEBVIEW: [${consoleMessage.level.name}] ${consoleMessage.message}');
-      })
+      ..addJavaScriptChannel(
+        _flutterReceiverChannel,
+        onMessageReceived: (JavaScriptMessage message) {
+          // A webview nos enviou o UID do usuário!
+          print("✅ Mensagem recebida da Webview no canal '$_flutterReceiverChannel': ${message.message}");
+          final String newUserId = message.message;
+          _registerFcmTokenForUser(newUserId);
+        },
+      )
       ..loadRequest(Uri.parse('https://www.check2b.com/'));
+
+    _controller = controller;
   }
 
-  // Novo método para salvar o token
-  Future<void> _saveTokenForUser(String userId) async {
-    String? fcmToken = pushService.currentToken;
+  // O App Flutter se apresenta para a página
+  void _announceFlutterPresence(WebViewController controller) {
+    print("🤝 Anunciando a presença do Flutter para a página web...");
+    controller.runJavaScript('window.flutterAppIsReady && window.flutterAppIsReady();');
+  }
+
+  // Lógica centralizada para registrar o token
+  Future<void> _registerFcmTokenForUser(String newUserId) async {
+    final String? fcmToken = pushService.currentToken;
     if (fcmToken == null) {
-      print('⚠️ Token FCM ainda não disponível. Não foi possível registrar.');
+      print("⚠️ Token FCM ainda não disponível. Não foi possível registrar.");
       return;
     }
 
-    String? lastUserId = await _userManager.getLastUserId();
-    if (userId.isNotEmpty && userId != lastUserId) {
-       print('🚀 ID de usuário mudou. Enviando token FCM para a função da Cloud...');
-       try {
-        await pushService.saveTokenToDatabase(userId);
-        await _userManager.saveUserId(userId);
-        print('✅ Sucesso! Token enviado e UID salvo localmente.');
-       } catch (e) {
-         print('❌ Falha ao salvar token no banco de dados: $e');
-       }
+    final String? lastUserId = await _userManager.getLastUserId();
+
+    if (newUserId.isNotEmpty && newUserId != lastUserId) {
+      print("🚀 Novo login detectado (UID: $newUserId). Enviando token FCM para a função JS da web...");
+
+      await _controller.runJavaScript('window.saveFcmToken("$fcmToken", "$newUserId")');
+
+      await _userManager.saveUserId(newUserId);
+      print("✅ Sucesso! Token enviado e UID ($newUserId) salvo localmente.");
     } else {
-        print('✅ Token já registrado para $userId ou UID é inválido.');
-    }
-  }
-
-
-  Future<void> _handlePageFinished(String url) async {
-    // Se a página carregada for uma página do dashboard (não login)
-    // E o app Flutter estiver sendo executado, ele anuncia que está pronto.
-    if (!url.contains('/login') && mounted) {
-      print('🤝 Handshake: Página do colaborador detectada. Anunciando que o app Flutter está pronto...');
-      // A página web irá detectar este chamado e responder através do FlutterChannel.
-      await _controller.runJavaScript('window.flutterAppIsReady && window.flutterAppIsReady()');
+      print("✅ Token já registrado para o usuário $newUserId nesta sessão.");
     }
   }
 
