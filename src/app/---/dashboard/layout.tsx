@@ -13,15 +13,35 @@ import 'services/user_manager.dart';
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   print('📱➡️ Mensagem em segundo plano recebida (HANDLER): ${message.messageId}');
+
+  final UserManager userManager = UserManager();
+  final String? lastLoggedInUserId = await userManager.getLastUserId();
+  final String? targetUserId = message.data['userIdTarget'];
+
+  print('Handler BG - Target UserID do payload: $targetUserId');
+  print('Handler BG - Último UserID logado localmente: $lastLoggedInUserId');
+
+  if (targetUserId != null && targetUserId.isNotEmpty && targetUserId == lastLoggedInUserId) {
+    print('✅ Handler BG: Notificação para o usuário ativo ($lastLoggedInUserId): ${message.notification?.title}');
+  } else {
+    if (targetUserId == null || targetUserId.isEmpty) {
+      print('⚠️ Handler BG: Notificação recebida sem userIdTarget no payload de dados.');
+    } else if (lastLoggedInUserId == null) {
+      print('⚠️ Handler BG: Notificação recebida para $targetUserId, mas nenhum usuário logado localmente.');
+    } else {
+      print('⚠️ Handler BG: Notificação para $targetUserId, mas o usuário ativo é $lastLoggedInUserId. Ignorando.');
+    }
+  }
 }
 
+// Global instance of PushNotificationService to access the token
 final PushNotificationService pushService = PushNotificationService();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
 
-  // --- INÍCIO APP CHECK ---
+  // --- INÍCIO DA INICIALIZAÇÃO DO FIREBASE APP CHECK ---
   if (kDebugMode) {
     print("🚀 App Check: Inicializando com o provedor de DEPURAÇÃO.");
     try {
@@ -39,7 +59,7 @@ void main() async {
       print("❌ Erro ao ativar App Check (Release): $e");
     }
   }
-  // --- FIM APP CHECK ---
+  // --- FIM DA INICIALIZAÇÃO DO FIREBASE APP CHECK ---
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
@@ -54,6 +74,7 @@ void main() async {
   String? lastUserId = await userManager.getLastUserId();
   if (lastUserId != null) {
     print("Último usuário logado encontrado: $lastUserId.");
+    // A inscrição em tópico foi removida em favor de tokens individuais
   }
 
   try {
@@ -61,6 +82,7 @@ void main() async {
   } catch (e) {
     print("❌ Erro ao verificar mensagem inicial: $e");
   }
+
 
   runApp(MyApp(userManager: userManager));
 }
@@ -98,6 +120,8 @@ class _WebViewPageState extends State<WebViewPage> {
       ..setBackgroundColor(const Color(0x00000000))
       ..setNavigationDelegate(
         NavigationDelegate(
+          onProgress: (int progress) {},
+          onPageStarted: (String url) {},
           onPageFinished: (String url) {
             print("🌐 Página WebView carregada: $url");
           },
@@ -155,7 +179,8 @@ class _WebViewPageState extends State<WebViewPage> {
         'FlutterLogout',
         onMessageReceived: (JavaScriptMessage message) async {
           print('🚪 Logout solicitado pelo WebView.');
-          await widget.userManager.clearUserAndUnsubscribeFromTopic();
+          // A lógica de UserManager que cancelava a inscrição em tópicos não é mais necessária aqui
+          // pois estamos usando tokens individuais.
         },
       )
       ..loadRequest(Uri.parse('https://www.check2b.com/'));
