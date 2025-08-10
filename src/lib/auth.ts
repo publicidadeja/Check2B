@@ -1,4 +1,3 @@
-
 // src/lib/auth.ts
 import {
     signInWithEmailAndPassword,
@@ -73,7 +72,7 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     }
 
     const idToken = await user.getIdToken(true);
-    setAuthCookie(idToken, role, organizationId);
+    setAuthCookie(idToken, role, organizationId, user.uid);
 
     return {
         userCredential,
@@ -91,10 +90,11 @@ export const logoutUser = async (): Promise<void> => {
     Cookies.remove('user-role');
     Cookies.remove('organization-id');
     Cookies.remove('guest-mode');
+    Cookies.remove('user-uid'); // Remove user UID on logout
     console.log("[Auth] User signed out and cookies cleared.");
 };
 
-export const setAuthCookie = (idToken: string, role: string | null, organizationId: string | null): void => {
+export const setAuthCookie = (idToken: string, role: string | null, organizationId: string | null, uid: string): void => {
     const cookieOptions: Cookies.CookieAttributes = {
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
@@ -113,6 +113,8 @@ export const setAuthCookie = (idToken: string, role: string | null, organization
     } else {
         Cookies.remove('organization-id');
     }
+    // Set user UID in a cookie
+    Cookies.set('user-uid', uid, cookieOptions);
     Cookies.remove('guest-mode');
 };
 
