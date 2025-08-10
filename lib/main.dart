@@ -4,7 +4,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+// import 'package:cloud_functions/cloud_functions.dart'; // Removido, não é mais necessário
 
 import 'services/push_notification_service.dart';
 import 'services/user_manager.dart';
@@ -21,20 +21,15 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   print('Handler BG - Target UserID do payload: $targetUserId');
   print('Handler BG - Último UserID logado localmente: $lastLoggedInUserId');
 
-  if (targetUserId != null &&
-      targetUserId.isNotEmpty &&
-      targetUserId == lastLoggedInUserId) {
-    print(
-        '✅ Handler BG: Notificação para o usuário ativo ($lastLoggedInUserId): ${message.notification?.title}');
+  if (targetUserId != null && targetUserId.isNotEmpty && targetUserId == lastLoggedInUserId) {
+    print('✅ Handler BG: Notificação para o usuário ativo ($lastLoggedInUserId): ${message.notification?.title}');
   } else {
     if (targetUserId == null || targetUserId.isEmpty) {
       print('⚠️ Handler BG: Notificação recebida sem userIdTarget no payload de dados.');
     } else if (lastLoggedInUserId == null) {
-      print(
-          '⚠️ Handler BG: Notificação recebida para $targetUserId, mas nenhum usuário logado localmente.');
+      print('⚠️ Handler BG: Notificação recebida para $targetUserId, mas nenhum usuário logado localmente.');
     } else {
-      print(
-          '⚠️ Handler BG: Notificação para $targetUserId, mas o usuário ativo é $lastLoggedInUserId. Ignorando.');
+      print('⚠️ Handler BG: Notificação para $targetUserId, mas o usuário ativo é $lastLoggedInUserId. Ignorando.');
     }
   }
 }
@@ -77,7 +72,7 @@ void main() async {
     print("❌ Erro ao verificar mensagem inicial: $e");
   }
 
-  runApp(MyApp());
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -85,7 +80,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return const MaterialApp(
       debugShowCheckedModeBanner: false,
       home: WebViewPage(),
     );
@@ -101,7 +96,7 @@ class WebViewPage extends StatefulWidget {
 
 class _WebViewPageState extends State<WebViewPage> {
   late final WebViewController _controller;
-  final UserManager userManager = UserManager();
+  final UserManager _userManager = UserManager(); // Instância do UserManager
 
   @override
   void initState() {
@@ -114,11 +109,10 @@ class _WebViewPageState extends State<WebViewPage> {
         NavigationDelegate(
           onProgress: (int progress) {},
           onPageStarted: (String url) {},
-          onPageFinished: (String url) async {
+          onPageFinished: (String url) {
             print("🌐 Página WebView carregada: $url");
-            
             // Nova lógica para verificar o cookie de login
-            await _handleLoginCheck();
+            _checkLoginAndRegisterToken(); 
           },
           onWebResourceError: (WebResourceError error) {
             print("❌ Erro no WebView: Code=${error.errorCode}, Description='${error.description}', URL='${error.url}'");
@@ -128,71 +122,61 @@ class _WebViewPageState extends State<WebViewPage> {
       ..setOnConsoleMessage((JavaScriptConsoleMessage consoleMessage) {
         print('CONTEÚDO DO CONSOLE WEBVIEW: [${consoleMessage.level.name}] ${consoleMessage.message}');
       })
+      // O canal 'FlutterLogout' é mantido para limpar o estado local do app
       ..addJavaScriptChannel(
         'FlutterLogout',
         onMessageReceived: (JavaScriptMessage message) async {
           print('🚪 Logout solicitado pelo WebView.');
-          await userManager.clearUserId();
+          await _userManager.clearUserId();
         },
       )
       ..loadRequest(Uri.parse('https://www.check2b.com/'));
   }
 
-  Future<void> _handleLoginCheck() async {
+  // Nova função para ler o cookie e registrar o token
+  Future<void> _checkLoginAndRegisterToken() async {
     try {
-      final result = await _controller.runJavaScriptReturningResult(
-          "document.cookie.split('; ').find(row => row.startsWith('user-uid='))?.split('=')[1] || ''");
+      // Script JS para ler o cookie 'user-uid'
+      final jsResult = await _controller.runJavaScriptReturningResult("document.cookie.split('; ').find(row => row.startsWith('user-uid='))?.split('=')[1]");
+      
+      final String? userIdFromCookie = jsResult?.toString().replaceAll('"', '');
 
-      final String userIdFromCookie = (result as String).replaceAll('"', '');
+      if (userIdFromCookie != null && userIdFromCookie.isNotEmpty) {
+        print('🆔 UID do usuário encontrado no cookie: $userIdFromCookie');
 
-      if (userIdFromCookie.isNotEmpty) {
-        final lastUserId = await userManager.getLastUserId();
-        
-        if (userIdFromCookie != lastUserId) {
-          print('✅ Novo login detectado! UID do Cookie: $userIdFromCookie. UID anterior: $lastUserId');
-          await userManager.saveUserId(userIdFromCookie);
-          await _sendFcmToken(userIdFromCookie);
+        // Verifica se o token já foi salvo para este usuário nesta sessão
+        final lastSavedUserId = await _userManager.getLastUserId();
+        if (lastSavedUserId == userIdFromCookie) {
+          print('✅ Token já registrado para $userIdFromCookie nesta sessão.');
+          return;
+        }
+
+        // Se for um novo login, obtém o token FCM e chama a função JS na web
+        String? fcmToken = pushService.currentToken;
+        if (fcmToken != null) {
+          print('🚀 Enviando token FCM para a função JS da web...');
+          // Chama a função JS exposta em `auth.ts`
+          await _controller.runJavaScript('window.saveFcmToken("$fcmToken", "$userIdFromCookie")');
+          
+          // Salva localmente que o token foi registrado para este usuário
+          await _userManager.saveUserId(userIdFromCookie);
+          
+          print('✅ Sucesso! Token enviado e UID salvo localmente.');
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Notificações configuradas!'), duration: Duration(seconds: 2)),
+            );
+          }
+        } else {
+          print('⚠️ Token FCM ainda não disponível para registrar.');
         }
       } else {
-        // Se não houver cookie de UID, significa que o usuário não está logado na web
-        final lastUserId = await userManager.getLastUserId();
-        if (lastUserId != null) {
-          print('🚪 Usuário não está mais logado na WebView, limpando ID local.');
-          await userManager.clearUserId();
-        }
+        print('🍪 Nenhum cookie de usuário encontrado. Usuário não logado.');
+        await _userManager.clearUserId(); // Garante que o estado local está limpo
       }
     } catch (e) {
-      print('❌ Erro ao verificar o cookie de login: $e');
-    }
-  }
-
-  Future<void> _sendFcmToken(String userId) async {
-    String? fcmToken = pushService.currentToken;
-    if (fcmToken == null) {
-      print('⚠️ Token FCM ainda não disponível para enviar ao backend.');
-      return;
-    }
-
-    print('✅ Enviando token FCM ($fcmToken) para o backend para o usuário $userId...');
-    try {
-      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('saveFcmToken');
-      final result = await callable.call(<String, dynamic>{
-        'userId': userId,
-        'token': fcmToken,
-      });
-      print('✅ Sucesso! Resposta da Cloud Function: ${result.data}');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Notificações ativadas!')),
-        );
-      }
-    } catch (e) {
-      print('❌ Erro CRÍTICO ao chamar a Cloud Function saveFcmToken: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao registrar token: $e')),
-        );
-      }
+      print('❌ Erro ao executar JS para ler cookie ou registrar token: $e');
     }
   }
 
