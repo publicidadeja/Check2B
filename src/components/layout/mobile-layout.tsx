@@ -51,10 +51,18 @@ import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Logo } from '@/components/logo';
 import { useAuth } from '@/hooks/use-auth';
 import { getFirebaseApp } from '@/lib/firebase';
-import { saveUserFcmToken } from '@/lib/user-service'; // Import the new function from user-service
+import { saveUserFcmToken } from '@/lib/user-service';
 
 interface MobileLayoutProps {
   children: ReactNode;
+}
+
+// Extend Window interface for TypeScript
+declare global {
+  interface Window {
+    flutterAppIsReady?: () => void;
+    receiveFlutterUserData?: (userId: string) => void; // A ser chamada pelo Flutter
+  }
 }
 
 const navItems = [
@@ -88,7 +96,6 @@ const getNotificationIcon = (type: NotificationType['type']) => {
 };
 
 export function MobileLayout({ children }: MobileLayoutProps) {
-  const isMobile = useIsMobile();
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
@@ -108,27 +115,44 @@ export function MobileLayout({ children }: MobileLayoutProps) {
   const currentUserPhotoUrl = user?.photoURL;
 
   // Efeito para expor a função de salvar token ao WebView
-  React.useEffect(() => {
-    if (typeof window !== 'undefined') {
-        (window as any).saveFcmToken = async (token: string, userId: string): Promise<string> => {
-            console.log(`[WebView Bridge] Função 'saveFcmToken' foi chamada com token: ${token} e userId: ${userId}.`);
+    React.useEffect(() => {
+    if (typeof window !== 'undefined' && currentUserId) {
+        // Função que o Flutter chamará para sinalizar que está pronto
+        window.flutterAppIsReady = () => {
+            console.log('[WebView Bridge] Flutter app signaled it is ready.');
+            // O canal 'FlutterChannel' deve existir no seu app Flutter
+            // para receber a mensagem de volta.
+            if ((window as any).FlutterChannel && (window as any).FlutterChannel.postMessage) {
+                console.log(`[WebView Bridge] Responding to Flutter with UID: ${currentUserId}`);
+                (window as any).FlutterChannel.postMessage(currentUserId);
+            } else {
+                console.warn("[WebView Bridge] FlutterChannel not available on window object. Cannot send UID back.");
+            }
+        };
+
+        // Função para ser chamada pelo Flutter com o token
+        (window as any).saveFcmToken = async (token: string): Promise<string> => {
+            console.log(`[WebView Bridge] 'saveFcmToken' foi chamada com token: ${token} para o usuário atual: ${currentUserId}.`);
             try {
-                await saveUserFcmToken(userId, token);
-                console.log(`[WebView Bridge] SUCESSO: Token FCM salvo para o usuário ${userId}.`);
-                return "Token salvo com sucesso.";
+                await saveUserFcmToken(currentUserId, token);
+                const successMsg = `Token FCM salvo para o usuário ${currentUserId}.`;
+                console.log(`[WebView Bridge] SUCESSO: ${successMsg}`);
+                return successMsg;
             } catch (error) {
-                console.error("[WebView Bridge] ERRO ao chamar a Cloud Function 'saveFcmToken':", error);
-                return `Erro ao salvar token: ${error}`;
+                const errorMsg = `Erro ao chamar a Cloud Function 'saveFcmToken' para o usuário ${currentUserId}.`;
+                console.error(`[WebView Bridge] ERRO: ${errorMsg}`, error);
+                return `${errorMsg} Detalhe: ${error}`;
             }
         };
     }
-    // Cleanup a função quando o componente desmontar
+    // Cleanup as funções quando o componente desmontar
     return () => {
         if (typeof window !== 'undefined') {
+            delete window.flutterAppIsReady;
             delete (window as any).saveFcmToken;
         }
     };
-  }, []); // Empty dependency array ensures this runs only once
+  }, [currentUserId]); // Depende do UID do usuário atual
 
 
   React.useEffect(() => {
