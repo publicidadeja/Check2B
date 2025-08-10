@@ -23,6 +23,16 @@ import type { UserProfile } from '@/types/user';
 const auth = getAuthInstance();
 const db = getDb();
 
+// Adicionando a interface para a window para reconhecer o FlutterLogin
+declare global {
+  interface Window {
+    FlutterLogin?: {
+      postMessage: (message: string) => void;
+    };
+  }
+}
+
+
 /**
  * Logs in a user with email and password. Retrieves role and orgId from Firestore.
  * @param email User's email
@@ -53,6 +63,14 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     const organizationId: string | null = userDataFromDb.organizationId || null;
 
     console.log(`[Auth] User profile fetched: Role=${role}, OrgID=${organizationId}`);
+
+    // Call the JavaScript channel to notify the Flutter app AFTER successful login and data fetch.
+    if (window.FlutterLogin && typeof window.FlutterLogin.postMessage === 'function') {
+        console.log(`[Auth] Notifying Flutter app via FlutterLogin channel for user: ${user.uid}`);
+        window.FlutterLogin.postMessage(user.uid);
+    } else {
+        console.log("[Auth] FlutterLogin channel not detected on window object.");
+    }
 
     const idToken = await user.getIdToken(true);
     setAuthCookie(idToken, role, organizationId);
@@ -257,4 +275,3 @@ export const onAuthChange = (callback: (user: User | null) => void) => {
 };
 
 export { auth, db };
-
