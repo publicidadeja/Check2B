@@ -34,14 +34,12 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 }
 
-// Global instance of PushNotificationService to access the token
 final PushNotificationService pushService = PushNotificationService();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
 
-  // --- INÍCIO DA INICIALIZAÇÃO DO FIREBASE APP CHECK ---
   if (kDebugMode) {
     print("🚀 App Check: Inicializando com o provedor de DEPURAÇÃO.");
     try {
@@ -59,7 +57,6 @@ void main() async {
       print("❌ Erro ao ativar App Check (Release): $e");
     }
   }
-  // --- FIM DA INICIALIZAÇÃO DO FIREBASE APP CHECK ---
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
@@ -68,13 +65,12 @@ void main() async {
   } catch (e) {
     print("❌ Erro ao inicializar PushNotificationService: $e");
   }
-  
+
   try {
     await pushService.checkForInitialMessage();
   } catch (e) {
     print("❌ Erro ao verificar mensagem inicial: $e");
   }
-
 
   runApp(const MyApp());
 }
@@ -100,7 +96,7 @@ class WebViewPage extends StatefulWidget {
 
 class _WebViewPageState extends State<WebViewPage> {
   late final WebViewController _controller;
-  final UserManager _userManager = UserManager(); // Instancia o UserManager
+  final UserManager _userManager = UserManager();
 
   @override
   void initState() {
@@ -115,7 +111,7 @@ class _WebViewPageState extends State<WebViewPage> {
           onPageStarted: (String url) {},
           onPageFinished: (String url) {
             print("🌐 Página WebView carregada: $url");
-            _handlePageFinished();
+            _handlePageFinished(url); // Passa a URL para o nosso novo handler
           },
           onWebResourceError: (WebResourceError error) {
             print("❌ Erro no WebView: Code=${error.errorCode}, Description='${error.description}', URL='${error.url}'");
@@ -128,40 +124,41 @@ class _WebViewPageState extends State<WebViewPage> {
       ..loadRequest(Uri.parse('https://www.check2b.com/'));
   }
 
-  Future<void> _handlePageFinished() async {
+  Future<void> _handlePageFinished(String currentUrl) async {
+    // A função saveFcmToken só existe nas páginas após o login.
+    // Portanto, não tentamos fazer nada na página de login.
+    if (currentUrl.contains('/login')) {
+        print('Página de login detectada. Aguardando login do usuário...');
+        return;
+    }
+
     try {
-      // 1. Read the 'user-uid' cookie from the WebView.
       final dynamic cookieResult = await _controller.runJavaScriptReturningResult(
         "document.cookie.split('; ').find(row => row.startsWith('user-uid='))?.split('=')[1] || null"
       );
-      
+
       String? newUserId = cookieResult?.toString().replaceAll('"', '');
       if (newUserId == 'null') newUserId = null;
 
       print('🆔 UID do usuário encontrado no cookie: $newUserId');
 
-      // 2. Get the last registered user ID from local storage.
       String? lastUserId = await _userManager.getLastUserId();
 
-      // 3. Compare and act.
-      if (newUserId != null && newUserId.isNotEmpty && newUserId != lastUserId) {
-        // 4. Get the current FCM token.
-        String? fcmToken = pushService.currentToken;
-        if (fcmToken == null) {
-          print('⚠️ Token FCM ainda não disponível. Não foi possível registrar.');
-          return;
+      if (newUserId != null && newUserId.isNotEmpty) {
+        if (newUserId != lastUserId) {
+          print('🚀 Novo login detectado ou UID mudou. Enviando token FCM para a função JS da web...');
+          
+          String? fcmToken = pushService.currentToken;
+          if (fcmToken != null) {
+            await _controller.runJavaScript('window.saveFcmToken("$fcmToken", "$newUserId")');
+            await _userManager.saveUserId(newUserId);
+            print('✅ Sucesso! Token enviado e UID salvo localmente.');
+          } else {
+             print('⚠️ Token FCM ainda não disponível para enviar ao JS.');
+          }
+        } else {
+          print('✅ Token já registrado para $newUserId nesta sessão.');
         }
-
-        print('🚀 Enviando token FCM para a função JS da web...');
-        
-        // 5. Call the globally available function on the web page.
-        await _controller.runJavaScript('window.saveFcmToken("$fcmToken", "$newUserId")');
-        
-        // 6. On success, update the local state.
-        await _userManager.saveUserId(newUserId);
-        print('✅ Sucesso! Token enviado e UID salvo localmente.');
-      } else if (newUserId != null) {
-        print('✅ Token já registrado para $newUserId nesta sessão.');
       } else {
         print('🚪 Nenhum usuário logado na web. Limpando dados locais se necessário.');
         if (lastUserId != null) {
@@ -169,8 +166,7 @@ class _WebViewPageState extends State<WebViewPage> {
         }
       }
     } catch (e) {
-      // Este erro pode acontecer se a função JS não existir, por exemplo, na página de login. É esperado.
-      print('⚠️ Erro ao executar JS para ler cookie ou salvar token (pode ser normal em páginas não logadas): $e');
+      print('❌ Erro ao executar JS para ler cookie ou salvar token: $e');
     }
   }
 
