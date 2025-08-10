@@ -57,11 +57,12 @@ interface MobileLayoutProps {
   children: ReactNode;
 }
 
-// Extend Window interface for TypeScript
+// Extend Window interface for TypeScript to include our custom channel
 declare global {
   interface Window {
-    flutterAppIsReady?: () => void;
-    receiveFlutterUserData?: (userId: string) => void; // A ser chamada pelo Flutter
+    FlutterChannel?: {
+        postMessage: (message: string) => void;
+    };
   }
 }
 
@@ -114,45 +115,22 @@ export function MobileLayout({ children }: MobileLayoutProps) {
   const currentUserDisplayName = user?.displayName;
   const currentUserPhotoUrl = user?.photoURL;
 
-  // Efeito para expor a função de salvar token ao WebView
+  // Efeito para enviar o UID para o Flutter assim que o usuário for autenticado
     React.useEffect(() => {
-    if (typeof window !== 'undefined' && currentUserId) {
-        // Função que o Flutter chamará para sinalizar que está pronto
-        window.flutterAppIsReady = () => {
-            console.log('[WebView Bridge] Flutter app signaled it is ready.');
-            // O canal 'FlutterChannel' deve existir no seu app Flutter
-            // para receber a mensagem de volta.
-            if ((window as any).FlutterChannel && (window as any).FlutterChannel.postMessage) {
-                console.log(`[WebView Bridge] Responding to Flutter with UID: ${currentUserId}`);
-                (window as any).FlutterChannel.postMessage(currentUserId);
+        // A comunicação só deve acontecer se houver um usuário logado e não for convidado.
+        if (currentUserId && !isGuest && typeof window !== 'undefined') {
+            console.log(`[WebView Bridge] User is authenticated (UID: ${currentUserId}). Checking for FlutterChannel...`);
+            
+            // O Flutter injeta `window.FlutterChannel` na WebView.
+            if (window.FlutterChannel && typeof window.FlutterChannel.postMessage === 'function') {
+                console.log("[WebView Bridge] FlutterChannel found! Sending user ID back to Flutter app.");
+                // Envia o UID do usuário para o manipulador de mensagens do Flutter.
+                window.FlutterChannel.postMessage(currentUserId);
             } else {
-                console.warn("[WebView Bridge] FlutterChannel not available on window object. Cannot send UID back.");
+                console.log("[WebView Bridge] FlutterChannel not found. App is likely running in a standard browser.");
             }
-        };
-
-        // Função para ser chamada pelo Flutter com o token
-        (window as any).saveFcmToken = async (token: string): Promise<string> => {
-            console.log(`[WebView Bridge] 'saveFcmToken' foi chamada com token: ${token} para o usuário atual: ${currentUserId}.`);
-            try {
-                await saveUserFcmToken(currentUserId, token);
-                const successMsg = `Token FCM salvo para o usuário ${currentUserId}.`;
-                console.log(`[WebView Bridge] SUCESSO: ${successMsg}`);
-                return successMsg;
-            } catch (error) {
-                const errorMsg = `Erro ao chamar a Cloud Function 'saveFcmToken' para o usuário ${currentUserId}.`;
-                console.error(`[WebView Bridge] ERRO: ${errorMsg}`, error);
-                return `${errorMsg} Detalhe: ${error}`;
-            }
-        };
-    }
-    // Cleanup as funções quando o componente desmontar
-    return () => {
-        if (typeof window !== 'undefined') {
-            delete window.flutterAppIsReady;
-            delete (window as any).saveFcmToken;
         }
-    };
-  }, [currentUserId]); // Depende do UID do usuário atual
+    }, [currentUserId, isGuest]); // Este efeito roda sempre que o UID do usuário muda.
 
 
   React.useEffect(() => {
