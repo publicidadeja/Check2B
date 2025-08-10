@@ -1,8 +1,7 @@
-
 name: check2b_mobile_app
 description: "Aplicativo móvel para a plataforma Check2B."
 
-publish_to: 'none' # Remove this line if you intend to publish to pub.dev
+publish_to: 'none'
 
 version: 1.0.0+1
 
@@ -27,7 +26,6 @@ dependencies:
 
   # UI/UX
   cupertino_icons: ^1.0.6
-
 
 dev_dependencies:
   flutter_test:
