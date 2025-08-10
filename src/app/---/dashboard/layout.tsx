@@ -1,10 +1,10 @@
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
-import 'package:cloud_functions/cloud_functions.dart'; // <<< CORRIGIDO
 
 import 'services/push_notification_service.dart';
 import 'services/user_manager.dart';
@@ -63,20 +63,12 @@ void main() async {
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  final UserManager userManager = UserManager();
-
   try {
     await pushService.initialize();
   } catch (e) {
     print("❌ Erro ao inicializar PushNotificationService: $e");
   }
-
-  String? lastUserId = await userManager.getLastUserId();
-  if (lastUserId != null) {
-    print("Último usuário logado encontrado: $lastUserId.");
-    // A inscrição em tópico foi removida em favor de tokens individuais
-  }
-
+  
   try {
     await pushService.checkForInitialMessage();
   } catch (e) {
@@ -84,25 +76,23 @@ void main() async {
   }
 
 
-  runApp(MyApp(userManager: userManager));
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  final UserManager userManager;
-  const MyApp({super.key, required this.userManager});
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return const MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: WebViewPage(userManager: userManager),
+      home: WebViewPage(),
     );
   }
 }
 
 class WebViewPage extends StatefulWidget {
-  final UserManager userManager;
-  const WebViewPage({super.key, required this.userManager});
+  const WebViewPage({super.key});
 
   @override
   State<WebViewPage> createState() => _WebViewPageState();
@@ -110,6 +100,7 @@ class WebViewPage extends StatefulWidget {
 
 class _WebViewPageState extends State<WebViewPage> {
   late final WebViewController _controller;
+  final UserManager _userManager = UserManager(); // Instancia o UserManager
 
   @override
   void initState() {
@@ -124,6 +115,7 @@ class _WebViewPageState extends State<WebViewPage> {
           onPageStarted: (String url) {},
           onPageFinished: (String url) {
             print("🌐 Página WebView carregada: $url");
+            _handlePageFinished();
           },
           onWebResourceError: (WebResourceError error) {
             print("❌ Erro no WebView: Code=${error.errorCode}, Description='${error.description}', URL='${error.url}'");
@@ -133,57 +125,52 @@ class _WebViewPageState extends State<WebViewPage> {
       ..setOnConsoleMessage((JavaScriptConsoleMessage consoleMessage) {
         print('CONTEÚDO DO CONSOLE WEBVIEW: [${consoleMessage.level.name}] ${consoleMessage.message}');
       })
-      ..addJavaScriptChannel(
-        'FlutterLogin',
-        onMessageReceived: (JavaScriptMessage message) async {
-          String userIdFromWeb = message.message;
-          if (userIdFromWeb.isNotEmpty) {
-            print('🆔 ID do usuário recebido do WebView: $userIdFromWeb');
-            
-            // --- NOVA LÓGICA DE SALVAMENTO DE TOKEN ---
-            String? fcmToken = pushService.currentToken;
-            if (fcmToken != null) {
-              print('✅ Enviando token FCM para o backend via Cloud Function...');
-              try {
-                // Instancia a função 'saveFcmToken' que criamos
-                HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('saveFcmToken');
-                
-                // Chama a função com os dados necessários
-                final result = await callable.call(<String, dynamic>{
-                  'userId': userIdFromWeb,
-                  'token': fcmToken,
-                });
-                
-                print('✅ Sucesso! Resposta da Cloud Function: ${result.data}');
-                if (mounted) {
-                   ScaffoldMessenger.of(context).showSnackBar(
-                     const SnackBar(content: Text('Token de notificação registrado!')),
-                   );
-                }
-              } catch (e) {
-                print('❌ Erro CRÍTICO ao chamar a Cloud Function saveFcmToken: $e');
-                if (mounted) {
-                   ScaffoldMessenger.of(context).showSnackBar(
-                     SnackBar(content: Text('Erro ao registrar token: $e')),
-                   );
-                }
-              }
-            } else {
-              print('⚠️ Token FCM ainda não disponível para enviar ao backend.');
-            }
-            // --- FIM DA NOVA LÓGICA ---
-          }
-        },
-      )
-      ..addJavaScriptChannel(
-        'FlutterLogout',
-        onMessageReceived: (JavaScriptMessage message) async {
-          print('🚪 Logout solicitado pelo WebView.');
-          // A lógica de UserManager que cancelava a inscrição em tópicos não é mais necessária aqui
-          // pois estamos usando tokens individuais.
-        },
-      )
       ..loadRequest(Uri.parse('https://www.check2b.com/'));
+  }
+
+  Future<void> _handlePageFinished() async {
+    // 1. Get the current FCM token.
+    String? fcmToken = pushService.currentToken;
+    if (fcmToken == null) {
+      print('⚠️ Token FCM ainda não disponível. Não foi possível registrar.');
+      return;
+    }
+  
+    try {
+      // 2. Read the 'user-uid' cookie from the WebView.
+      final dynamic cookieResult = await _controller.runJavaScriptReturningResult(
+        "document.cookie.split('; ').find(row => row.startsWith('user-uid='))?.split('=')[1] || null"
+      );
+      
+      String? newUserId = cookieResult?.toString().replaceAll('"', '');
+      if (newUserId == 'null') newUserId = null;
+
+      print('🆔 UID do usuário encontrado no cookie: $newUserId');
+
+      // 3. Get the last registered user ID from local storage.
+      String? lastUserId = await _userManager.getLastUserId();
+
+      // 4. Compare and act.
+      if (newUserId != null && newUserId.isNotEmpty && newUserId != lastUserId) {
+        print('🚀 Novo login detectado ou UID mudou. Enviando token FCM para a função JS da web...');
+        
+        // 5. Call the globally available function on the web page.
+        await _controller.runJavaScript('window.saveFcmToken("$fcmToken", "$newUserId")');
+        
+        // 6. On success, update the local state.
+        await _userManager.saveUserId(newUserId);
+        print('✅ Sucesso! Token enviado e UID salvo localmente.');
+      } else if (newUserId != null) {
+        print('✅ Token já registrado para $newUserId nesta sessão.');
+      } else {
+        print('🚪 Nenhum usuário logado na web. Limpando dados locais se necessário.');
+        if (lastUserId != null) {
+          await _userManager.clearUserId();
+        }
+      }
+    } catch (e) {
+      print('❌ Erro ao executar JS para ler cookie ou salvar token: $e');
+    }
   }
 
   @override

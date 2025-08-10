@@ -51,6 +51,7 @@ import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Logo } from '@/components/logo';
 import { useAuth } from '@/hooks/use-auth';
 import { getFirebaseApp } from '@/lib/firebase';
+import { saveUserFcmToken } from '@/lib/user-service'; // Import the new function from user-service
 
 interface MobileLayoutProps {
   children: ReactNode;
@@ -109,27 +110,15 @@ export function MobileLayout({ children }: MobileLayoutProps) {
   // Efeito para expor a função de salvar token ao WebView
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
-        (window as any).saveFcmToken = async (token: string, userId: string) => {
+        (window as any).saveFcmToken = async (token: string, userId: string): Promise<string> => {
             console.log(`[WebView Bridge] Função 'saveFcmToken' foi chamada com token: ${token} e userId: ${userId}.`);
-            if (token && userId) {
-                const firebaseApp = getFirebaseApp();
-                if (!firebaseApp) {
-                     console.error("[WebView Bridge] App Firebase não está pronto.");
-                     return "Erro: App Firebase não inicializado.";
-                }
-                const functions = getFunctions(firebaseApp);
-                const saveTokenFunction = httpsCallable(functions, 'saveFcmToken');
-                try {
-                    await saveTokenFunction({ userId, token });
-                    console.log(`[WebView Bridge] SUCESSO: Token FCM salvo para o usuário ${userId}.`);
-                    return "Token salvo com sucesso.";
-                } catch (error) {
-                    console.error("[WebView Bridge] ERRO ao chamar a Cloud Function 'saveFcmToken':", error);
-                    return `Erro ao salvar token: ${error}`;
-                }
-            } else {
-                 console.warn("[WebView Bridge] Token inválido ou ID do usuário não fornecido.");
-                 return "Token inválido ou ID do usuário não fornecido.";
+            try {
+                await saveUserFcmToken(userId, token);
+                console.log(`[WebView Bridge] SUCESSO: Token FCM salvo para o usuário ${userId}.`);
+                return "Token salvo com sucesso.";
+            } catch (error) {
+                console.error("[WebView Bridge] ERRO ao chamar a Cloud Function 'saveFcmToken':", error);
+                return `Erro ao salvar token: ${error}`;
             }
         };
     }

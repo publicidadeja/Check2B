@@ -5,6 +5,7 @@ import './globals.css';
 import { Toaster } from '@/components/ui/toaster'; // Import Toaster for notifications
 import { AuthProvider } from '@/hooks/use-auth'; // Import AuthProvider
 import { ConditionalLayout } from '@/components/layout/conditional-layout';
+import React from 'react'; // Import React for useEffect
 
 // Using Inter font as a common, well-supported alternative
 const inter = Inter({
@@ -36,4 +37,3 @@ export default function RootLayout({
     </html>
   );
 }
-

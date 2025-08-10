@@ -26,9 +26,6 @@ const db = getDb();
 // Adicionando a interface para a window para reconhecer o FlutterLogin
 declare global {
   interface Window {
-    FlutterLogin?: {
-      postMessage: (message: string) => void;
-    };
     // Nova função para ser chamada pelo Flutter
     saveFcmToken?: (token: string, userId: string) => Promise<string>;
   }
@@ -69,8 +66,8 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     const idToken = await user.getIdToken(true);
     setAuthCookie(idToken, role, organizationId, user.uid);
 
-    // REMOVED: A chamada window.FlutterLogin.postMessage foi removida.
-    // A nova abordagem é o app Flutter ler os cookies após o redirecionamento.
+    // This function no longer calls window.FlutterLogin.postMessage.
+    // The Flutter app will detect the cookie change on page load.
 
     return {
         userCredential,
@@ -84,18 +81,20 @@ export const loginUser = async (email: string, password: string): Promise<{ user
  * @param fcmToken The Firebase Cloud Messaging token from the device.
  * @param userId The UID of the user to associate the token with.
  */
-const saveFcmTokenToFirestore = async (fcmToken: string, userId: string): Promise<string> => {
+export const saveFcmToken = async (fcmToken: string, userId: string): Promise<string> => {
     const app = getFirebaseApp();
     if (!app) {
-        console.error("[Auth Service] Firebase App not initialized. Cannot save FCM token.");
-        return "Erro: App Firebase não inicializado.";
+        const errorMsg = "Erro: App Firebase não inicializado.";
+        console.error("[Auth Service]", errorMsg);
+        return errorMsg;
     }
     if (!userId || !fcmToken) {
-        console.error("[Auth Service] User ID or FCM Token is missing.");
-        return "Erro: User ID ou FCM Token ausentes.";
+         const errorMsg = "Erro: User ID ou FCM Token ausentes.";
+        console.error("[Auth Service]", errorMsg);
+        return errorMsg;
     }
 
-    console.log(`[Auth Service] Calling 'saveFcmToken' Cloud Function for user UID: ${userId}`);
+    console.log(`[Auth Service] Chamando Cloud Function 'saveFcmToken' para o usuário UID: ${userId}`);
     const functions = getFunctions(app, 'us-central1'); // Specify region if not default
     const saveTokenFunction = httpsCallable(functions, 'saveFcmToken');
 
@@ -103,22 +102,18 @@ const saveFcmTokenToFirestore = async (fcmToken: string, userId: string): Promis
         const result = await saveTokenFunction({ userId, token: fcmToken });
         const resultData = result.data as { success: boolean, message: string };
         if (resultData.success) {
-            console.log(`[Auth Service] Successfully called Cloud Function to save FCM token for user ${userId}. Msg: ${resultData.message}`);
+            console.log(`[Auth Service] Sucesso ao chamar Cloud Function para salvar token FCM para ${userId}. Msg: ${resultData.message}`);
             return resultData.message;
         } else {
-            console.error(`[Auth Service] Cloud function returned failure for user ${userId}.`, resultData);
+            console.error(`[Auth Service] Cloud function retornou falha para ${userId}.`, resultData);
             return `Erro do servidor: ${resultData.message}`;
         }
     } catch (error) {
-        console.error(`[Auth Service] Error calling 'saveFcmToken' Cloud Function for user ${userId}:`, error);
-        return `Erro ao chamar a função: ${error}`;
+        const errorMsg = `Erro ao chamar a função: ${error}`;
+        console.error(`[Auth Service] Erro ao chamar Cloud Function 'saveFcmToken' para ${userId}:`, error);
+        return errorMsg;
     }
 };
-
-// Expose the function to the window object for the Flutter app to call
-if (typeof window !== 'undefined') {
-    window.saveFcmToken = saveFcmTokenToFirestore;
-}
 
 
 export const logoutUser = async (): Promise<void> => {
