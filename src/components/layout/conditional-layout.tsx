@@ -14,140 +14,69 @@ interface ConditionalLayoutProps {
   children: React.ReactNode;
 }
 
-// Mude para false para testar o middleware real e o fluxo de autenticação
-const MIDDLEWARE_BYPASS_ACTIVE = true; 
-
 export function ConditionalLayout({ children }: ConditionalLayoutProps) {
   const { user, role, organizationId, isLoading, isGuest } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  const [redirectPath, setRedirectPath] = React.useState<string | null>(null);
 
-  //console.log(`[ConditionalLayout START V10 FIX ATTEMPT] Path: ${pathname}, Role: ${role}, OrgId: ${organizationId}, isLoading: ${isLoading}, isGuest: ${isGuest}, Bypass: ${MIDDLEWARE_BYPASS_ACTIVE}`);
-
-  React.useEffect(() => {
-    //console.log("[ConditionalLayout useEffect for redirect] Triggered. redirectPath:", redirectPath, "pathname:", pathname);
-    if (redirectPath && pathname === '/login') { // Only redirect if currently on /login and redirectPath is set
-     // console.log(`[ConditionalLayout useEffect for redirect] Redirecting from /login to ${redirectPath}`);
-      router.push(redirectPath);
-      setRedirectPath(null); // Clear after redirect attempt
-    }
-  }, [redirectPath, router, pathname]);
-
-
+  // FINAL FIX: This is the most important change.
+  // We wait until the authentication state is fully resolved before rendering anything.
+  // This prevents the layout from flashing the login page or making incorrect routing decisions
+  // while `useAuth` is still verifying the user's token and profile.
   if (isLoading) {
-   // console.log("[ConditionalLayout DECISION V10] Auth state loading. Rendering spinner.");
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <LoadingSpinner size="lg" text="Carregando sistema..." />
+        <LoadingSpinner size="lg" text="Verificando sessão..." />
       </div>
     );
   }
-  
+
+  // If we are on the login page, render it directly without any layout wrapper.
+  // This also handles the case where an authenticated user might be redirected here,
+  // letting the page logic handle the redirect back to the correct dashboard.
   if (pathname === '/login') {
-    if (!isGuest && role) { // User is authenticated (not guest, has role)
-      let targetPath = '/';
-      if (role === 'super_admin') targetPath = '/superadmin';
-      else if (role === 'admin') targetPath = '/'; // Admin dashboard is root
-      else if (role === 'collaborator') targetPath = '/colaborador/dashboard';
-      
-      //console.log(`[ConditionalLayout REDIRECT PREP V10] Authenticated user (${role}) on /login. Preparing to redirect to ${targetPath}`);
-      // Instead of direct router.push, set state to trigger useEffect
-      if (redirectPath !== targetPath) { // Prevent setting state if already set or during initial render if not needed
-        setRedirectPath(targetPath);
-      }
-      return <div className="flex min-h-screen items-center justify-center"><LoadingSpinner size="lg" text="Redirecionando..." /></div>;
-    }
-    console.log("[ConditionalLayout DECISION V10] Login page, user not authenticated or is guest. Rendering login form.");
-    return <>{children}</>; // Render login page content
+    return <>{children}</>;
   }
 
-  // Define path types
-  const isAdminPath = !pathname.startsWith('/colaborador') && !pathname.startsWith('/superadmin') && pathname !== '/login';
+  // If not loading and not on login, but we have no user and are not a guest,
+  // it means the user is unauthenticated and trying to access a protected page.
+  // Redirect them to the login page.
+  if (!user && !isGuest) {
+    // Using useEffect to avoid modifying state during render, though this is a navigation side-effect
+    // that should be safe.
+    React.useEffect(() => {
+        router.replace(`/login?reason=unauthenticated&from=${pathname}`);
+    }, [router, pathname]);
+    
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <LoadingSpinner size="lg" text="Redirecionando..." />
+      </div>
+    );
+  }
+
+  // Define path types based on the current URL
+  const isAdminPath = !pathname.startsWith('/colaborador') && !pathname.startsWith('/superadmin');
   const isColaboradorPath = pathname.startsWith('/colaborador');
   const isSuperAdminPath = pathname.startsWith('/superadmin');
- // console.log(`[ConditionalLayout INFO V10] Path checks: isAdminPath=${isAdminPath}, isColaboradorPath=${isColaboradorPath}, isSuperAdminPath=${isSuperAdminPath}`);
 
-
-  // --- MODO BYPASS DO MIDDLEWARE (APENAS PARA DESENVOLVIMENTO) ---
-  if (MIDDLEWARE_BYPASS_ACTIVE) {
-   // console.warn("[ConditionalLayout BYPASS ACTIVE V10]");
-    if (isSuperAdminPath) {
-    //  console.log(`[ConditionalLayout DECISION V10] (Bypass) Renderizando SuperAdminLayout para: ${pathname}`);
-      return <SuperAdminLayout>{children}</SuperAdminLayout>;
-    }
-    if (isAdminPath) {
-    //  console.log(`[ConditionalLayout DECISION V10] (Bypass) Renderizando MainLayout para: ${pathname}`);
-      return <MainLayout>{children}</MainLayout>;
-    }
-    if (isColaboradorPath) {
-    //  console.log(`[ConditionalLayout DECISION V10] (Bypass) Renderizando MobileLayout para: ${pathname}`);
-      return <MobileLayout>{children}</MobileLayout>;
-    }
-    //console.warn(`[ConditionalLayout BYPASS UNHANDLED V10] Path ${pathname} não corresponde a nenhum layout. Renderizando children.`);
-    return <>{children}</>; 
+  // Determine the correct layout based on the user's role
+  // This logic now runs only after `isLoading` is false and we have a valid auth state.
+  if (role === 'super_admin') {
+    return isSuperAdminPath ? <SuperAdminLayout>{children}</SuperAdminLayout> : <div className="flex min-h-screen items-center justify-center"><LoadingSpinner text="Redirecionando para painel Super Admin..."/></div>;
   }
-
-  // --- ROTEAMENTO NORMAL (QUANDO MIDDLEWARE_BYPASS_ACTIVE = false) ---
-  // This part is reached only if MIDDLEWARE_BYPASS_ACTIVE is false.
-  // The middleware should have already redirected unauthenticated users to /login.
-  // So, here we assume the user is either authenticated or in guest mode and on an allowed path.
-
-  if (isGuest) {
-   // console.log(`[ConditionalLayout GUEST MODE V10] Role (from guest cookie): ${role}`);
-    if (role === 'super_admin' && isSuperAdminPath) return <SuperAdminLayout>{children}</SuperAdminLayout>;
-    if (role === 'admin' && isAdminPath) return <MainLayout>{children}</MainLayout>;
-    if (role === 'collaborator' && isColaboradorPath) return <MobileLayout>{children}</MobileLayout>;
-    
-    //console.warn(`[ConditionalLayout GUEST FALLBACK V10] Guest on unhandled path or role mismatch. Path: ${pathname}, Guest Role: ${role}. Redirecting to login (middleware should catch).`);
-    // Removed direct router.replace to avoid the render error, middleware should handle this redirect if needed
-    // if (typeof window !== 'undefined') router.replace('/login?reason=cl_guest_unhandled_v10');
-    return <div className="flex min-h-screen items-center justify-center"><LoadingSpinner size="lg" text="Redirecionando..." /></div>;
+  if (role === 'admin') {
+    return isAdminPath ? <MainLayout>{children}</MainLayout> : <div className="flex min-h-screen items-center justify-center"><LoadingSpinner text="Redirecionando para painel Admin..."/></div>;
   }
-
-  // Authenticated User Routing (if middleware didn't redirect, user has token and role SHOULD be set by useAuth)
-  if (role) {
-    //console.log(`[ConditionalLayout AUTH MODE V10] Role: ${role}, OrgID: ${organizationId}`);
-    if (role === 'super_admin') {
-        return isSuperAdminPath ? <SuperAdminLayout>{children}</SuperAdminLayout> : (() => {
-            // if (typeof window !== 'undefined') router.replace('/superadmin');
-            // Instead of direct redirect, perhaps a placeholder or a useEffect-based redirect might be safer here too.
-            // For now, relying on middleware to have handled this.
-            return <div className="flex min-h-screen items-center justify-center"><LoadingSpinner size="lg" text="Redirecionando Super Admin..." /></div>;
-        })();
-    }
-    if (role === 'admin') {
-        if (!organizationId) {
-            console.error(`[ConditionalLayout AUTH ERROR V10] Admin ${user?.uid} missing organizationId!`);
-            // if (typeof window !== 'undefined') router.replace('/login?reason=no_org_cl_v10');
-            return <div className="flex min-h-screen items-center justify-center"><LoadingSpinner size="lg" text="Erro de Configuração (Admin)..." /></div>;
-        }
-        return isAdminPath ? <MainLayout>{children}</MainLayout> : (() => {
-            // if (typeof window !== 'undefined') router.replace('/');
-            return <div className="flex min-h-screen items-center justify-center"><LoadingSpinner size="lg" text="Redirecionando Admin..." /></div>;
-        })();
-    }
-    if (role === 'collaborator') {
-        if (!organizationId) {
-            console.error(`[ConditionalLayout AUTH ERROR V10] Colaborador ${user?.uid} missing organizationId!`);
-            // if (typeof window !== 'undefined') router.replace('/login?reason=no_org_cl_v10');
-            return <div className="flex min-h-screen items-center justify-center"><LoadingSpinner size="lg" text="Erro de Configuração (Colab.)..." /></div>;
-        }
-        return isColaboradorPath ? <MobileLayout>{children}</MobileLayout> : (() => {
-            // if (typeof window !== 'undefined') router.replace('/colaborador/dashboard');
-            return <div className="flex min-h-screen items-center justify-center"><LoadingSpinner size="lg" text="Redirecionando Colaborador..." /></div>;
-        })();
-    }
-    // Fallback for unknown authenticated role
-    console.error(`[ConditionalLayout AUTH ERROR V10] Unknown role: ${role}. UID: ${user?.uid}.`);
-    // if (typeof window !== 'undefined') router.replace('/login?reason=unknown_role_cl_v10');
-    return <div className="flex min-h-screen items-center justify-center"><LoadingSpinner size="lg" text="Erro de Perfil..." /></div>;
+  if (role === 'collaborator') {
+    return isColaboradorPath ? <MobileLayout>{children}</MobileLayout> : <div className="flex min-h-screen items-center justify-center"><LoadingSpinner text="Redirecionando para painel do Colaborador..."/></div>;
   }
-
-  // Fallback if !isLoading, not /login, not guest, and no role (e.g., profile fetch failed silently before setting role)
-  // Middleware should ideally prevent this state for non-bypassed flow.
-  console.error(`[ConditionalLayout CRITICAL FALLBACK V10] Unhandled state (Not loading, not /login, not guest, no role). Path: ${pathname}. Redirecting to login.`);
-  // if (typeof window !== 'undefined') router.replace('/login?reason=cl_critical_fallback_v10');
-  return <div className="flex min-h-screen items-center justify-center"><LoadingSpinner size="lg" text="Erro Inesperado de Roteamento..." /></div>;
+  
+  // Fallback for any unknown state (e.g., guest on a protected route, unknown role)
+  // This will be caught by the redirect logic at the top of the component on the next render cycle.
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <LoadingSpinner size="lg" text="Carregando..." />
+    </div>
+  );
 }
-
