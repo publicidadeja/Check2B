@@ -17,6 +17,54 @@ if (admin.apps.length === 0) {
 setGlobalOptions({region: "us-central1"});
 
 /**
+ * Saves a new Firebase Cloud Messaging (FCM) token for a user.
+ * This is called from the frontend when it receives the token from the mobile app.
+ */
+exports.saveFcmToken = onCall({
+    enforceAppCheck: false, // Pode ser false se a chamada for apenas por usuários autenticados
+}, async (request) => {
+    const data = request.data;
+    const auth = request.auth;
+
+    console.log('[saveFcmToken] Function called with data:', JSON.stringify(data));
+    console.log(`[saveFcmToken] Caller UID: ${auth?.uid || 'N/A'}`);
+
+    if (!auth) {
+        throw new HttpsError("unauthenticated", "A função só pode ser chamada por usuários autenticados.");
+    }
+
+    const { userId, token } = data;
+    if (!userId || !token) {
+        throw new HttpsError("invalid-argument", "userId e token são obrigatórios.");
+    }
+
+    // Security check: Ensure the authenticated user is the one they're trying to update,
+    // or is an admin with permission to do so. For now, we'll allow a user to update their own token.
+    if (auth.uid !== userId) {
+        console.error(`[saveFcmToken] Permission denied. Caller UID ${auth.uid} cannot save token for UID ${userId}.`);
+        throw new HttpsError("permission-denied", "Você só pode salvar um token para seu próprio usuário.");
+    }
+
+    const userDocRef = admin.firestore().collection('users').doc(userId);
+
+    try {
+        await userDocRef.update({
+            fcmTokens: admin.firestore.FieldValue.arrayUnion(token),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`[saveFcmToken] Token saved successfully for user ${userId}.`);
+        return { success: true, message: `Token salvo para o usuário ${userId}` };
+    } catch (error) {
+        const err = error;
+        // If the document doesn't exist, we might want to create it or just log the error.
+        // For now, we log it. A more robust solution might use .set({ fcmTokens: [token] }, { merge: true })
+        console.error("[saveFcmToken] CRITICAL ERROR saving token:", err);
+        throw new HttpsError("internal", `Não foi possível salvar o token de notificação. Detalhe: ${(err instanceof Error ? err.message : String(err))}`);
+    }
+});
+
+
+/**
  * Sets custom user claims (role, organizationId) for a given user UID.
  * Can only be called by an authenticated user (preferably a Super Admin).
  */
