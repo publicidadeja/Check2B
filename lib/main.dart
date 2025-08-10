@@ -4,7 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
-import 'package:flutter/foundation.dart';
+import 'package.flutter/foundation.dart';
 
 import 'services/push_notification_service.dart';
 import 'services/user_manager.dart';
@@ -34,12 +34,14 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 }
 
+// Global instance of PushNotificationService to access the token
 final PushNotificationService pushService = PushNotificationService();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
 
+  // --- INÍCIO DA INICIALIZAÇÃO DO FIREBASE APP CHECK ---
   if (kDebugMode) {
     print("🚀 App Check: Inicializando com o provedor de DEPURAÇÃO.");
     try {
@@ -57,6 +59,7 @@ void main() async {
       print("❌ Erro ao ativar App Check (Release): $e");
     }
   }
+  // --- FIM DA INICIALIZAÇÃO DO FIREBASE APP CHECK ---
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
@@ -65,12 +68,13 @@ void main() async {
   } catch (e) {
     print("❌ Erro ao inicializar PushNotificationService: $e");
   }
-
+  
   try {
     await pushService.checkForInitialMessage();
   } catch (e) {
     print("❌ Erro ao verificar mensagem inicial: $e");
   }
+
 
   runApp(const MyApp());
 }
@@ -96,7 +100,7 @@ class WebViewPage extends StatefulWidget {
 
 class _WebViewPageState extends State<WebViewPage> {
   late final WebViewController _controller;
-  final UserManager _userManager = UserManager();
+  final UserManager _userManager = UserManager(); // Instancia o UserManager
 
   @override
   void initState() {
@@ -111,7 +115,7 @@ class _WebViewPageState extends State<WebViewPage> {
           onPageStarted: (String url) {},
           onPageFinished: (String url) {
             print("🌐 Página WebView carregada: $url");
-            _handlePageFinished(url); // Passa a URL para o nosso novo handler
+            _handlePageFinished(url); // Chama a nova função de handshake
           },
           onWebResourceError: (WebResourceError error) {
             print("❌ Erro no WebView: Code=${error.errorCode}, Description='${error.description}', URL='${error.url}'");
@@ -121,54 +125,64 @@ class _WebViewPageState extends State<WebViewPage> {
       ..setOnConsoleMessage((JavaScriptConsoleMessage consoleMessage) {
         print('CONTEÚDO DO CONSOLE WEBVIEW: [${consoleMessage.level.name}] ${consoleMessage.message}');
       })
+      // NOVO CANAL: Usado pela página web para enviar o UID para o Flutter
+      ..addJavaScriptChannel(
+        'FlutterReceiver',
+        onMessageReceived: (JavaScriptMessage message) {
+          String userIdFromWeb = message.message;
+          print('🆔 Mensagem recebida no canal FlutterReceiver: $userIdFromWeb');
+          _saveTokenForUser(userIdFromWeb);
+        },
+      )
       ..loadRequest(Uri.parse('https://www.check2b.com/'));
   }
-
-  Future<void> _handlePageFinished(String currentUrl) async {
-    // A função saveFcmToken só existe nas páginas após o login.
-    // Portanto, não tentamos fazer nada na página de login.
-    if (currentUrl.contains('/login')) {
-        print('Página de login detectada. Aguardando login do usuário...');
-        return;
+  
+  // Função para salvar o token FCM se o usuário for novo
+  Future<void> _saveTokenForUser(String userIdFromWeb) async {
+    if (userIdFromWeb.isEmpty || userIdFromWeb == 'null') {
+      print('🚪 Nenhum usuário logado na web. Limpando dados locais se necessário.');
+      await _userManager.clearUserId();
+      return;
     }
 
-    try {
-      final dynamic cookieResult = await _controller.runJavaScriptReturningResult(
-        "document.cookie.split('; ').find(row => row.startsWith('user-uid='))?.split('=')[1] || null"
-      );
+    String? lastUserId = await _userManager.getLastUserId();
+    String? fcmToken = pushService.currentToken;
 
-      String? newUserId = cookieResult?.toString().replaceAll('"', '');
-      if (newUserId == 'null') newUserId = null;
-
-      print('🆔 UID do usuário encontrado no cookie: $newUserId');
-
-      String? lastUserId = await _userManager.getLastUserId();
-
-      if (newUserId != null && newUserId.isNotEmpty) {
-        if (newUserId != lastUserId) {
-          print('🚀 Novo login detectado ou UID mudou. Enviando token FCM para a função JS da web...');
-          
-          String? fcmToken = pushService.currentToken;
-          if (fcmToken != null) {
-            await _controller.runJavaScript('window.saveFcmToken("$fcmToken", "$newUserId")');
-            await _userManager.saveUserId(newUserId);
-            print('✅ Sucesso! Token enviado e UID salvo localmente.');
-          } else {
-             print('⚠️ Token FCM ainda não disponível para enviar ao JS.');
-          }
-        } else {
-          print('✅ Token já registrado para $newUserId nesta sessão.');
+    if (userIdFromWeb != lastUserId) {
+      if (fcmToken != null) {
+        print('🚀 Novo login detectado ($userIdFromWeb). Enviando token FCM para a função JS da web...');
+        try {
+          // Chama a função JS exposta pela página web (MobileLayout)
+          await _controller.runJavaScript('window.saveFcmToken("$fcmToken", "$userIdFromWeb")');
+          await _userManager.saveUserId(userIdFromWeb); // Salva o UID localmente para evitar repetições
+          print('✅ Sucesso! Token enviado e UID ($userIdFromWeb) salvo localmente.');
+        } catch (e) {
+          print('❌ Erro CRÍTICO ao chamar window.saveFcmToken: $e');
         }
       } else {
-        print('🚪 Nenhum usuário logado na web. Limpando dados locais se necessário.');
-        if (lastUserId != null) {
-          await _userManager.clearUserId();
-        }
+        print('⚠️ Token FCM ainda não disponível para enviar ao backend para o usuário $userIdFromWeb.');
       }
-    } catch (e) {
-      print('❌ Erro ao executar JS para ler cookie ou salvar token: $e');
+    } else {
+      print('✅ Token já registrado para $userIdFromWeb nesta sessão.');
     }
   }
+
+  // NOVA LÓGICA: Inicia o "handshake" quando a página do dashboard carrega
+  Future<void> _handlePageFinished(String url) async {
+    // Só age se estivermos na página do colaborador (após o login)
+    if (url.contains('/colaborador')) {
+      print('🤝 Handshake: Página do colaborador detectada. Anunciando que o app Flutter está pronto...');
+      try {
+        await _controller.runJavaScript('window.flutterAppIsReady();');
+      } catch(e) {
+        print('⚠️ Falha ao anunciar que o Flutter está pronto (window.flutterAppIsReady pode não existir ainda). Tentará novamente na próxima navegação.');
+      }
+    } else if (url.contains('/login')) {
+        print('🚪 Na página de login. Limpando último usuário salvo.');
+        await _userManager.clearUserId();
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
