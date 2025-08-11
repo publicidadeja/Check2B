@@ -28,7 +28,7 @@ const db = getDb();
 declare global {
   interface Window {
     FCMConnector?: {
-      getFcmToken: () => Promise<string>;
+      postMessage: (message: string) => void;
     };
   }
 }
@@ -36,7 +36,7 @@ declare global {
 
 /**
  * Logs in a user with email and password. Retrieves role and orgId from Firestore.
- * After login, attempts to get the FCM token from the Flutter app and save it.
+ * After login, notifies the Flutter app of the logged-in user's UID.
  * @param email User's email
  * @param password User's password
  * @returns Promise resolving to UserCredential & user data on success
@@ -69,21 +69,10 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     const idToken = await user.getIdToken(true);
     setAuthCookie(idToken, role, organizationId, user.uid);
 
-    // After successful login, try to get and save the FCM token from the Flutter app
-    if (window.FCMConnector && typeof window.FCMConnector.getFcmToken === 'function') {
-        console.log('[Auth] Flutter FCMConnector found. Requesting FCM token...');
-        try {
-            const fcmToken = await window.FCMConnector.getFcmToken();
-            if (fcmToken && fcmToken !== "TOKEN_NOT_FOUND") {
-                console.log(`[Auth] Received FCM token from Flutter: ${fcmToken}. Saving to DB...`);
-                await saveUserFcmToken(user.uid, fcmToken);
-                console.log('[Auth] FCM token saved successfully via Cloud Function.');
-            } else {
-                console.warn('[Auth] Did not receive a valid FCM token from Flutter app.');
-            }
-        } catch (error) {
-            console.error('[Auth] Error getting or saving FCM token from Flutter app:', error);
-        }
+    // After successful login, notify the Flutter app with the user's UID
+    if (window.FCMConnector && typeof window.FCMConnector.postMessage === 'function') {
+        console.log(`[Auth] Notifying Flutter app of successful login for user: ${user.uid}`);
+        window.FCMConnector.postMessage(user.uid);
     } else {
         console.log('[Auth] Not running inside the Flutter WebView or FCMConnector not ready.');
     }

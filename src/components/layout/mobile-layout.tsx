@@ -60,9 +60,8 @@ interface MobileLayoutProps {
 // Extend Window interface for TypeScript to include our custom channel
 declare global {
   interface Window {
-    FlutterChannel?: {
-        postMessage: (message: string) => void;
-    };
+    // This function will be called by the Flutter app
+    saveFcmToken: (userId: string, fcmToken: string) => Promise<boolean>;
   }
 }
 
@@ -115,27 +114,38 @@ export function MobileLayout({ children }: MobileLayoutProps) {
   const currentUserDisplayName = user?.displayName;
   const currentUserPhotoUrl = user?.photoURL;
 
-  // Efeito para enviar o UID para o Flutter assim que o usuário for autenticado
+  // Efeito para definir a função global que o Flutter irá chamar
     React.useEffect(() => {
-        // A comunicação só deve acontecer se houver um usuário logado e não for convidado.
-        if (currentUserId && !isGuest && typeof window !== 'undefined') {
-            console.log(`[WebView Bridge] User is authenticated (UID: ${currentUserId}). Checking for FlutterChannel...`);
-            
-            // O Flutter injeta `window.FlutterChannel` na WebView.
-            if (window.FlutterChannel && typeof window.FlutterChannel.postMessage === 'function') {
-                console.log("[WebView Bridge] FlutterChannel found! Sending user ID back to Flutter app.");
-                // Envia o UID do usuário para o manipulador de mensagens do Flutter.
-                window.FlutterChannel.postMessage(currentUserId);
-            } else {
-                console.log("[WebView Bridge] FlutterChannel not found. App is likely running in a standard browser.");
+        // Define a função no objeto window para ser acessível pelo Flutter
+        window.saveFcmToken = async (userId: string, fcmToken: string): Promise<boolean> => {
+            console.log(`[WebView] Função saveFcmToken chamada pelo Flutter com UID: ${userId} e Token: ${fcmToken}`);
+            if (!userId || !fcmToken) {
+                console.error("[WebView] saveFcmToken: userId ou fcmToken ausentes.");
+                return false;
             }
-        }
-    }, [currentUserId, isGuest]); // Este efeito roda sempre que o UID do usuário muda.
+            try {
+                // Chama a Cloud Function para salvar o token
+                const success = await saveUserFcmToken(userId, fcmToken);
+                if (success) {
+                    console.log("[WebView] Token FCM salvo com sucesso via Cloud Function.");
+                    toast({ title: "App Conectado", description: "Notificações push ativadas." });
+                } else {
+                     console.warn("[WebView] A Cloud Function saveUserFcmToken retornou falha.");
+                }
+                return success;
+            } catch (error) {
+                console.error("[WebView] Erro ao chamar saveUserFcmToken:", error);
+                toast({ title: "Erro de Conexão", description: "Não foi possível registrar o app para notificações.", variant: "destructive" });
+                return false;
+            }
+        };
 
-
-  React.useEffect(() => {
-    console.log("[MobileLayout Notifications] State Updated. isLoadingNotifications:", isLoadingNotifications, "Count:", notifications.length, "Error:", notificationError);
-  }, [notifications, isLoadingNotifications, notificationError]);
+        // Cleanup a função quando o componente for desmontado
+        return () => {
+            // @ts-ignore
+            delete window.saveFcmToken;
+        };
+    }, [toast]); // O toast é uma dependência para poder exibir notificações
 
 
   React.useEffect(() => {

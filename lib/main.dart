@@ -6,8 +6,8 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async'; // Import for Timer
 
-import 'java/services/push_notification_service.dart';
-import 'java/services/user_manager.dart';
+import 'services/push_notification_service.dart';
+import 'services/user_manager.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -98,10 +98,16 @@ class _WebViewPageState extends State<WebViewPage> {
   late final WebViewController _controller;
   final UserManager _userManager = UserManager();
   Timer? _fcmRetryTimer;
+  String? _lastLoggedInUserId;
 
   @override
   void initState() {
     super.initState();
+    _userManager.getLastUserId().then((id) {
+        setState(() {
+            _lastLoggedInUserId = id;
+        });
+    });
 
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -110,9 +116,9 @@ class _WebViewPageState extends State<WebViewPage> {
         'FCMConnector',
         onMessageReceived: (JavaScriptMessage message) {
           print("🤝 Mensagem recebida da Web: ${message.message}");
-          if (message.message == 'GET_FCM_TOKEN') {
-            _sendFcmTokenToWeb();
-          }
+          // A web nos informa o UID do usuário que acabou de logar
+          final String userIdFromWeb = message.message;
+          _handleUserLoginFromWeb(userIdFromWeb);
         },
       )
       ..setNavigationDelegate(
@@ -133,74 +139,74 @@ class _WebViewPageState extends State<WebViewPage> {
       })
       ..loadRequest(Uri.parse('https://www.check2b.com/'));
   }
+  
+  void _handleUserLoginFromWeb(String userId) async {
+    print("👨‍💻 Usuário logado na Web! UID: $userId. Salvando localmente...");
+    await _userManager.setLastUserId(userId);
+    setState(() {
+        _lastLoggedInUserId = userId;
+    });
+
+    // Agora que sabemos que o usuário está logado, podemos iniciar a sincronização do token
+    _startFcmSyncAttempts();
+  }
+
 
   @override
   void dispose() {
     _fcmRetryTimer?.cancel();
     super.dispose();
   }
-  
-  void _sendFcmTokenToWeb() async {
-    String? fcmToken = pushService.currentToken;
-    if (fcmToken != null) {
-      print('➡️ Enviando token FCM para a Web: $fcmToken');
-      await _controller.runJavaScript('window.handleFcmToken("$fcmToken")');
-    } else {
-      print('⚠️ Token FCM não disponível para enviar à Web.');
-      await _controller.runJavaScript('window.handleFcmToken("TOKEN_NOT_FOUND")');
-    }
-  }
 
   void _handlePageFinished(String url) async {
     _fcmRetryTimer?.cancel();
     
-    // Inicia a lógica de nova tentativa se a URL for a página de login,
-    // pois é ali que a sincronização do token após o login deve começar.
-    if (url.contains('/login')) {
-      print('🚪 Página de login carregada. Aguardando login do usuário para sincronizar token...');
-      return; // Não faz nada, espera o usuário logar.
-    }
-    
-    // Se a página carregada for qualquer outra (ou seja, após o login),
-    // tenta sincronizar o token.
-    final String? loggedInUserId = await _userManager.getLastUserId();
-    if (loggedInUserId != null) {
-      print('🔄 Página pós-login carregada. Usuário logado ($loggedInUserId). Iniciando tentativas de sincronização do token FCM...');
+    // Anuncia a presença do canal de comunicação para a página web
+    await _controller.runJavaScript(
+        'window.FCMConnector = { getFcmToken: function() { return new Promise((resolve, reject) => { FCMConnectorRaw.postMessage("GET_FCM_TOKEN").then(resolve, reject); }); } };'
+    );
+     print('🤝 Canal FCMConnector injetado na WebView.');
+
+    // Se a URL for a do dashboard E já tivermos um usuário logado localmente,
+    // tentamos sincronizar o token. Isso cobre os casos de reabertura do app.
+    if (url.contains('/colaborador/dashboard') && _lastLoggedInUserId != null) {
+      print('🔄 Página do dashboard carregada com usuário já logado ($_lastLoggedInUserId). Tentando sincronizar token FCM...');
       _startFcmSyncAttempts();
     } else {
-      print('🚪 Página pós-login carregada, mas nenhum usuário logado localmente.');
+      print('🚪 Página carregada. Aguardando login do usuário pela web...');
     }
   }
 
-  void _startFcmSyncAttempts() {
+  void _startFcmSyncAttempts() async {
+    // Garante que temos o token FCM antes de tentar
+    final String? fcmToken = pushService.currentToken;
+    if (fcmToken == null || _lastLoggedInUserId == null) {
+      print("⚠️ Tentativa de sincronização falhou: Token FCM ou User ID nulos.");
+      return;
+    }
+
     int attempts = 0;
     const maxAttempts = 5;
     const retryDelay = Duration(seconds: 2);
 
-    _fcmRetryTimer?.cancel(); // Cancela qualquer timer anterior antes de iniciar um novo.
-
+    _fcmRetryTimer?.cancel(); // Cancela qualquer timer anterior
     _fcmRetryTimer = Timer.periodic(retryDelay, (timer) async {
       attempts++;
-      print('⏳ Tentativa $attempts/$maxAttempts de sincronizar o token FCM...');
+      print('⏳ Tentativa $attempts/$maxAttempts de enviar o token FCM para a Web...');
       
       try {
-        // A função `window.saveFcmToken` na web agora retorna true em sucesso.
-        final dynamic result = await _controller.runJavaScriptReturningResult(
-          'typeof window.saveFcmToken === "function" ? window.saveFcmToken() : false'
+        // Agora chamamos a função 'saveFcmToken' que existe na web
+        await _controller.runJavaScript(
+          'if (typeof window.saveFcmToken === "function") { window.saveFcmToken("$_lastLoggedInUserId", "$fcmToken"); }'
         );
-        
-        final bool success = (result is bool && result) || (result is String && result == 'true');
-        
-        if (success) {
-          print('✅ Sucesso! A Web confirmou o recebimento e salvamento do token. Parando tentativas.');
-          timer.cancel();
-        } else if (attempts >= maxAttempts) {
-          print('❌ Falha! Máximo de tentativas atingido. A Web não confirmou o salvamento do token.');
-          timer.cancel();
-        }
+        print('✅ Tentativa de envio do token concluída. A web agora é responsável por salvar.');
+        // Assumimos que a chamada foi bem-sucedida e paramos de tentar.
+        // A lógica de salvamento real está na web agora.
+        timer.cancel();
       } catch (e) {
-        print('❌ Erro ao executar JS para sincronizar token na tentativa $attempts: $e');
+        print('❌ Erro ao executar JS para enviar o token na tentativa $attempts: $e');
         if (attempts >= maxAttempts) {
+          print('❌ Falha! Máximo de tentativas atingido.');
           timer.cancel();
         }
       }
