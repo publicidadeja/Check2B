@@ -316,24 +316,33 @@ export const countActiveUsersByOrganization = async (organizationId: string, rol
  * @param fcmToken The new FCM token from the device.
  * @returns Promise resolving on successful save.
  */
-export const saveUserFcmToken = async (userId: string, fcmToken: string): Promise<void> => {
+export const saveUserFcmToken = async (userId: string, fcmToken: string): Promise<boolean> => {
   const app = getFirebaseApp();
   if (!app) {
-    throw new Error("[UserService] Firebase App is not initialized. Cannot save FCM token.");
+    console.error("[UserService] Firebase App is not initialized. Cannot save FCM token.");
+    return false;
   }
   if (!userId || !fcmToken) {
-    throw new Error("[UserService] User ID and FCM Token are required.");
+    console.error("[UserService] User ID and FCM Token are required.");
+    return false;
   }
 
   console.log(`[UserService] Calling 'saveFcmToken' Cloud Function for user UID: ${userId}`);
-  const functions = getFunctions(app, 'us-central1'); // Specify region if not default
+  const functions = getFunctions(app, 'us-central1'); 
   const saveTokenFunction = httpsCallable(functions, 'saveFcmToken');
 
   try {
-    await saveTokenFunction({ userId, token: fcmToken });
-    console.log(`[UserService] Successfully called Cloud Function to save FCM token for user ${userId}`);
+    const result = await saveTokenFunction({ userId, token: fcmToken });
+    const success = (result.data as { success?: boolean })?.success === true;
+    if (success) {
+        console.log(`[UserService] Successfully called Cloud Function to save FCM token for user ${userId}`);
+    } else {
+        console.warn(`[UserService] Cloud Function reported failure in saving token for ${userId}`);
+    }
+    return success;
   } catch (error) {
     console.error(`[UserService] Error calling 'saveFcmToken' Cloud Function for user ${userId}:`, error);
-    throw new Error("Failed to save notification token via Cloud Function.");
+    // You might want to throw the error or just return false depending on desired behavior
+    return false;
   }
 };

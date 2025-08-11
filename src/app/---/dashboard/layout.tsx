@@ -1,13 +1,13 @@
-
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:async'; // Import for Timer
 
-import 'services/push_notification_service.dart';
-import 'services/user_manager.dart';
+import 'java/services/push_notification_service.dart';
+import 'java/services/user_manager.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -34,14 +34,12 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 }
 
-// Global instance of PushNotificationService to access the token
 final PushNotificationService pushService = PushNotificationService();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
 
-  // --- INÍCIO DA INICIALIZAÇÃO DO FIREBASE APP CHECK ---
   if (kDebugMode) {
     print("🚀 App Check: Inicializando com o provedor de DEPURAÇÃO.");
     try {
@@ -59,7 +57,6 @@ void main() async {
       print("❌ Erro ao ativar App Check (Release): $e");
     }
   }
-  // --- FIM DA INICIALIZAÇÃO DO FIREBASE APP CHECK ---
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
@@ -74,7 +71,6 @@ void main() async {
   } catch (e) {
     print("❌ Erro ao verificar mensagem inicial: $e");
   }
-
 
   runApp(const MyApp());
 }
@@ -100,7 +96,8 @@ class WebViewPage extends StatefulWidget {
 
 class _WebViewPageState extends State<WebViewPage> {
   late final WebViewController _controller;
-  final UserManager _userManager = UserManager(); // Instancia o UserManager
+  final UserManager _userManager = UserManager();
+  Timer? _fcmRetryTimer;
 
   @override
   void initState() {
@@ -109,13 +106,22 @@ class _WebViewPageState extends State<WebViewPage> {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0x00000000))
+      ..addJavaScriptChannel(
+        'FCMConnector',
+        onMessageReceived: (JavaScriptMessage message) {
+          print("🤝 Mensagem recebida da Web: ${message.message}");
+          if (message.message == 'GET_FCM_TOKEN') {
+            _sendFcmTokenToWeb();
+          }
+        },
+      )
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (int progress) {},
           onPageStarted: (String url) {},
           onPageFinished: (String url) {
             print("🌐 Página WebView carregada: $url");
-            _handlePageFinished();
+            _handlePageFinished(url);
           },
           onWebResourceError: (WebResourceError error) {
             print("❌ Erro no WebView: Code=${error.errorCode}, Description='${error.description}', URL='${error.url}'");
@@ -128,49 +134,65 @@ class _WebViewPageState extends State<WebViewPage> {
       ..loadRequest(Uri.parse('https://www.check2b.com/'));
   }
 
-  Future<void> _handlePageFinished() async {
-    // 1. Get the current FCM token.
-    String? fcmToken = pushService.currentToken;
-    if (fcmToken == null) {
-      print('⚠️ Token FCM ainda não disponível. Não foi possível registrar.');
-      return;
-    }
+  @override
+  void dispose() {
+    _fcmRetryTimer?.cancel();
+    super.dispose();
+  }
   
-    try {
-      // 2. Read the 'user-uid' cookie from the WebView.
-      final dynamic cookieResult = await _controller.runJavaScriptReturningResult(
-        "document.cookie.split('; ').find(row => row.startsWith('user-uid='))?.split('=')[1] || null"
-      );
+  void _sendFcmTokenToWeb() async {
+    String? fcmToken = pushService.currentToken;
+    if (fcmToken != null) {
+      print('➡️ Enviando token FCM para a Web: $fcmToken');
+      await _controller.runJavaScript('window.handleFcmToken("$fcmToken")');
+    } else {
+      print('⚠️ Token FCM não disponível para enviar à Web.');
+      await _controller.runJavaScript('window.handleFcmToken("TOKEN_NOT_FOUND")');
+    }
+  }
+
+  void _handlePageFinished(String url) async {
+    _fcmRetryTimer?.cancel();
+    
+    final String? loggedInUserId = await _userManager.getLastUserId();
+    if (loggedInUserId != null) {
+      print('🔄 Página carregada. Usuário já logado ($loggedInUserId). Tentando sincronizar token FCM...');
+      _startFcmSyncAttempts();
+    } else {
+      print('🚪 Página carregada. Nenhum usuário logado localmente.');
+    }
+  }
+
+  void _startFcmSyncAttempts() {
+    int attempts = 0;
+    const maxAttempts = 5;
+    const retryDelay = Duration(seconds: 2);
+
+    _fcmRetryTimer = Timer.periodic(retryDelay, (timer) async {
+      attempts++;
+      print('⏳ Tentativa $attempts/$maxAttempts de sincronizar o token FCM...');
       
-      String? newUserId = cookieResult?.toString().replaceAll('"', '');
-      if (newUserId == 'null') newUserId = null;
-
-      print('🆔 UID do usuário encontrado no cookie: $newUserId');
-
-      // 3. Get the last registered user ID from local storage.
-      String? lastUserId = await _userManager.getLastUserId();
-
-      // 4. Compare and act.
-      if (newUserId != null && newUserId.isNotEmpty && newUserId != lastUserId) {
-        print('🚀 Novo login detectado ou UID mudou. Enviando token FCM para a função JS da web...');
+      try {
+        final dynamic result = await _controller.runJavaScriptReturningResult(
+          'typeof window.saveFcmToken === "function" ? window.saveFcmToken() : false'
+        );
         
-        // 5. Call the globally available function on the web page.
-        await _controller.runJavaScript('window.saveFcmToken("$fcmToken", "$newUserId")');
+        final bool success = (result is bool && result) || (result is String && result == 'true');
         
-        // 6. On success, update the local state.
-        await _userManager.saveUserId(newUserId);
-        print('✅ Sucesso! Token enviado e UID salvo localmente.');
-      } else if (newUserId != null) {
-        print('✅ Token já registrado para $newUserId nesta sessão.');
-      } else {
-        print('🚪 Nenhum usuário logado na web. Limpando dados locais se necessário.');
-        if (lastUserId != null) {
-          await _userManager.clearUserId();
+        if (success) {
+          print('✅ Sucesso! A Web confirmou o recebimento do token. Parando tentativas.');
+          timer.cancel();
+        } else if (attempts >= maxAttempts) {
+          print('❌ Falha! Máximo de tentativas atingido. A Web não confirmou o recebimento.');
+          timer.cancel();
+        }
+      } catch (e) {
+        print('❌ Erro ao executar JS para sincronizar token na tentativa $attempts: $e');
+        if (attempts >= maxAttempts) {
+          timer.cancel();
         }
       }
-    } catch (e) {
-      print('❌ Erro ao executar JS para ler cookie ou salvar token: $e');
-    }
+    });
   }
 
   @override
