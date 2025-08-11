@@ -4,10 +4,10 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:async'; // Import for Timer
 
 import 'java/services/push_notification_service.dart';
 import 'java/services/user_manager.dart';
-
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -97,6 +97,7 @@ class WebViewPage extends StatefulWidget {
 class _WebViewPageState extends State<WebViewPage> {
   late final WebViewController _controller;
   final UserManager _userManager = UserManager();
+  Timer? _fcmRetryTimer;
 
   @override
   void initState() {
@@ -108,24 +109,19 @@ class _WebViewPageState extends State<WebViewPage> {
       ..addJavaScriptChannel(
         'FCMConnector',
         onMessageReceived: (JavaScriptMessage message) {
-          // This part is for messages FROM web to Flutter, not used in the getFcmToken flow.
-          print('Mensagem recebida do canal FCMConnector: ${message.message}');
-        }
+          print("🤝 Mensagem recebida da Web: ${message.message}");
+          if (message.message == 'GET_FCM_TOKEN') {
+            _sendFcmTokenToWeb();
+          }
+        },
       )
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (int progress) {},
           onPageStarted: (String url) {},
-          onPageFinished: (String url) async {
+          onPageFinished: (String url) {
             print("🌐 Página WebView carregada: $url");
-            // Setup the getFcmToken function on the JS side after page loads
-            await _controller.runJavaScript('''
-              window.FCMConnector = {
-                getFcmToken: async function() {
-                  return await FCMConnector.postMessage('getFcmToken');
-                }
-              };
-            ''');
+            _handlePageFinished(url);
           },
           onWebResourceError: (WebResourceError error) {
             print("❌ Erro no WebView: Code=${error.errorCode}, Description='${error.description}', URL='${error.url}'");
@@ -136,48 +132,79 @@ class _WebViewPageState extends State<WebViewPage> {
         print('CONTEÚDO DO CONSOLE WEBVIEW: [${consoleMessage.level.name}] ${consoleMessage.message}');
       })
       ..loadRequest(Uri.parse('https://www.check2b.com/'));
-      
-    // The new logic to provide the token when requested
-    _controller.runJavaScript('''
-        window.getFcmToken = function() {
-            return new Promise((resolve, reject) => {
-                FCMConnector.postMessage('getFcmToken').then(token => resolve(token));
-            });
-        };
-    ''');
-    
-    // Add logic to handle the 'getFcmToken' request from JS
-    _controller.addJavaScriptChannel(
-      'FCMConnector',
-      onMessageReceived: (JavaScriptMessage message) {
-        if (message.message == 'getFcmToken') {
-          String? token = pushService.currentToken;
-          if (token != null) {
-              _controller.runJavaScript('window.FCMConnector.onFcmTokenResolved("$token")');
-          } else {
-              _controller.runJavaScript('window.FCMConnector.onFcmTokenRejected("Token not available")');
-          }
-        }
-      }
-    );
-    
-    // This is the new way to add the channel to get the token
-    _controller.addJavaScriptChannel(
-        'FCMTokenReceiver',
-        onMessageReceived: (JavaScriptMessage message) {
-            final parts = message.message.split(';');
-            final token = parts[0];
-            final userId = parts[1];
-            _userManager.saveUserId(userId);
-            // Optionally, save the token to local storage in Flutter as well
-        }
-    );
+  }
 
+  @override
+  void dispose() {
+    _fcmRetryTimer?.cancel();
+    super.dispose();
   }
   
-  // This is a new helper for the JS channel
-  Future<String> getFcmToken() async {
-    return pushService.currentToken ?? "TOKEN_NOT_FOUND";
+  void _sendFcmTokenToWeb() async {
+    String? fcmToken = pushService.currentToken;
+    if (fcmToken != null) {
+      print('➡️ Enviando token FCM para a Web: $fcmToken');
+      await _controller.runJavaScript('window.handleFcmToken("$fcmToken")');
+    } else {
+      print('⚠️ Token FCM não disponível para enviar à Web.');
+      await _controller.runJavaScript('window.handleFcmToken("TOKEN_NOT_FOUND")');
+    }
+  }
+
+  void _handlePageFinished(String url) async {
+    _fcmRetryTimer?.cancel();
+    
+    // Inicia a lógica de nova tentativa se a URL for a página de login,
+    // pois é ali que a sincronização do token após o login deve começar.
+    if (url.contains('/login')) {
+      print('🚪 Página de login carregada. Aguardando login do usuário para sincronizar token...');
+      return; // Não faz nada, espera o usuário logar.
+    }
+    
+    // Se a página carregada for qualquer outra (ou seja, após o login),
+    // tenta sincronizar o token.
+    final String? loggedInUserId = await _userManager.getLastUserId();
+    if (loggedInUserId != null) {
+      print('🔄 Página pós-login carregada. Usuário logado ($loggedInUserId). Iniciando tentativas de sincronização do token FCM...');
+      _startFcmSyncAttempts();
+    } else {
+      print('🚪 Página pós-login carregada, mas nenhum usuário logado localmente.');
+    }
+  }
+
+  void _startFcmSyncAttempts() {
+    int attempts = 0;
+    const maxAttempts = 5;
+    const retryDelay = Duration(seconds: 2);
+
+    _fcmRetryTimer?.cancel(); // Cancela qualquer timer anterior antes de iniciar um novo.
+
+    _fcmRetryTimer = Timer.periodic(retryDelay, (timer) async {
+      attempts++;
+      print('⏳ Tentativa $attempts/$maxAttempts de sincronizar o token FCM...');
+      
+      try {
+        // A função `window.saveFcmToken` na web agora retorna true em sucesso.
+        final dynamic result = await _controller.runJavaScriptReturningResult(
+          'typeof window.saveFcmToken === "function" ? window.saveFcmToken() : false'
+        );
+        
+        final bool success = (result is bool && result) || (result is String && result == 'true');
+        
+        if (success) {
+          print('✅ Sucesso! A Web confirmou o recebimento e salvamento do token. Parando tentativas.');
+          timer.cancel();
+        } else if (attempts >= maxAttempts) {
+          print('❌ Falha! Máximo de tentativas atingido. A Web não confirmou o salvamento do token.');
+          timer.cancel();
+        }
+      } catch (e) {
+        print('❌ Erro ao executar JS para sincronizar token na tentativa $attempts: $e');
+        if (attempts >= maxAttempts) {
+          timer.cancel();
+        }
+      }
+    });
   }
 
   @override
