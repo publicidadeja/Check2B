@@ -1,15 +1,13 @@
-
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 
-// Caminhos corrigidos baseados na estrutura do seu projeto
 import 'java/services/push_notification_service.dart';
 import 'java/services/user_manager.dart';
+
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -36,7 +34,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 }
 
-// Global instance of PushNotificationService to access the token
 final PushNotificationService pushService = PushNotificationService();
 
 void main() async {
@@ -68,7 +65,7 @@ void main() async {
   } catch (e) {
     print("❌ Erro ao inicializar PushNotificationService: $e");
   }
-
+  
   try {
     await pushService.checkForInitialMessage();
   } catch (e) {
@@ -100,72 +97,87 @@ class WebViewPage extends StatefulWidget {
 class _WebViewPageState extends State<WebViewPage> {
   late final WebViewController _controller;
   final UserManager _userManager = UserManager();
-  final String _flutterReceiverChannel = "FlutterReceiver";
 
   @override
   void initState() {
     super.initState();
 
-    // Lógica de comunicação revisada
-    final WebViewController controller = WebViewController();
-
-    controller
+    _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0x00000000))
+      ..addJavaScriptChannel(
+        'FCMConnector',
+        onMessageReceived: (JavaScriptMessage message) {
+          // This part is for messages FROM web to Flutter, not used in the getFcmToken flow.
+          print('Mensagem recebida do canal FCMConnector: ${message.message}');
+        }
+      )
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (int progress) {},
           onPageStarted: (String url) {},
-          onPageFinished: (String url) {
+          onPageFinished: (String url) async {
             print("🌐 Página WebView carregada: $url");
-            // Agora o app Flutter anuncia sua presença na webview
-            _announceFlutterPresence(controller);
+            // Setup the getFcmToken function on the JS side after page loads
+            await _controller.runJavaScript('''
+              window.FCMConnector = {
+                getFcmToken: async function() {
+                  return await FCMConnector.postMessage('getFcmToken');
+                }
+              };
+            ''');
           },
           onWebResourceError: (WebResourceError error) {
             print("❌ Erro no WebView: Code=${error.errorCode}, Description='${error.description}', URL='${error.url}'");
           },
         ),
       )
-      ..addJavaScriptChannel(
-        _flutterReceiverChannel,
-        onMessageReceived: (JavaScriptMessage message) {
-          // A webview nos enviou o UID do usuário!
-          print("✅ Mensagem recebida da Webview no canal '$_flutterReceiverChannel': ${message.message}");
-          final String newUserId = message.message;
-          _registerFcmTokenForUser(newUserId);
-        },
-      )
+      ..setOnConsoleMessage((JavaScriptConsoleMessage consoleMessage) {
+        print('CONTEÚDO DO CONSOLE WEBVIEW: [${consoleMessage.level.name}] ${consoleMessage.message}');
+      })
       ..loadRequest(Uri.parse('https://www.check2b.com/'));
+      
+    // The new logic to provide the token when requested
+    _controller.runJavaScript('''
+        window.getFcmToken = function() {
+            return new Promise((resolve, reject) => {
+                FCMConnector.postMessage('getFcmToken').then(token => resolve(token));
+            });
+        };
+    ''');
+    
+    // Add logic to handle the 'getFcmToken' request from JS
+    _controller.addJavaScriptChannel(
+      'FCMConnector',
+      onMessageReceived: (JavaScriptMessage message) {
+        if (message.message == 'getFcmToken') {
+          String? token = pushService.currentToken;
+          if (token != null) {
+              _controller.runJavaScript('window.FCMConnector.onFcmTokenResolved("$token")');
+          } else {
+              _controller.runJavaScript('window.FCMConnector.onFcmTokenRejected("Token not available")');
+          }
+        }
+      }
+    );
+    
+    // This is the new way to add the channel to get the token
+    _controller.addJavaScriptChannel(
+        'FCMTokenReceiver',
+        onMessageReceived: (JavaScriptMessage message) {
+            final parts = message.message.split(';');
+            final token = parts[0];
+            final userId = parts[1];
+            _userManager.saveUserId(userId);
+            // Optionally, save the token to local storage in Flutter as well
+        }
+    );
 
-    _controller = controller;
   }
-
-  // O App Flutter se apresenta para a página
-  void _announceFlutterPresence(WebViewController controller) {
-    print("🤝 Anunciando a presença do Flutter para a página web...");
-    controller.runJavaScript('window.flutterAppIsReady && window.flutterAppIsReady();');
-  }
-
-  // Lógica centralizada para registrar o token
-  Future<void> _registerFcmTokenForUser(String newUserId) async {
-    final String? fcmToken = pushService.currentToken;
-    if (fcmToken == null) {
-      print("⚠️ Token FCM ainda não disponível. Não foi possível registrar.");
-      return;
-    }
-
-    final String? lastUserId = await _userManager.getLastUserId();
-
-    if (newUserId.isNotEmpty && newUserId != lastUserId) {
-      print("🚀 Novo login detectado (UID: $newUserId). Enviando token FCM para a função JS da web...");
-
-      await _controller.runJavaScript('window.saveFcmToken("$fcmToken", "$newUserId")');
-
-      await _userManager.saveUserId(newUserId);
-      print("✅ Sucesso! Token enviado e UID ($newUserId) salvo localmente.");
-    } else {
-      print("✅ Token já registrado para o usuário $newUserId nesta sessão.");
-    }
+  
+  // This is a new helper for the JS channel
+  Future<String> getFcmToken() async {
+    return pushService.currentToken ?? "TOKEN_NOT_FOUND";
   }
 
   @override

@@ -19,21 +19,24 @@ import { doc, getDoc, setDoc, Timestamp } from "firebase/firestore"; // Added Ti
 import { getAuthInstance, getDb, getFirebaseApp } from "./firebase"; // Added getFirebaseApp
 import type { UserProfile } from '@/types/user';
 import { getFunctions, httpsCallable } from "firebase/functions"; // Import Firebase Functions
+import { saveUserFcmToken } from "./user-service";
 
 const auth = getAuthInstance();
 const db = getDb();
 
-// Adicionando a interface para a window para reconhecer o FlutterLogin
+// Extend the Window interface to include our Flutter connector
 declare global {
   interface Window {
-    // Nova função para ser chamada pelo Flutter
-    saveFcmToken?: (token: string, userId: string) => Promise<string>;
+    FCMConnector?: {
+      getFcmToken: () => Promise<string>;
+    };
   }
 }
 
 
 /**
  * Logs in a user with email and password. Retrieves role and orgId from Firestore.
+ * After login, attempts to get the FCM token from the Flutter app and save it.
  * @param email User's email
  * @param password User's password
  * @returns Promise resolving to UserCredential & user data on success
@@ -66,55 +69,30 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     const idToken = await user.getIdToken(true);
     setAuthCookie(idToken, role, organizationId, user.uid);
 
-    // This function no longer calls window.FlutterLogin.postMessage.
-    // The Flutter app will detect the cookie change on page load.
+    // After successful login, try to get and save the FCM token from the Flutter app
+    if (window.FCMConnector && typeof window.FCMConnector.getFcmToken === 'function') {
+        console.log('[Auth] Flutter FCMConnector found. Requesting FCM token...');
+        try {
+            const fcmToken = await window.FCMConnector.getFcmToken();
+            if (fcmToken && fcmToken !== "TOKEN_NOT_FOUND") {
+                console.log(`[Auth] Received FCM token from Flutter: ${fcmToken}. Saving to DB...`);
+                await saveUserFcmToken(user.uid, fcmToken);
+                console.log('[Auth] FCM token saved successfully via Cloud Function.');
+            } else {
+                console.warn('[Auth] Did not receive a valid FCM token from Flutter app.');
+            }
+        } catch (error) {
+            console.error('[Auth] Error getting or saving FCM token from Flutter app:', error);
+        }
+    } else {
+        console.log('[Auth] Not running inside the Flutter WebView or FCMConnector not ready.');
+    }
 
     return {
         userCredential,
         userData: { role, organizationId }
     };
 };
-
-/**
- * Saves the FCM token for a user by calling a Cloud Function.
- * This function is exposed on the window object to be called from the Flutter app's WebView.
- * @param fcmToken The Firebase Cloud Messaging token from the device.
- * @param userId The UID of the user to associate the token with.
- */
-export const saveFcmToken = async (fcmToken: string, userId: string): Promise<string> => {
-    const app = getFirebaseApp();
-    if (!app) {
-        const errorMsg = "Erro: App Firebase não inicializado.";
-        console.error("[Auth Service]", errorMsg);
-        return errorMsg;
-    }
-    if (!userId || !fcmToken) {
-         const errorMsg = "Erro: User ID ou FCM Token ausentes.";
-        console.error("[Auth Service]", errorMsg);
-        return errorMsg;
-    }
-
-    console.log(`[Auth Service] Chamando Cloud Function 'saveFcmToken' para o usuário UID: ${userId}`);
-    const functions = getFunctions(app, 'us-central1'); // Specify region if not default
-    const saveTokenFunction = httpsCallable(functions, 'saveFcmToken');
-
-    try {
-        const result = await saveTokenFunction({ userId, token: fcmToken });
-        const resultData = result.data as { success: boolean, message: string };
-        if (resultData.success) {
-            console.log(`[Auth Service] Sucesso ao chamar Cloud Function para salvar token FCM para ${userId}. Msg: ${resultData.message}`);
-            return resultData.message;
-        } else {
-            console.error(`[Auth Service] Cloud function retornou falha para ${userId}.`, resultData);
-            return `Erro do servidor: ${resultData.message}`;
-        }
-    } catch (error) {
-        const errorMsg = `Erro ao chamar a função: ${error}`;
-        console.error(`[Auth Service] Erro ao chamar Cloud Function 'saveFcmToken' para ${userId}:`, error);
-        return errorMsg;
-    }
-};
-
 
 export const logoutUser = async (): Promise<void> => {
     if (!auth) {
