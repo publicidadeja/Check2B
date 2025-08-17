@@ -28,15 +28,17 @@ const db = getDb();
 declare global {
   interface Window {
     FCMConnector?: {
-      postMessage: (message: string) => void;
+      getFcmToken: () => void; // This is called by the web to request the token
     };
+    // This function will be called BY the Flutter app with the token
+    handleFcmToken: (token: string) => void;
   }
 }
 
 
 /**
  * Logs in a user with email and password. Retrieves role and orgId from Firestore.
- * After login, notifies the Flutter app of the logged-in user's UID.
+ * After login, requests the FCM token from the Flutter app.
  * @param email User's email
  * @param password User's password
  * @returns Promise resolving to UserCredential & user data on success
@@ -69,12 +71,26 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     const idToken = await user.getIdToken(true);
     setAuthCookie(idToken, role, organizationId, user.uid);
 
-    // After successful login, notify the Flutter app with the user's UID
-    if (window.FCMConnector && typeof window.FCMConnector.postMessage === 'function') {
-        console.log(`[Auth] Notifying Flutter app of successful login for user: ${user.uid}`);
-        window.FCMConnector.postMessage(user.uid);
-    } else {
-        console.log('[Auth] Not running inside the Flutter WebView or FCMConnector not ready.');
+    // After successful login, set up a handler and request the FCM token from Flutter
+    if (typeof window !== 'undefined') {
+      window.handleFcmToken = (token: string) => {
+        console.log(`[WebApp] FCM Token received from Flutter: ${token}`);
+        if (token && token !== 'TOKEN_NOT_FOUND') {
+          saveUserFcmToken(user.uid, token)
+            .then(success => {
+              if (success) console.log("[WebApp] FCM Token registration successful.");
+              else console.warn("[WebApp] FCM Token registration failed.");
+            })
+            .catch(err => console.error("[WebApp] Error saving FCM token:", err));
+        }
+      };
+
+      if (window.FCMConnector && typeof window.FCMConnector.getFcmToken === 'function') {
+        console.log(`[WebApp] Requesting FCM token from Flutter app...`);
+        window.FCMConnector.getFcmToken();
+      } else {
+        console.log('[WebApp] Not running inside the Flutter WebView or FCMConnector not ready.');
+      }
     }
 
     return {
