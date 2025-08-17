@@ -62,6 +62,14 @@ void main() async {
 
   try {
     await pushService.initialize();
+    // After initializing, set the FCM token as a cookie in the WebView
+    // This happens once, when the app starts.
+    pushService.onTokenRefreshed((String? token) {
+      if (token != null) {
+        // We need the controller to set the cookie, which we only have in WebViewPage state.
+        // This part will be moved.
+      }
+    });
   } catch (e) {
     print("❌ Erro ao inicializar PushNotificationService: $e");
   }
@@ -97,7 +105,6 @@ class WebViewPage extends StatefulWidget {
 class _WebViewPageState extends State<WebViewPage> {
   late final WebViewController _controller;
   final UserManager _userManager = UserManager();
-  Timer? _fcmRetryTimer;
 
   @override
   void initState() {
@@ -106,22 +113,14 @@ class _WebViewPageState extends State<WebViewPage> {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0x00000000))
-      ..addJavaScriptChannel(
-        'FCMConnector',
-        onMessageReceived: (JavaScriptMessage message) {
-          print("🤝 Mensagem recebida da Web: ${message.message}");
-          if (message.message == 'GET_FCM_TOKEN') {
-            _sendFcmTokenToWeb();
-          }
-        },
-      )
+      // NO JAVASCRIPT CHANNELS NEEDED FOR THIS APPROACH
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (int progress) {},
           onPageStarted: (String url) {},
           onPageFinished: (String url) {
             print("🌐 Página WebView carregada: $url");
-            _handlePageFinished(url);
+            _setFcmTokenCookie(); // Set cookie every time a page finishes loading
           },
           onWebResourceError: (WebResourceError error) {
             print("❌ Erro no WebView: Code=${error.errorCode}, Description='${error.description}', URL='${error.url}'");
@@ -133,66 +132,19 @@ class _WebViewPageState extends State<WebViewPage> {
       })
       ..loadRequest(Uri.parse('https://www.check2b.com/'));
   }
-
-  @override
-  void dispose() {
-    _fcmRetryTimer?.cancel();
-    super.dispose();
-  }
   
-  void _sendFcmTokenToWeb() async {
+  void _setFcmTokenCookie() async {
     String? fcmToken = pushService.currentToken;
     if (fcmToken != null) {
-      print('➡️ Enviando token FCM para a Web: $fcmToken');
-      await _controller.runJavaScript('window.handleFcmToken("$fcmToken")');
+      print('🍪➡️ Injetando cookie fcmToken na Web: $fcmToken');
+      // Set a cookie that is accessible via JavaScript on the website
+      // max-age is in seconds (1 year)
+      await _controller.runJavaScript(
+        'document.cookie = "fcmToken=${fcmToken};path=/;max-age=31536000";'
+      );
     } else {
-      print('⚠️ Token FCM não disponível para enviar à Web.');
-      await _controller.runJavaScript('window.handleFcmToken("TOKEN_NOT_FOUND")');
+      print('⚠️ Token FCM não disponível, não foi possível injetar o cookie.');
     }
-  }
-
-  void _handlePageFinished(String url) async {
-    _fcmRetryTimer?.cancel();
-    
-    final String? loggedInUserId = await _userManager.getLastUserId();
-    if (loggedInUserId != null) {
-      print('🔄 Página carregada. Usuário já logado ($loggedInUserId). Tentando sincronizar token FCM...');
-      _startFcmSyncAttempts();
-    } else {
-      print('🚪 Página carregada. Nenhum usuário logado localmente.');
-    }
-  }
-
-  void _startFcmSyncAttempts() {
-    int attempts = 0;
-    const maxAttempts = 5;
-    const retryDelay = Duration(seconds: 2);
-
-    _fcmRetryTimer = Timer.periodic(retryDelay, (timer) async {
-      attempts++;
-      print('⏳ Tentativa $attempts/$maxAttempts de sincronizar o token FCM...');
-      
-      try {
-        final dynamic result = await _controller.runJavaScriptReturningResult(
-          'typeof window.saveFcmToken === "function" ? window.saveFcmToken() : false'
-        );
-        
-        final bool success = (result is bool && result) || (result is String && result == 'true');
-        
-        if (success) {
-          print('✅ Sucesso! A Web confirmou o recebimento do token. Parando tentativas.');
-          timer.cancel();
-        } else if (attempts >= maxAttempts) {
-          print('❌ Falha! Máximo de tentativas atingido. A Web não confirmou o recebimento.');
-          timer.cancel();
-        }
-      } catch (e) {
-        print('❌ Erro ao executar JS para sincronizar token na tentativa $attempts: $e');
-        if (attempts >= maxAttempts) {
-          timer.cancel();
-        }
-      }
-    });
   }
 
   @override

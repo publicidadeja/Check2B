@@ -24,21 +24,9 @@ import { saveUserFcmToken } from "./user-service";
 const auth = getAuthInstance();
 const db = getDb();
 
-// Extend the Window interface to include our Flutter connector
-declare global {
-  interface Window {
-    FCMConnector?: {
-      getFcmToken: () => void; // This is called by the web to request the token
-    };
-    // This function will be called BY the Flutter app with the token
-    handleFcmToken: (token: string) => void;
-  }
-}
-
-
 /**
  * Logs in a user with email and password. Retrieves role and orgId from Firestore.
- * After login, requests the FCM token from the Flutter app.
+ * After login, reads the FCM token from cookies and saves it to the user's profile.
  * @param email User's email
  * @param password User's password
  * @returns Promise resolving to UserCredential & user data on success
@@ -71,26 +59,18 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     const idToken = await user.getIdToken(true);
     setAuthCookie(idToken, role, organizationId, user.uid);
 
-    // After successful login, set up a handler and request the FCM token from Flutter
-    if (typeof window !== 'undefined') {
-      window.handleFcmToken = (token: string) => {
-        console.log(`[WebApp] FCM Token received from Flutter: ${token}`);
-        if (token && token !== 'TOKEN_NOT_FOUND') {
-          saveUserFcmToken(user.uid, token)
+    // After successful login, read the FCM token from the cookie and save it.
+    const fcmToken = Cookies.get('fcmToken');
+    if (fcmToken) {
+        console.log(`[WebApp] FCM Token found in cookie: ${fcmToken}`);
+        saveUserFcmToken(user.uid, fcmToken)
             .then(success => {
-              if (success) console.log("[WebApp] FCM Token registration successful.");
-              else console.warn("[WebApp] FCM Token registration failed.");
+                if (success) console.log("[WebApp] FCM Token registration successful.");
+                else console.warn("[WebApp] FCM Token registration failed.");
             })
             .catch(err => console.error("[WebApp] Error saving FCM token:", err));
-        }
-      };
-
-      if (window.FCMConnector && typeof window.FCMConnector.getFcmToken === 'function') {
-        console.log(`[WebApp] Requesting FCM token from Flutter app...`);
-        window.FCMConnector.getFcmToken();
-      } else {
-        console.log('[WebApp] Not running inside the Flutter WebView or FCMConnector not ready.');
-      }
+    } else {
+        console.warn("[WebApp] FCM Token not found in cookie after login.");
     }
 
     return {
@@ -110,7 +90,8 @@ export const logoutUser = async (): Promise<void> => {
     Cookies.remove('organization-id');
     Cookies.remove('guest-mode');
     Cookies.remove('user-uid'); // Remove user UID on logout
-    console.log("[Auth] User signed out and cookies cleared.");
+    // We can leave the fcmToken cookie as it is harmless and will be overwritten on next login
+    console.log("[Auth] User signed out and auth cookies cleared.");
 };
 
 export const setAuthCookie = (idToken: string, role: string | null, organizationId: string | null, uid: string): void => {
