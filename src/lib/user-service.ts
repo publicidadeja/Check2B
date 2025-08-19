@@ -1,3 +1,4 @@
+
 // src/lib/user-service.ts
 import { getDb, getFirebaseApp } from './firebase';
 import type { UserProfile } from '@/types/user';
@@ -346,3 +347,5 @@ export const saveUserFcmToken = async (userId: string, fcmToken: string): Promis
     return false;
   }
 };
+
+    

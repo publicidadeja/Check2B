@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -6,8 +7,8 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 
-import 'services/push_notification_service.dart';
-import 'services/user_manager.dart';
+import 'java/services/push_notification_service.dart';
+import 'java/services/user_manager.dart';
 
 
 @pragma('vm:entry-point')
@@ -111,7 +112,8 @@ class _WebViewPageState extends State<WebViewPage> {
           onPageStarted: (String url) {},
           onPageFinished: (String url) {
             print("🌐 Página WebView carregada: $url");
-            // Injeta o cookie FCM em todas as páginas carregadas.
+            // A cada página carregada, tentamos injetar o cookie.
+            // A classe de serviço lida com a lógica de ter ou não o token.
             pushService.setCookieOnWebView(_controller);
           },
           onWebResourceError: (WebResourceError error) {
@@ -120,7 +122,7 @@ class _WebViewPageState extends State<WebViewPage> {
         ),
       )
       ..setOnConsoleMessage((JavaScriptConsoleMessage consoleMessage) {
-        print('CONTEÚDO DO CONSOLE WEBVIEW: [log] ${consoleMessage.message}');
+        print('CONTEÚDO DO CONSOLE WEBVIEW: [${consoleMessage.level.name}] ${consoleMessage.message}');
       })
       ..loadRequest(Uri.parse('https://www.check2b.com/'));
   }
@@ -139,3 +141,5 @@ class _WebViewPageState extends State<WebViewPage> {
     );
   }
 }
+
+    
