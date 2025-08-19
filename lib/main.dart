@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -7,8 +6,9 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 
-import 'java/services/push_notification_service.dart';
-import 'java/services/user_manager.dart';
+import 'services/push_notification_service.dart';
+import 'services/user_manager.dart';
+
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -97,7 +97,7 @@ class WebViewPage extends StatefulWidget {
 
 class _WebViewPageState extends State<WebViewPage> {
   late final WebViewController _controller;
-
+  
   @override
   void initState() {
     super.initState();
@@ -111,8 +111,8 @@ class _WebViewPageState extends State<WebViewPage> {
           onPageStarted: (String url) {},
           onPageFinished: (String url) {
             print("🌐 Página WebView carregada: $url");
-            _setFcmTokenCookie();
-            _checkWebViewCookies(); // Adiciona a verificação de cookie
+            // Injeta o cookie FCM em todas as páginas carregadas.
+            pushService.setCookieOnWebView(_controller);
           },
           onWebResourceError: (WebResourceError error) {
             print("❌ Erro no WebView: Code=${error.errorCode}, Description='${error.description}', URL='${error.url}'");
@@ -120,25 +120,15 @@ class _WebViewPageState extends State<WebViewPage> {
         ),
       )
       ..setOnConsoleMessage((JavaScriptConsoleMessage consoleMessage) {
-        print('CONTEÚDO DO CONSOLE WEBVIEW: [${consoleMessage.level.name}] ${consoleMessage.message}');
+        print('CONTEÚDO DO CONSOLE WEBVIEW: [log] ${consoleMessage.message}');
       })
       ..loadRequest(Uri.parse('https://www.check2b.com/'));
   }
 
-  void _setFcmTokenCookie() {
-    pushService.setCookieOnWebView(_controller);
+  @override
+  void dispose() {
+    super.dispose();
   }
-
-  // Função para depuração: imprime os cookies da WebView no console do Flutter
-  void _checkWebViewCookies() async {
-    try {
-      final cookies = await _controller.runJavaScriptReturningResult('document.cookie');
-      print('🍪 Conteúdo do Cookie da WebView: $cookies');
-    } catch (e) {
-      print('❌ Erro ao verificar cookies da WebView: $e');
-    }
-  }
-
 
   @override
   Widget build(BuildContext context) {
