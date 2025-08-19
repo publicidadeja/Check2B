@@ -1,4 +1,3 @@
-
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import { getFirestore, Firestore } from "firebase/firestore";
@@ -27,63 +26,50 @@ const requiredConfigKeysForInit: (keyof typeof firebaseConfig)[] = [
 ];
 
 if (typeof window !== 'undefined') {
-    console.log("[Firebase Lib V8 DEBUG - Conditional App Check] Running in browser environment.");
-    console.log("[Firebase Lib V8 DEBUG] NODE_ENV:", process.env.NODE_ENV);
+    console.log("[Firebase Lib V9 DEBUG] Running in browser environment.");
+    console.log("[Firebase Lib V9 DEBUG] NODE_ENV:", process.env.NODE_ENV);
 
     const allRequiredPresent = requiredConfigKeysForInit.every(key => firebaseConfig[key]);
 
     if (allRequiredPresent) {
         try {
+            // --- START OF FIX: Set App Check debug token on window object ---
+            // This is the recommended way to enable App Check debug mode.
+            // The Firebase SDK will automatically detect this and use the debug provider.
+            const debugToken = process.env.NEXT_PUBLIC_APPCHECK_DEBUG_TOKEN;
+            if (process.env.NODE_ENV === 'development' && debugToken) {
+                console.log("[Firebase Lib V9 DEBUG] Setting App Check DEBUG TOKEN on window object:", debugToken);
+                (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken;
+            }
+            // --- END OF FIX ---
+
+
             if (!getApps().length) {
-                console.log("[Firebase Lib V8 DEBUG] Initializing Firebase app with config for project:", firebaseConfig.projectId);
+                console.log("[Firebase Lib V9 DEBUG] Initializing Firebase app with config for project:", firebaseConfig.projectId);
                 app = initializeApp(firebaseConfig);
             } else {
                 app = getApp();
-                console.log("[Firebase Lib V8 DEBUG] Firebase app already initialized for project:", app.options.projectId);
+                console.log("[Firebase Lib V9 DEBUG] Firebase app already initialized for project:", app.options.projectId);
             }
 
-            // --- APP CHECK INITIALIZATION ---
+            // --- APP CHECK INITIALIZATION (remains mostly the same) ---
             if (app && !appCheckInstance) {
                 const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
-                const debugToken = process.env.NEXT_PUBLIC_APPCHECK_DEBUG_TOKEN;
-
-                // For development with debug token, set it on the window object.
-                // This is the standard way to activate the debug provider.
-                if (process.env.NODE_ENV === 'development' && debugToken) {
-                    console.log("[Firebase Lib V8 DEBUG] ==> USING App Check DEBUG TOKEN from process.env:", debugToken);
-                    (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken;
-                }
-
-                // IMPORTANT: Only initialize App Check if NOT using a debug token OR if in production.
-                // The debug provider is activated automatically when the token is on the window object,
-                // so we don't need to initialize with ReCaptchaEnterpriseProvider in that case.
-                if (!(process.env.NODE_ENV === 'development' && debugToken)) {
-                    if (recaptchaSiteKey) {
-                        console.log("[Firebase Lib V8 DEBUG] Initializing App Check with ReCaptchaEnterpriseProvider for production or dev without debug token.");
-                        try {
-                            appCheckInstance = initializeAppCheck(app, {
-                                provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
-                                isTokenAutoRefreshEnabled: true
-                            });
-                            console.log("[Firebase Lib V8 DEBUG] Firebase App Check with ReCaptchaEnterpriseProvider initialized.");
-                        } catch (appCheckError: any) {
-                             console.error("[Firebase Lib V8 DEBUG] CRITICAL ERROR initializing Firebase App Check with ReCaptchaEnterpriseProvider:", appCheckError);
-                        }
-                    } else {
-                        console.warn("[Firebase Lib V8 DEBUG] App Check NOT INITIALIZED. Required for production. NEXT_PUBLIC_RECAPTCHA_SITE_KEY is missing.");
-                    }
-                } else {
-                    console.log("[Firebase Lib V8 DEBUG] App Check with DEBUG TOKEN is active. Skipping ReCaptchaEnterpriseProvider initialization.");
-                    // In debug mode with token, initializeAppCheck is still needed to get the instance,
-                    // but it will automatically use the debug provider.
+                
+                // Initialize App Check. The provider will be automatically selected based on
+                // whether FIREBASE_APPCHECK_DEBUG_TOKEN is set on the window.
+                if (recaptchaSiteKey) {
                     try {
                         appCheckInstance = initializeAppCheck(app, {
-                           provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey || "missing-key-in-debug"), // It will be ignored if debug token is present
-                           isTokenAutoRefreshEnabled: true
+                            provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
+                            isTokenAutoRefreshEnabled: true
                         });
-                    } catch (e) {
-                         console.error("[Firebase Lib V8 DEBUG] Error during dummy App Check init for debug mode:", e);
+                        console.log("[Firebase Lib V9 DEBUG] Firebase App Check initialized.");
+                    } catch (appCheckError: any) {
+                         console.error("[Firebase Lib V9 DEBUG] CRITICAL ERROR initializing Firebase App Check:", appCheckError);
                     }
+                } else {
+                    console.warn("[Firebase Lib V9 DEBUG] App Check NOT INITIALIZED. Required for production. NEXT_PUBLIC_RECAPTCHA_SITE_KEY is missing.");
                 }
             }
             // --- END APP CHECK ---
@@ -91,20 +77,20 @@ if (typeof window !== 'undefined') {
             if (app) {
                 db = getFirestore(app);
                 authInstance = getAuth(app);
-                console.log("[Firebase Lib V8 DEBUG] Firebase App, Firestore, and Auth setup completed.");
+                console.log("[Firebase Lib V9 DEBUG] Firebase App, Firestore, and Auth setup completed.");
             }
 
         } catch (error) {
-            console.error("[Firebase Lib V8 DEBUG] Firebase initialization failed:", error);
+            console.error("[Firebase Lib V9 DEBUG] Firebase initialization failed:", error);
             alert("Falha ao inicializar a conexão com o servidor. Verifique a configuração do Firebase e o console (F12).");
         }
     } else {
         const missingCriticalKeys = requiredConfigKeysForInit.filter(key => !firebaseConfig[key]);
-        console.error("[Firebase Lib V8 DEBUG] Firebase Web App initialization SKIPPED due to missing CRITICAL configuration keys:", missingCriticalKeys.join(', '));
+        console.error("[Firebase Lib V9 DEBUG] Firebase Web App initialization SKIPPED due to missing CRITICAL configuration keys:", missingCriticalKeys.join(', '));
         alert(`Erro de configuração do Firebase: Chaves CRÍTICAS ausentes: ${missingCriticalKeys.join(', ')}. Verifique suas variáveis de ambiente e recarregue a página.`);
     }
 } else {
-    console.log("[Firebase Lib V8 DEBUG] Skipping client-side Firebase initialization (not in browser).");
+    console.log("[Firebase Lib V9 DEBUG] Skipping client-side Firebase initialization (not in browser).");
 }
 
 export const getFirebaseApp = (): FirebaseApp | null => {
@@ -134,7 +120,7 @@ export const getAppCheckInstance = (): AppCheck | null => {
     if (!appCheckInstance) {
         const currentApp = getFirebaseApp();
         if (currentApp) {
-             console.warn("[Firebase Lib V8 DEBUG] getAppCheckInstance called, but instance was null. This might indicate an initialization issue.");
+             console.warn("[Firebase Lib V9 DEBUG] getAppCheckInstance called, but instance was null. This might indicate an initialization issue.");
         }
     }
     return appCheckInstance;
