@@ -1,27 +1,41 @@
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
-import 'dart:async'; // Import for Timer
+import 'dart:async';
 
-import 'java/services/push_notification_service.dart';
-import 'java/services/user_manager.dart';
+import 'services/push_notification_service.dart';
+import 'services/user_manager.dart';
+
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   print('📱➡️ Mensagem em segundo plano recebida (HANDLER): ${message.messageId}');
 
-  // A lógica de filtro por usuário já é feita pelo backend, então o handler
-  // de background não precisa se preocupar com isso. Ele apenas recebe a notificação.
-  if (message.notification != null) {
-      print('✅ Handler BG: Notificação recebida: ${message.notification?.title}');
+  final UserManager userManager = UserManager();
+  final String? lastLoggedInUserId = await userManager.getLastUserId();
+  final String? targetUserId = message.data['userIdTarget'];
+
+  print('Handler BG - Target UserID do payload: $targetUserId');
+  print('Handler BG - Último UserID logado localmente: $lastLoggedInUserId');
+
+  if (targetUserId != null && targetUserId.isNotEmpty && targetUserId == lastLoggedInUserId) {
+    print('✅ Handler BG: Notificação para o usuário ativo ($lastLoggedInUserId): ${message.notification?.title}');
+  } else {
+    if (targetUserId == null || targetUserId.isEmpty) {
+      print('⚠️ Handler BG: Notificação recebida sem userIdTarget no payload de dados.');
+    } else if (lastLoggedInUserId == null) {
+      print('⚠️ Handler BG: Notificação recebida para $targetUserId, mas nenhum usuário logado localmente.');
+    } else {
+      print('⚠️ Handler BG: Notificação para $targetUserId, mas o usuário ativo é $lastLoggedInUserId. Ignorando.');
+    }
   }
 }
 
-// Instância única do serviço de notificação
 final PushNotificationService pushService = PushNotificationService();
 
 void main() async {
@@ -49,13 +63,17 @@ void main() async {
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   try {
-    // Inicializa o serviço para obter permissão e o token FCM
     await pushService.initialize();
+  } catch (e) {
+    print("❌ Erro ao inicializar PushNotificationService: $e");
+  }
+
+  try {
     await pushService.checkForInitialMessage();
   } catch (e) {
-    print("❌ Erro ao inicializar PushNotificationService ou verificar mensagem inicial: $e");
+    print("❌ Erro ao verificar mensagem inicial: $e");
   }
-  
+
   runApp(const MyApp());
 }
 
@@ -80,8 +98,8 @@ class WebViewPage extends StatefulWidget {
 
 class _WebViewPageState extends State<WebViewPage> {
   late final WebViewController _controller;
-  // A UserManager não é mais necessária aqui para o fluxo de token
-  // final UserManager _userManager = UserManager();
+  // O UserManager pode ser removido se não for usado em mais nenhum lugar nesta classe.
+  final UserManager _userManager = UserManager(); 
 
   @override
   void initState() {
@@ -90,15 +108,15 @@ class _WebViewPageState extends State<WebViewPage> {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0x00000000))
-      // O canal de comunicação não é mais necessário com a abordagem de cookie
+      // O JavaScriptChannel não é mais necessário para esta lógica
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (int progress) {},
           onPageStarted: (String url) {},
           onPageFinished: (String url) {
             print("🌐 Página WebView carregada: $url");
-            // Chama o método do serviço que injeta o cookie
-            pushService.setCookieOnWebView(_controller); 
+            // Chama a função para injetar o cookie assim que a página termina de carregar
+            pushService.setCookieOnWebView(_controller);
           },
           onWebResourceError: (WebResourceError error) {
             print("❌ Erro no WebView: Code=${error.errorCode}, Description='${error.description}', URL='${error.url}'");
@@ -109,6 +127,12 @@ class _WebViewPageState extends State<WebViewPage> {
         print('CONTEÚDO DO CONSOLE WEBVIEW: [${consoleMessage.level.name}] ${consoleMessage.message}');
       })
       ..loadRequest(Uri.parse('https://www.check2b.com/'));
+  }
+
+  @override
+  void dispose() {
+    // A lógica do Timer foi removida, então não há mais o que limpar aqui
+    super.dispose();
   }
 
   @override
