@@ -14,26 +14,14 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   print('📱➡️ Mensagem em segundo plano recebida (HANDLER): ${message.messageId}');
 
-  final UserManager userManager = UserManager();
-  final String? lastLoggedInUserId = await userManager.getLastUserId();
-  final String? targetUserId = message.data['userIdTarget'];
-
-  print('Handler BG - Target UserID do payload: $targetUserId');
-  print('Handler BG - Último UserID logado localmente: $lastLoggedInUserId');
-
-  if (targetUserId != null && targetUserId.isNotEmpty && targetUserId == lastLoggedInUserId) {
-    print('✅ Handler BG: Notificação para o usuário ativo ($lastLoggedInUserId): ${message.notification?.title}');
-  } else {
-    if (targetUserId == null || targetUserId.isEmpty) {
-      print('⚠️ Handler BG: Notificação recebida sem userIdTarget no payload de dados.');
-    } else if (lastLoggedInUserId == null) {
-      print('⚠️ Handler BG: Notificação recebida para $targetUserId, mas nenhum usuário logado localmente.');
-    } else {
-      print('⚠️ Handler BG: Notificação para $targetUserId, mas o usuário ativo é $lastLoggedInUserId. Ignorando.');
-    }
+  // A lógica de filtro por usuário já é feita pelo backend, então o handler
+  // de background não precisa se preocupar com isso. Ele apenas recebe a notificação.
+  if (message.notification != null) {
+      print('✅ Handler BG: Notificação recebida: ${message.notification?.title}');
   }
 }
 
+// Instância única do serviço de notificação
 final PushNotificationService pushService = PushNotificationService();
 
 void main() async {
@@ -61,17 +49,13 @@ void main() async {
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   try {
+    // Inicializa o serviço para obter permissão e o token FCM
     await pushService.initialize();
-  } catch (e) {
-    print("❌ Erro ao inicializar PushNotificationService: $e");
-  }
-  
-  try {
     await pushService.checkForInitialMessage();
   } catch (e) {
-    print("❌ Erro ao verificar mensagem inicial: $e");
+    print("❌ Erro ao inicializar PushNotificationService ou verificar mensagem inicial: $e");
   }
-
+  
   runApp(const MyApp());
 }
 
@@ -96,6 +80,8 @@ class WebViewPage extends StatefulWidget {
 
 class _WebViewPageState extends State<WebViewPage> {
   late final WebViewController _controller;
+  // A UserManager não é mais necessária aqui para o fluxo de token
+  // final UserManager _userManager = UserManager();
 
   @override
   void initState() {
@@ -104,13 +90,15 @@ class _WebViewPageState extends State<WebViewPage> {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0x00000000))
+      // O canal de comunicação não é mais necessário com a abordagem de cookie
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (int progress) {},
           onPageStarted: (String url) {},
           onPageFinished: (String url) {
             print("🌐 Página WebView carregada: $url");
-            _setFcmTokenCookie(); // Set cookie every time a page finishes loading
+            // Chama o método do serviço que injeta o cookie
+            pushService.setCookieOnWebView(_controller); 
           },
           onWebResourceError: (WebResourceError error) {
             print("❌ Erro no WebView: Code=${error.errorCode}, Description='${error.description}', URL='${error.url}'");
@@ -121,20 +109,6 @@ class _WebViewPageState extends State<WebViewPage> {
         print('CONTEÚDO DO CONSOLE WEBVIEW: [${consoleMessage.level.name}] ${consoleMessage.message}');
       })
       ..loadRequest(Uri.parse('https://www.check2b.com/'));
-  }
-  
-  void _setFcmTokenCookie() async {
-    String? fcmToken = await pushService.getToken(); // Garante que temos o token mais recente
-    if (fcmToken != null) {
-      print('🍪➡️ Injetando cookie fcmToken na WebView: $fcmToken');
-      // Define um cookie que é acessível via JavaScript no site
-      // max-age está em segundos (1 ano)
-      await _controller.runJavaScript(
-        'document.cookie = "fcmToken=${fcmToken};path=/;max-age=31536000;SameSite=Lax";'
-      );
-    } else {
-      print('⚠️ Token FCM não disponível, não foi possível injetar o cookie.');
-    }
   }
 
   @override
