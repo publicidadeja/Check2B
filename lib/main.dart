@@ -6,10 +6,8 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async'; // Import for Timer
 
-// Corrija os caminhos de importação se 'java' estiver dentro de 'lib'
-import 'package:check2b_mobile_app/java/services/push_notification_service.dart';
-import 'package:check2b_mobile_app/java/services/user_manager.dart';
-
+import 'java/services/push_notification_service.dart';
+import 'java/services/user_manager.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -98,8 +96,7 @@ class WebViewPage extends StatefulWidget {
 
 class _WebViewPageState extends State<WebViewPage> {
   late final WebViewController _controller;
-  final UserManager _userManager = UserManager();
-  
+
   @override
   void initState() {
     super.initState();
@@ -107,21 +104,13 @@ class _WebViewPageState extends State<WebViewPage> {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0x00000000))
-      ..addJavaScriptChannel(
-        'FCMConnector',
-        onMessageReceived: (JavaScriptMessage message) {
-          print("🤝 Mensagem recebida da Web: ${message.message}");
-          if (message.message == 'getFcmToken') {
-            _sendFcmTokenToWeb();
-          }
-        },
-      )
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (int progress) {},
           onPageStarted: (String url) {},
           onPageFinished: (String url) {
             print("🌐 Página WebView carregada: $url");
+            _setFcmTokenCookie(); // Set cookie every time a page finishes loading
           },
           onWebResourceError: (WebResourceError error) {
             print("❌ Erro no WebView: Code=${error.errorCode}, Description='${error.description}', URL='${error.url}'");
@@ -134,15 +123,17 @@ class _WebViewPageState extends State<WebViewPage> {
       ..loadRequest(Uri.parse('https://www.check2b.com/'));
   }
   
-  void _sendFcmTokenToWeb() async {
-    String? fcmToken = pushService.currentToken;
+  void _setFcmTokenCookie() async {
+    String? fcmToken = await pushService.getToken(); // Garante que temos o token mais recente
     if (fcmToken != null) {
-      print('➡️ Enviando token FCM para a Web: $fcmToken');
-      // Chama a função JS na web que agora está esperando pelo token
-      await _controller.runJavaScript('window.handleFcmToken("$fcmToken")');
+      print('🍪➡️ Injetando cookie fcmToken na WebView: $fcmToken');
+      // Define um cookie que é acessível via JavaScript no site
+      // max-age está em segundos (1 ano)
+      await _controller.runJavaScript(
+        'document.cookie = "fcmToken=${fcmToken};path=/;max-age=31536000;SameSite=Lax";'
+      );
     } else {
-      print('⚠️ Token FCM não disponível para enviar à Web. Enviando TOKEN_NOT_FOUND.');
-      await _controller.runJavaScript('window.handleFcmToken("TOKEN_NOT_FOUND")');
+      print('⚠️ Token FCM não disponível, não foi possível injetar o cookie.');
     }
   }
 
