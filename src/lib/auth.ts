@@ -1,4 +1,3 @@
-
 // src/lib/auth.ts
 import {
     signInWithEmailAndPassword,
@@ -60,10 +59,13 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     const idToken = await user.getIdToken(true);
     setAuthCookie(idToken, role, organizationId, user.uid);
 
-    // After successful login, read the FCM token from the cookie and save it.
+    // *** LOGIC TO READ COOKIE AND SAVE FCM TOKEN ***
     const fcmToken = Cookies.get('fcmToken');
     if (fcmToken) {
         console.log(`[WebApp] FCM Token found in cookie: ${fcmToken}`);
+        // Call the service function to save the token asynchronously.
+        // We don't need to 'await' this, as it can happen in the background
+        // without blocking the login flow.
         saveUserFcmToken(user.uid, fcmToken)
             .then(success => {
                 if (success) console.log("[WebApp] FCM Token registration successful.");
@@ -73,6 +75,7 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     } else {
         console.warn("[WebApp] FCM Token not found in cookie after login.");
     }
+    // *** END OF LOGIC ***
 
     return {
         userCredential,
