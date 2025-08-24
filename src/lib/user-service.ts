@@ -347,5 +347,3 @@ export const saveUserFcmToken = async (userId: string, fcmToken: string): Promis
     return false;
   }
 };
-
-    
