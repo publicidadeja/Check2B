@@ -1,7 +1,7 @@
 import 'package:firebase_core/firebase_core.dart'; // Necessário para o background handler
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart'; // Para kDebugMode, se você quiser diferenciar logs
-import 'package:webview_flutter/webview_flutter.dart'; // Importado para usar o WebViewController
+import 'package:webview_flutter/webview_flutter.dart'; // Import for WebView controller
 
 // --- INÍCIO DO HANDLER DE BACKGROUND ---
 // Este handler DEVE ser uma função de nível superior (fora de qualquer classe).
@@ -36,7 +36,25 @@ class PushNotificationService {
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   String? _cachedToken;
 
+  // Callback for token refresh events
+  Function(String?)? onTokenRefreshed;
+
   String? get currentToken => _cachedToken;
+
+  // New method to set the FCM token as a cookie on the WebView
+  Future<void> setCookieOnWebView(WebViewController controller) async {
+    if (_cachedToken != null) {
+      print('🍪➡️ Injetando cookie fcmToken na WebView: $_cachedToken');
+      // Set a cookie that is accessible via JavaScript on the website
+      // max-age is in seconds (1 year = 31536000 seconds)
+      await controller.runJavaScript(
+        'document.cookie = "fcmToken=${_cachedToken};path=/;max-age=31536000";'
+      );
+    } else {
+      print('⚠️ Token FCM ainda não disponível, não foi possível injetar o cookie.');
+    }
+  }
+
 
   Future<void> initialize() async {
     // Configura o handler de mensagens em background ANTES de qualquer outra coisa
@@ -56,14 +74,19 @@ class PushNotificationService {
 
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
       print('✅ Permissão de notificação concedida pelo usuário.');
-      _cachedToken = await _firebaseMessaging.getToken();
-      print("🔑 FCM Token Obtido (e cacheado pelo SDK): $_cachedToken");
+      try {
+        _cachedToken = await _firebaseMessaging.getToken();
+        print("🔑 FCM Token Obtido (e cacheado pelo SDK): $_cachedToken");
+      } catch (e) {
+        print("❌ Erro ao obter token FCM inicial: $e");
+      }
+
 
       _firebaseMessaging.onTokenRefresh.listen((newToken) {
         print("🔄 FCM Token ATUALIZADO (Refresh): $newToken");
         _cachedToken = newToken;
-        // TODO: Envie este novo token para o seu servidor/WebView
-        // Ex:  seuWebViewJavaScriptChannel?.invokeMethod('updateFcmToken', newToken);
+        // If a callback is registered, call it.
+        onTokenRefreshed?.call(newToken);
       });
 
       // Listener para mensagens recebidas enquanto o app está em PRIMEIRO PLANO
@@ -128,20 +151,6 @@ class PushNotificationService {
       }
       print("--- 🏁 [APP ABERTO DE TERMINADO PELA NOTIFICAÇÃO] Fim da Mensagem ---");
       // ... (lógica existente para lidar com a abertura do app de um estado terminado) ...
-    }
-  }
-
-  /// NOVO MÉTODO: Injeta o token FCM cacheado como um cookie na WebView fornecida.
-  Future<void> setCookieOnWebView(WebViewController controller) async {
-    if (_cachedToken != null) {
-      print('🍪➡️ Injetando cookie fcmToken na WebView: $_cachedToken');
-      // Define um cookie acessível via JavaScript no site
-      // max-age está em segundos (1 ano)
-      await controller.runJavaScript(
-        'document.cookie = "fcmToken=${_cachedToken};path=/;max-age=31536000";'
-      );
-    } else {
-      print('⚠️ Token FCM ainda não disponível, não foi possível injetar o cookie.');
     }
   }
 }
