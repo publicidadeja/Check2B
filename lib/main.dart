@@ -7,8 +7,8 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 
-import 'java/services/push_notification_service.dart';
-import 'java/services/user_manager.dart';
+import 'services/push_notification_service.dart';
+import 'services/user_manager.dart';
 
 
 @pragma('vm:entry-point')
@@ -98,7 +98,9 @@ class WebViewPage extends StatefulWidget {
 
 class _WebViewPageState extends State<WebViewPage> {
   late final WebViewController _controller;
-  
+  final UserManager _userManager = UserManager();
+
+
   @override
   void initState() {
     super.initState();
@@ -112,8 +114,6 @@ class _WebViewPageState extends State<WebViewPage> {
           onPageStarted: (String url) {},
           onPageFinished: (String url) {
             print("🌐 Página WebView carregada: $url");
-            // A cada página carregada, tentamos injetar o cookie.
-            // A classe de serviço lida com a lógica de ter ou não o token.
             pushService.setCookieOnWebView(_controller);
           },
           onWebResourceError: (WebResourceError error) {
@@ -128,11 +128,6 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   @override
-  void dispose() {
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
@@ -141,5 +136,3 @@ class _WebViewPageState extends State<WebViewPage> {
     );
   }
 }
-
-    
