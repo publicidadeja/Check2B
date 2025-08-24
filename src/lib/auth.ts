@@ -60,6 +60,7 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     setAuthCookie(idToken, role, organizationId, user.uid);
 
     // *** LOGIC TO READ COOKIE AND SAVE FCM TOKEN ***
+    console.log("passou aqui busca do cookie🍪🍪🍪🍪🍪")
     const fcmToken = Cookies.get('fcmToken');
     if (fcmToken) {
         console.log(`[WebApp] FCM Token found in cookie: ${fcmToken}`);
