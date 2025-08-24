@@ -59,8 +59,9 @@ export const loginUser = async (email: string, password: string): Promise<{ user
 
     console.log(`[Auth] User profile fetched: Role=${role}, OrgID=${organizationId}`);
 
-    const idToken = await user.getIdToken(true);
-    setAuthCookie(idToken, role, organizationId, user.uid);
+    //const idToken = await user.getIdToken(true);
+    console.log("passou aqui busca do cookie🍪🍪🍪🍪🍪")
+    //setAuthCookie(idToken, role, organizationId, user.uid);
 
     // *** LOGIC TO READ COOKIE AND SAVE FCM TOKEN ***
     console.log("[Auth] Attempting to read 'fcmToken' from cookies...");
