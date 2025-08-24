@@ -60,25 +60,29 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     console.log(`[Auth] User profile fetched: Role=${role}, OrgID=${organizationId}`);
 
     const idToken = await user.getIdToken(true);
-    console.log("passou aqui busca do cookie🍪🍪🍪🍪🍪")
     setAuthCookie(idToken, role, organizationId, user.uid);
 
     // *** LOGIC TO READ COOKIE AND SAVE FCM TOKEN ***
-    console.log("[Auth] Attempting to read 'fcmToken' from cookies...");
+    console.log("[Auth] Attempting to read 'fcmToken' and 'user-uid' from cookies...");
     const fcmToken = Cookies.get('fcmToken');
-    if (fcmToken) {
+    const uidFromCookie = Cookies.get('user-uid'); // Explicitly read UID from cookie
+
+    if (fcmToken && uidFromCookie) {
         console.log(`[Auth] FCM Token found in cookie: ${fcmToken}`);
+        console.log(`[Auth] UID found in cookie: ${uidFromCookie}. Using this UID to save token.`);
+        
         // Call the service function to save the token asynchronously.
         // We don't need to 'await' this, as it can happen in the background
         // without blocking the login flow.
-        saveUserFcmToken(user.uid, fcmToken)
+        saveUserFcmToken(uidFromCookie, fcmToken)
             .then(success => {
                 if (success) console.log("[Auth] FCM Token registration successful.");
                 else console.warn("[Auth] FCM Token registration failed.");
             })
             .catch(err => console.error("[Auth] Error saving FCM token:", err));
     } else {
-        console.warn("[Auth] FCM Token not found in cookie after login.");
+        if (!fcmToken) console.warn("[Auth] FCM Token not found in cookie after login.");
+        if (!uidFromCookie) console.warn("[Auth] User UID not found in cookie after login.");
     }
     // *** END OF LOGIC ***
 
