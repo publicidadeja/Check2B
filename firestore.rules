@@ -2,65 +2,70 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Users Collection Rules
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && request.auth.token.role == 'super_admin';
+    }
+
+    function isUserInOrg(orgId) {
+      return isSignedIn() && request.auth.token.organizationId == orgId;
+    }
+
+    function isOwnRecord(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Regras para a coleção 'users'
     match /users/{userId} {
-      // Helper function to check if the user is the owner of the document
-      function isOwner() {
-        return request.auth.uid == userId;
-      }
-
-      // Helper function to check which fields are being updated
-      function allowedUpdateFields() {
-        // Users can update their name, photo, phone, and FCM tokens.
-        // They CANNOT update their own role, organizationId, or status.
-        return request.resource.data.diff(resource.data).affectedKeys()
-               .hasOnly(['name', 'photoUrl', 'phone', 'fcmTokens', 'updatedAt']);
-      }
-
-      // Allow read access for the owner of the document.
-      // Allow update access only for the owner and only for specific, safe fields.
-      allow read, update: if isOwner() && allowedUpdateFields();
-      allow create: if request.auth.uid != null; // Allow creation for any authenticated user
-    }
-
-    // Organizations and their subcollections
-    match /organizations/{organizationId} {
-      // Helper function to check if the user belongs to this organization
-      function isMember() {
-        return request.auth.token.organizationId == organizationId;
-      }
+      // Permite que um usuário leia seu próprio documento para obter role/orgId
+      // Permite que super_admin leia qualquer perfil
+      allow read: if isOwnRecord(userId) || isSuperAdmin();
       
-      // Allow any authenticated user (admins, collaborators of any org) to read organization details
-      // This is generally safe as it contains public info like name and plan.
-      allow read: if request.auth != null;
+      // Apenas super_admin pode criar/escrever/deletar diretamente.
+      // Outras modificações são feitas via Cloud Functions.
+      allow write, delete: if isSuperAdmin();
+    }
 
-      // Rules for all subcollections within an organization
+    // Regras para a coleção 'organizations'
+    match /organizations/{orgId} {
+      // Super admins podem fazer tudo.
+      // Admins/Colaboradores da organização podem ler os detalhes da organização.
+      allow read: if isSuperAdmin() || isUserInOrg(orgId);
+      allow write, delete: if isSuperAdmin();
+
+      // Regras para todas as subcoleções (tasks, challenges, evaluations, etc.)
       match /{subcollection}/{docId} {
-        // Members of the organization can read any document in any subcollection.
-        allow read: if isMember();
-        
-        // Write access should be more specific per subcollection if needed,
-        // but for now, we grant it to members as well.
-        // This can be tightened later (e.g., only admins can write to 'tasks').
-        allow write: if isMember();
+        // Admins/Colaboradores da organização podem ler os dados.
+        allow read: if isSuperAdmin() || isUserInOrg(orgId);
+
+        // Apenas Super Admins e Admins da organização podem criar/atualizar/deletar dados
+        // (Ex: criar uma tarefa, avaliar um desafio).
+        allow write, delete: if isSuperAdmin() || (isUserInOrg(orgId) && request.auth.token.role == 'admin');
       }
     }
-    
-    // Plan data is public and can be read by any authenticated user
+
+    // Regras para coleções de nível raiz (ex: plans, awards)
     match /plans/{planId} {
-      allow read: if request.auth != null;
-    }
-    
-    // Award history is tied to an organization, readable by its members
-    match /awardHistory/{historyId} {
-        allow read: if request.auth.token.organizationId == resource.data.organizationId;
+      // Qualquer usuário autenticado pode ler os planos. Apenas Super Admin pode modificar.
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
     }
 
-    // Notifications are private to each user (read/write only by the user)
-    // Note: Notifications are in Realtime Database in this project, these rules are placeholders if moved to Firestore.
-    match /userNotifications/{userId}/{notificationId} {
-       allow read, write: if request.auth.uid == userId;
+    match /awards/{awardId} {
+      // Qualquer usuário autenticado pode ler as premiações. Apenas Super Admin pode modificar.
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
+    }
+
+    match /awardHistory/{historyId} {
+      // Qualquer usuário autenticado pode ler o histórico. Apenas Super Admin pode criar/modificar.
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
     }
   }
 }
