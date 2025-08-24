@@ -3,120 +3,74 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper functions
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isSuperAdmin() {
-      return isSignedIn() && request.auth.token.role == 'super_admin';
-    }
-
-    function isAdmin() {
-      return isSignedIn() && request.auth.token.role == 'admin';
-    }
-
-    function isCollaborator() {
-      return isSignedIn() && request.auth.token.role == 'collaborator';
+    
+    // Helper function to check if a user belongs to a specific organization.
+    // It checks the custom claims on the user's auth token.
+    function isMemberOf(orgId) {
+      return request.auth != null && request.auth.token.organizationId == orgId;
     }
     
-    function isOwner(userId) {
-      return request.auth.uid == userId;
+    // Helper function to check if the user has a specific role.
+    function hasRole(role) {
+      return request.auth != null && request.auth.token.role == role;
     }
 
-    function isUserInOrg(organizationId) {
-        return request.auth.token.organizationId == organizationId;
-    }
+    // Organizations can be read by any authenticated user to list them (if needed),
+    // but only super admins can create, update, or delete them.
+    match /organizations/{orgId} {
+      allow read: if request.auth != null;
+      allow write: if hasRole('super_admin');
 
-    // Organizations: Super Admins can manage all. Admins can read their own.
-    match /organizations/{organizationId} {
-      allow read: if isSuperAdmin() || (isAdmin() && isUserInOrg(organizationId));
-      allow write: if isSuperAdmin(); // Only Super Admins can create/update/delete orgs
-
-      // Subcollections within organizations
-      
-      // Tasks: Admins of the org can manage tasks. Collaborators can read.
-      match /tasks/{taskId} {
-        allow read: if (isAdmin() || isCollaborator()) && isUserInOrg(organizationId);
-        allow write: if isAdmin() && isUserInOrg(organizationId);
-      }
-      
-      // Evaluations: Admins can manage. Collaborators can read their own.
-      match /evaluations/{evaluationId} {
-        allow read: if (isAdmin() && isUserInOrg(organizationId)) || (isCollaborator() && isUserInOrg(organizationId) && resource.data.employeeId == request.auth.uid);
-        allow write: if isAdmin() && isUserInOrg(organizationId);
-      }
-
-      // Departments & Roles: Managed by Admins within their organization. Collaborators can read.
-      match /departments/{departmentId} {
-         allow read: if (isAdmin() || isCollaborator()) && isUserInOrg(organizationId);
-         allow write: if isAdmin() && isUserInOrg(organizationId);
-      }
-      match /roles/{roleId} {
-        allow read: if (isAdmin() || isCollaborator()) && isUserInOrg(organizationId);
-        allow write: if isAdmin() && isUserInOrg(organizationId);
-      }
-      
-      // Challenges & Participations
-      match /challenges/{challengeId} {
-        allow read: if (isAdmin() || isCollaborator()) && isUserInOrg(organizationId);
-        allow write: if isAdmin() && isUserInOrg(organizationId);
-      }
-      match /challengeParticipations/{participationId} {
-        allow read: if (isAdmin() && isUserInOrg(organizationId)) || (isCollaborator() && isUserInOrg(organizationId) && resource.data.employeeId == request.auth.uid);
-        // Collaborators can create/update their own submissions, Admins can evaluate
-        allow write: if (isCollaborator() && isUserInOrg(organizationId) && request.resource.data.employeeId == request.auth.uid) || (isAdmin() && isUserInOrg(organizationId));
-      }
-
-      // Challenge Management (Settings)
-      match /challengeManagement/{docId} {
-          allow read: if isAdmin() && isUserInOrg(organizationId);
-          allow write: if isAdmin() && isUserInOrg(organizationId);
-      }
-      
-      // App Settings
-      match /appSettings/{docId} {
-          allow read: if isAdmin() && isUserInOrg(organizationId);
-          allow write: if isAdmin() && isUserInOrg(organizationId);
-      }
-
-       // Ranking Management
-      match /rankingManagement/{docId} {
-          allow read: if isAdmin() && isUserInOrg(organizationId);
-          allow write: if isAdmin() && isUserInOrg(organizationId);
+      // Rules for all subcollections within an organization
+      match /{subcollection}/{docId} {
+        // Admins and collaborators can read/write data within their own organization.
+        allow read, write: if isMemberOf(orgId);
       }
     }
 
-    // Users: Can only read/update their own profile. Admins can read users in their org. Super Admins can manage all.
+    // Users collection rules
     match /users/{userId} {
-      allow read: if isOwner(userId) || isSuperAdmin() || (isAdmin() && isUserInOrg(resource.data.organizationId));
-      allow update: if isOwner(userId) || isSuperAdmin();
-      // Create/delete handled by Cloud Functions
-      allow create, delete: if false; 
+      // A user can read their own profile.
+      allow read: if request.auth.uid == userId;
       
-      // User settings subcollection
+      // A user can update their own profile (e.g., name, photo).
+      // Admins of the same org or super admins can also update user profiles.
+      allow update: if request.auth.uid == userId || 
+                       (hasRole('admin') && isMemberOf(resource.data.organizationId)) ||
+                       hasRole('super_admin');
+                       
+      // Only admins or super admins can create users (delegated to Cloud Functions).
+      allow create: if hasRole('admin') || hasRole('super_admin');
+      
+      // Users cannot be deleted directly via client SDK for security reasons.
+      // This is handled by a Cloud Function.
+      allow delete: if false;
+
+      // Settings subcollection for a user (e.g., notifications)
       match /settings/{settingId} {
-        allow read, write: if isOwner(userId);
+          allow read, write: if request.auth.uid == userId;
       }
     }
     
-    // Plans: Managed by Super Admin only. Readable by Admins.
-    match /plans/{planId} {
-      allow read: if isSuperAdmin() || isAdmin();
-      allow write: if isSuperAdmin();
-    }
-    
-    // Award History: Readable by Super Admin and users of the specific organization. Writable only by Super Admin (via Cloud Function).
+    // Award History is readable by any authenticated user (so collaborators can see winners).
+    // Writing is handled by a Cloud Function or a trusted admin process.
     match /awardHistory/{historyId} {
-      allow read: if isSuperAdmin() || (isSignedIn() && isUserInOrg(resource.data.organizationId));
-      allow write: if isSuperAdmin(); // Writes should come from a trusted server/function
+        allow read: if request.auth != null;
+        allow write: if hasRole('admin') || hasRole('super_admin');
+    }
+
+    // Plans collection can be read by any authenticated user.
+    // Writing is restricted to super admins.
+    match /plans/{planId} {
+        allow read: if request.auth != null;
+        allow write: if hasRole('super_admin');
     }
     
-    // Awards: Managed by Super Admin only. Readable by Admins.
+    // Awards can be read by any authenticated user.
+    // Writing is restricted to super admins.
     match /awards/{awardId} {
-        allow read: if isSuperAdmin() || isAdmin();
-        allow write: if isSuperAdmin();
+        allow read: if request.auth != null;
+        allow write: if hasRole('super_admin');
     }
   }
 }
