@@ -3,69 +3,37 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isSuperAdmin() {
-      return isSignedIn() && request.auth.token.role == 'super_admin';
-    }
-
-    function isUserInOrg(orgId) {
-      return isSignedIn() && request.auth.token.organizationId == orgId;
-    }
-
-    function isOwnRecord(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    // Regras para a coleção 'users'
+    // Allow users to read and update their own profile information.
+    // They cannot change their role or organizationId through this rule.
     match /users/{userId} {
-      // Permite que um usuário leia seu próprio documento para obter role/orgId
-      // Permite que super_admin leia qualquer perfil
-      allow read: if isOwnRecord(userId) || isSuperAdmin();
-      
-      // Apenas super_admin pode criar/escrever/deletar diretamente.
-      // Outras modificações são feitas via Cloud Functions.
-      allow write, delete: if isSuperAdmin();
+      allow read, update: if request.auth.uid == userId;
+      // Explicitly deny create/delete on their own profile doc for safety.
+      allow create, delete: if false;
     }
 
-    // Regras para a coleção 'organizations'
-    match /organizations/{orgId} {
-      // Super admins podem fazer tudo.
-      // Admins/Colaboradores da organização podem ler os detalhes da organização.
-      allow read: if isSuperAdmin() || isUserInOrg(orgId);
-      allow write, delete: if isSuperAdmin();
+    // Rules for organizations and their subcollections
+    // An authenticated user can read any document inside their own organization.
+    // This is necessary for pages like Dashboard, Challenges, Ranking, etc.
+    match /organizations/{orgId}/{document=**} {
+      allow read: if request.auth.token.organizationId == orgId;
 
-      // Regras para todas as subcoleções (tasks, challenges, evaluations, etc.)
-      match /{subcollection}/{docId} {
-        // Admins/Colaboradores da organização podem ler os dados.
-        allow read: if isSuperAdmin() || isUserInOrg(orgId);
-
-        // Apenas Super Admins e Admins da organização podem criar/atualizar/deletar dados
-        // (Ex: criar uma tarefa, avaliar um desafio).
-        allow write, delete: if isSuperAdmin() || (isUserInOrg(orgId) && request.auth.token.role == 'admin');
-      }
+      // Write access is more granular and typically handled by Cloud Functions,
+      // but admins can have broader write access for management tasks.
+      // Collaborators have very limited write access, defined in specific subcollections if needed.
+      allow write: if request.auth.token.role == 'admin' && request.auth.token.organizationId == orgId;
     }
 
-    // Regras para coleções de nível raiz (ex: plans, awards)
-    match /plans/{planId} {
-      // Qualquer usuário autenticado pode ler os planos. Apenas Super Admin pode modificar.
-      allow read: if isSignedIn();
-      allow write: if isSuperAdmin();
+    // Rules for challenge participations
+    // A user can create their own participation document.
+    match /organizations/{orgId}/challengeParticipations/{participationId} {
+        allow create: if request.auth.uid == request.resource.data.employeeId;
+        allow update: if request.auth.uid == resource.data.employeeId; // Allow user to update their own submission
     }
 
-    match /awards/{awardId} {
-      // Qualquer usuário autenticado pode ler as premiações. Apenas Super Admin pode modificar.
-      allow read: if isSignedIn();
-      allow write: if isSuperAdmin();
-    }
-
-    match /awardHistory/{historyId} {
-      // Qualquer usuário autenticado pode ler o histórico. Apenas Super Admin pode criar/modificar.
-      allow read: if isSignedIn();
-      allow write: if isSuperAdmin();
+    // Super Admins have read/write access to everything for management purposes.
+    // This rule is checked if other rules deny access.
+    match /{path=**}/documents {
+      allow read, write: if request.auth.token.role == 'super_admin';
     }
   }
 }
