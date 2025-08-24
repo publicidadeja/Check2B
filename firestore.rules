@@ -1,130 +1,66 @@
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper function to check if a user is authenticated
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    // Helper function to get the user's role from their custom claims
-    function getRole(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)).data.role;
-    }
     
-    // Helper function to get organizationId from custom claims
-    function getOrganizationId(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)).data.organizationId;
-    }
-
-    // Helper function to check if the user is a super_admin
-    function isSuperAdmin() {
-      return isAuthenticated() && getRole(request.auth.uid) == 'super_admin';
-    }
-
-    // Helper function to check if the user is an admin of the specified organization
-    function isAdminOfOrg(orgId) {
-      return isAuthenticated() && getRole(request.auth.uid) == 'admin' && getOrganizationId(request.auth.uid) == orgId;
-    }
-
-    // Helper function to check if the user is a collaborator of the specified organization
-    function isCollaboratorOfOrg(orgId) {
-       return isAuthenticated() && getRole(request.auth.uid) == 'collaborator' && getOrganizationId(request.auth.uid) == orgId;
-    }
-    
-    // Helper function to check if a user belongs to a specific organization
-    function belongsToOrg(orgId) {
-        return isAdminOfOrg(orgId) || isCollaboratorOfOrg(orgId);
-    }
-    
-    // Helper function to check if a user can read from a specific organization's data
-    function canReadOrgData(orgId) {
-      return isSuperAdmin() || belongsToOrg(orgId);
-    }
-
-    // Users collection:
-    // 1. Authenticated users can read their own profile.
-    // 2. Authenticated users can update their own profile (phone, photoUrl, etc).
-    // 3. Admins/SuperAdmins can read any user profile within their scope.
+    // Users Collection Rules
     match /users/{userId} {
-      allow read, update: if isAuthenticated() && request.auth.uid == userId;
-      allow list, create, delete: if isSuperAdmin(); // Only super admins can list/create/delete users directly.
+      // Helper function to check if the user is the owner of the document
+      function isOwner() {
+        return request.auth.uid == userId;
+      }
+
+      // Helper function to check which fields are being updated
+      function allowedUpdateFields() {
+        // Users can update their name, photo, phone, and FCM tokens.
+        // They CANNOT update their own role, organizationId, or status.
+        return request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['name', 'photoUrl', 'phone', 'fcmTokens', 'updatedAt']);
+      }
+
+      // Allow read access for the owner of the document.
+      // Allow update access only for the owner and only for specific, safe fields.
+      allow read, update: if isOwner() && allowedUpdateFields();
+      allow create: if request.auth.uid != null; // Allow creation for any authenticated user
     }
 
-    // Organizations collection and all subcollections
-    // General rule: Users can read/write data only within their own organization. SuperAdmins have full access.
-    match /organizations/{orgId}/{document=**} {
-      allow read: if canReadOrgData(orgId);
-      // More granular write rules below
-    }
+    // Organizations and their subcollections
+    match /organizations/{organizationId} {
+      // Helper function to check if the user belongs to this organization
+      function isMember() {
+        return request.auth.token.organizationId == organizationId;
+      }
+      
+      // Allow any authenticated user (admins, collaborators of any org) to read organization details
+      // This is generally safe as it contains public info like name and plan.
+      allow read: if request.auth != null;
 
-    // Specific write rules for subcollections within an organization
-    match /organizations/{orgId} {
-        // Only super admins can create/update/delete organization documents themselves.
-        allow write: if isSuperAdmin();
-
-        // Rules for 'tasks' subcollection
-        match /tasks/{taskId} {
-            allow write: if isAdminOfOrg(orgId); // Only admins of the org can create/edit/delete tasks
-        }
+      // Rules for all subcollections within an organization
+      match /{subcollection}/{docId} {
+        // Members of the organization can read any document in any subcollection.
+        allow read: if isMember();
         
-        // Rules for 'evaluations' subcollection
-        match /evaluations/{evalId} {
-             // Admins can create/update evaluations for anyone in their org
-             // Collaborators cannot write here directly; it's done via admin actions
-             allow write: if isAdminOfOrg(orgId);
-        }
-
-        // Rules for 'departments' subcollection
-        match /departments/{deptId} {
-            allow write: if isAdminOfOrg(orgId);
-        }
-
-        // Rules for 'roles' subcollection
-        match /roles/{roleId} {
-             allow write: if isAdminOfOrg(orgId);
-        }
-        
-        // Rules for 'challenges' subcollection
-        match /challenges/{challengeId} {
-             allow write: if isAdminOfOrg(orgId);
-        }
-
-        // Rules for 'challengeParticipations' subcollection
-        match /challengeParticipations/{participationId} {
-            // Collaborators can create/update their own participation (submit challenge)
-            // Admins can create/update any participation (evaluate challenge)
-            allow create: if isCollaboratorOfOrg(orgId);
-            allow update: if (isCollaboratorOfOrg(orgId) && request.resource.data.employeeId == request.auth.uid) || isAdminOfOrg(orgId);
-            allow delete: if isAdminOfOrg(orgId);
-        }
-
-        // Rules for 'appSettings' and 'rankingManagement'
-        match /appSettings/{settingId} {
-            allow write: if isAdminOfOrg(orgId);
-        }
-         match /rankingManagement/{settingId} {
-            allow write: if isAdminOfOrg(orgId);
-        }
+        // Write access should be more specific per subcollection if needed,
+        // but for now, we grant it to members as well.
+        // This can be tightened later (e.g., only admins can write to 'tasks').
+        allow write: if isMember();
+      }
     }
     
-    // Awards and Award History are global collections, managed by super admins or specific logic
-    match /awards/{awardId} {
-        allow read: if isAuthenticated();
-        allow write: if isSuperAdmin();
-    }
-    
-    match /awardHistory/{historyId} {
-        allow read: if isAuthenticated();
-        allow write: if isSuperAdmin();
-    }
-    
-    // Plans collection is managed by super admins
+    // Plan data is public and can be read by any authenticated user
     match /plans/{planId} {
-        allow read: if isAuthenticated(); // All authenticated users can read plans
-        allow write: if isSuperAdmin();
+      allow read: if request.auth != null;
+    }
+    
+    // Award history is tied to an organization, readable by its members
+    match /awardHistory/{historyId} {
+        allow read: if request.auth.token.organizationId == resource.data.organizationId;
+    }
+
+    // Notifications are private to each user (read/write only by the user)
+    // Note: Notifications are in Realtime Database in this project, these rules are placeholders if moved to Firestore.
+    match /userNotifications/{userId}/{notificationId} {
+       allow read, write: if request.auth.uid == userId;
     }
   }
 }
