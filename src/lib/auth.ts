@@ -278,5 +278,3 @@ export const onAuthChange = (callback: (user: User | null) => void) => {
 };
 
 export { auth, db };
-
-    
