@@ -33,7 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user: null,
     role: null,
     organizationId: null,
-    isLoading: true, // Start as loading
+    isLoading: true, // Começa como carregando e só muda quando o Firebase confirmar o estado
     isGuest: false,
   });
 
@@ -49,43 +49,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     
-    // Check for user-uid cookie at the start to prevent logged-in users from seeing a flash of the login page.
-    const uidFromCookie = Cookies.get('user-uid');
-    if (!uidFromCookie && !authState.user) {
-        // No user session cookie and no user in state, so we are definitely not logged in.
-        // We can stop loading sooner.
-        if (authState.isLoading) {
-            setAuthState(prev => ({...prev, isLoading: false}));
-        }
-    }
-
-
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!isMounted) return;
 
+      console.log(`[AuthProvider] onAuthStateChanged triggered. User: ${firebaseUser?.uid || 'null'}`);
+
       if (firebaseUser) {
+        // Se o usuário já estiver no estado, não faz nada para evitar re-renderizações.
         if (authState.user?.uid === firebaseUser.uid && authState.role) {
-          // Already have the user and role, probably a token refresh, no need to re-fetch
-          // but ensure loading is false.
           if (authState.isLoading) setAuthState(prev => ({ ...prev, isLoading: false }));
           return;
         }
 
         try {
           const profileData = await getUserProfileData(firebaseUser.uid);
-
           if (!isMounted) return;
 
           if (profileData) {
+            // Verificação crítica: admins e colaboradores DEVEM ter um organizationId
             if (profileData.role !== 'super_admin' && !profileData.organizationId) {
-              console.error(`[AuthProvider] User ${firebaseUser.uid} (role: ${profileData.role}) missing organizationId! Logging out.`);
-              await logoutUserHelper();
-              return;
+              console.error(`[AuthProvider] User ${firebaseUser.uid} (role: ${profileData.role}) is missing organizationId! Logging out.`);
+              await logoutUserHelper(); // Isso irá limpar os cookies e o estado
+              // O próprio onAuthStateChanged será acionado novamente com 'null'
+              return; 
             }
 
             const idToken = await firebaseUser.getIdToken(true);
             setAuthCookiesLib(idToken, profileData.role, profileData.organizationId, firebaseUser.uid);
 
+            console.log(`[AuthProvider] Setting state for user ${firebaseUser.uid}, role: ${profileData.role}`);
             setAuthState({
               user: firebaseUser,
               role: profileData.role,
@@ -94,26 +86,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               isGuest: false,
             });
           } else {
-            console.error(`[AuthProvider] User profile MISSING for UID: ${firebaseUser.uid}. Logging out.`);
+            console.error(`[AuthProvider] User authenticated with Firebase, but profile data is missing in Firestore for UID: ${firebaseUser.uid}. Logging out.`);
             await logoutUserHelper();
           }
         } catch (error) {
           if (!isMounted) return;
-          console.error("[AuthProvider] Error fetching profile/token, logging out:", error);
+          console.error("[AuthProvider] Error fetching user profile/token during onAuthStateChanged, logging out:", error);
           await logoutUserHelper();
         }
       } else {
-        // No Firebase user
+        // Nenhum usuário Firebase, limpa o estado e os cookies.
+        console.log("[AuthProvider] No Firebase user. Setting auth state to unauthenticated.");
         const allAuthCookies = ['auth-token', 'user-role', 'organization-id', 'user-uid'];
         let hadCookies = false;
         allAuthCookies.forEach(cookie => {
             if(Cookies.get(cookie)) {
                 hadCookies = true;
-                Cookies.remove(cookie);
+                Cookies.remove(cookie, { path: '/' });
             }
         });
         if(hadCookies) console.log("[AuthProvider] Cleared stale auth cookies.");
-
 
         setAuthState({ user: null, role: null, organizationId: null, isLoading: false, isGuest: false });
       }
@@ -123,15 +115,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isMounted = false;
       unsubscribe();
     };
-  }, []); // Run only once on mount
+  // A remoção do array de dependências faz com que este useEffect seja executado apenas uma vez,
+  // como `componentDidMount`, que é o comportamento correto para o `onAuthStateChanged`.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const logout = React.useCallback(async () => {
     await logoutUserHelper();
-    setAuthState({ user: null, role: null, organizationId: null, isLoading: false, isGuest: false });
-    if (pathname !== '/login') {
-        router.push('/login');
-    }
-  }, [router, pathname]);
+    // A chamada a logoutUserHelper irá disparar o onAuthStateChanged, 
+    // que por sua vez atualizará o estado para deslogado.
+    // Redirecionamento é feito pelo ConditionalLayout ou pela página que chama o logout.
+  }, []);
 
   const contextValue = React.useMemo(() => ({
     user: authState.user,
