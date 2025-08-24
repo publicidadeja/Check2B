@@ -15,68 +15,85 @@ interface ConditionalLayoutProps {
 }
 
 export function ConditionalLayout({ children }: ConditionalLayoutProps) {
-  const { user, role, organizationId, isLoading, isGuest } = useAuth();
+  const { user, role, isLoading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
-  // FINAL FIX: This is the most important change.
-  // We wait until the authentication state is fully resolved before rendering anything.
-  // This prevents the layout from flashing the login page or making incorrect routing decisions
-  // while `useAuth` is still verifying the user's token and profile.
+  // Show a full-page loading spinner while the auth state is being resolved.
+  // This is the most crucial part to prevent layout flashes or premature redirects.
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <LoadingSpinner size="lg" text="Verificando sessão..." />
       </div>
     );
   }
 
   // If we are on the login page, render it directly without any layout wrapper.
-  // This also handles the case where an authenticated user might be redirected here,
-  // letting the page logic handle the redirect back to the correct dashboard.
   if (pathname === '/login') {
-    return <>{children}</>;
+      // If user is somehow already authenticated while on login page, redirect them.
+      if(user && role) {
+          React.useEffect(() => {
+              let redirectPath = '/'; 
+              if (role === 'super_admin') redirectPath = '/superadmin';
+              else if (role === 'collaborator') redirectPath = '/colaborador/dashboard';
+              router.replace(redirectPath);
+          }, [role, router]);
+          // Render a loading spinner during the brief redirect period.
+          return <div className="flex min-h-screen items-center justify-center bg-background"><LoadingSpinner size="lg" text="Redirecionando..."/></div>;
+      }
+      return <>{children}</>;
   }
 
-  // If not loading and not on login, but we have no user and are not a guest,
-  // it means the user is unauthenticated and trying to access a protected page.
-  // Redirect them to the login page.
-  if (!user && !isGuest) {
-    // Using useEffect to avoid modifying state during render, though this is a navigation side-effect
-    // that should be safe.
+
+  // If authentication is resolved (isLoading is false) and there's no user,
+  // redirect any protected route access to the login page.
+  if (!isLoading && !user) {
     React.useEffect(() => {
-        router.replace(`/login?reason=unauthenticated&from=${pathname}`);
-    }, [router, pathname]);
-    
+        const from = pathname === '/' ? '' : `?from=${pathname}`;
+        router.replace(`/login${from}`);
+    }, [pathname, router]);
+    // Render a loading spinner while redirecting.
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <LoadingSpinner size="lg" text="Redirecionando..." />
-      </div>
+        <div className="flex min-h-screen items-center justify-center bg-background">
+            <LoadingSpinner size="lg" text="Redirecionando..." />
+        </div>
     );
   }
 
-  // Define path types based on the current URL
+
+  // At this point, we have a logged-in user. Determine the correct layout.
   const isAdminPath = !pathname.startsWith('/colaborador') && !pathname.startsWith('/superadmin');
   const isColaboradorPath = pathname.startsWith('/colaborador');
   const isSuperAdminPath = pathname.startsWith('/superadmin');
 
-  // Determine the correct layout based on the user's role
-  // This logic now runs only after `isLoading` is false and we have a valid auth state.
   if (role === 'super_admin') {
-    return isSuperAdminPath ? <SuperAdminLayout>{children}</SuperAdminLayout> : <div className="flex min-h-screen items-center justify-center"><LoadingSpinner text="Redirecionando para painel Super Admin..."/></div>;
-  }
-  if (role === 'admin') {
-    return isAdminPath ? <MainLayout>{children}</MainLayout> : <div className="flex min-h-screen items-center justify-center"><LoadingSpinner text="Redirecionando para painel Admin..."/></div>;
-  }
-  if (role === 'collaborator') {
-    return isColaboradorPath ? <MobileLayout>{children}</MobileLayout> : <div className="flex min-h-screen items-center justify-center"><LoadingSpinner text="Redirecionando para painel do Colaborador..."/></div>;
+    if (!isSuperAdminPath) {
+        React.useEffect(() => { router.replace('/superadmin') }, [router]);
+        return <div className="flex min-h-screen items-center justify-center bg-background"><LoadingSpinner size="lg" text="Redirecionando..."/></div>;
+    }
+    return <SuperAdminLayout>{children}</SuperAdminLayout>;
   }
   
-  // Fallback for any unknown state (e.g., guest on a protected route, unknown role)
-  // This will be caught by the redirect logic at the top of the component on the next render cycle.
-  return (
-    <div className="flex min-h-screen items-center justify-center">
-      <LoadingSpinner size="lg" text="Carregando..." />
-    </div>
-  );
+  if (role === 'admin') {
+    if (!isAdminPath) {
+        React.useEffect(() => { router.replace('/') }, [router]);
+        return <div className="flex min-h-screen items-center justify-center bg-background"><LoadingSpinner size="lg" text="Redirecionando..."/></div>;
+    }
+    return <MainLayout>{children}</MainLayout>;
+  }
+
+  if (role === 'collaborator') {
+    if (!isColaboradorPath) {
+        React.useEffect(() => { router.replace('/colaborador/dashboard') }, [router]);
+        return <div className="flex min-h-screen items-center justify-center bg-background"><LoadingSpinner size="lg" text="Redirecionando..."/></div>;
+    }
+    return <MobileLayout>{children}</MobileLayout>;
+  }
+  
+  // Fallback case: user exists but role is unknown or doesn't match any layout.
+  // This is an error state, so redirect to login after logging the issue.
+  console.error(`Unknown role or path combination. Role: ${role}, Path: ${pathname}`);
+  React.useEffect(() => { router.replace('/login?reason=unknown_role') }, [router]);
+  return <div className="flex min-h-screen items-center justify-center bg-background"><LoadingSpinner size="lg" text="Erro de perfil..."/></div>;
 }
