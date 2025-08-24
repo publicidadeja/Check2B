@@ -1,3 +1,4 @@
+
 // src/lib/auth.ts
 import {
     signInWithEmailAndPassword,
@@ -32,6 +33,7 @@ const db = getDb();
  * @returns Promise resolving to UserCredential & user data on success
  */
 export const loginUser = async (email: string, password: string): Promise<{ userCredential: UserCredential, userData: { role: string, organizationId: string | null } }> => {
+    console.log("[Auth] Attempting login for email:", email);
     if (!auth) {
         throw new Error("Firebase Auth is not initialized. Check configuration.");
     }
@@ -42,6 +44,7 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     await setPersistence(auth, browserSessionPersistence);
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
+    console.log("[Auth] Firebase authentication successful for UID:", user.uid);
 
     const userDocRef = doc(db, "users", user.uid);
     const userDocSnap = await getDoc(userDocRef);
@@ -60,21 +63,21 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     setAuthCookie(idToken, role, organizationId, user.uid);
 
     // *** LOGIC TO READ COOKIE AND SAVE FCM TOKEN ***
-    console.log("passou aqui busca do cookie🍪🍪🍪🍪🍪")
+    console.log("[Auth] Attempting to read 'fcmToken' from cookies...");
     const fcmToken = Cookies.get('fcmToken');
     if (fcmToken) {
-        console.log(`[WebApp] FCM Token found in cookie: ${fcmToken}`);
+        console.log(`[Auth] FCM Token found in cookie: ${fcmToken}`);
         // Call the service function to save the token asynchronously.
         // We don't need to 'await' this, as it can happen in the background
         // without blocking the login flow.
         saveUserFcmToken(user.uid, fcmToken)
             .then(success => {
-                if (success) console.log("[WebApp] FCM Token registration successful.");
-                else console.warn("[WebApp] FCM Token registration failed.");
+                if (success) console.log("[Auth] FCM Token registration successful.");
+                else console.warn("[Auth] FCM Token registration failed.");
             })
-            .catch(err => console.error("[WebApp] Error saving FCM token:", err));
+            .catch(err => console.error("[Auth] Error saving FCM token:", err));
     } else {
-        console.warn("[WebApp] FCM Token not found in cookie after login.");
+        console.warn("[Auth] FCM Token not found in cookie after login.");
     }
     // *** END OF LOGIC ***
 
