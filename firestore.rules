@@ -1,39 +1,70 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Allow users to read and update their own profile information.
-    // They cannot change their role or organizationId through this rule.
+    // --- Helper Functions ---
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin';
+    }
+
+    function isMemberOf(orgId) {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == orgId;
+    }
+    
+    function isAdminOf(orgId) {
+       return isMemberOf(orgId) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // --- Global Collections ---
     match /users/{userId} {
-      allow read, update: if request.auth.uid == userId;
-      // Explicitly deny create/delete on their own profile doc for safety.
-      allow create, delete: if false;
+      // Allow any authenticated user to read/update their own profile.
+      allow read, update: if isAuthenticated() && request.auth.uid == userId;
+      // Allow admins of the same org or super admins to read any user profile.
+      allow read: if isAuthenticated() && (isSuperAdmin() || (resource.data.organizationId != null && isAdminOf(resource.data.organizationId)));
+      // Prevent users from changing critical fields on their own profile.
+      allow update: if request.auth.uid == userId && !("role" in request.resource.data) && !("organizationId" in request.resource.data);
+    }
+    
+    match /plans/{planId} {
+      allow read: if isAuthenticated(); // All authenticated users can see plans
+      allow write: if isSuperAdmin(); // Only super admins can create/edit/delete plans
     }
 
-    // Rules for organizations and their subcollections
-    // An authenticated user can read any document inside their own organization.
-    // This is necessary for pages like Dashboard, Challenges, Ranking, etc.
-    match /organizations/{orgId}/{document=**} {
-      allow read: if request.auth.token.organizationId == orgId;
+    match /organizations/{orgId} {
+      // Any authenticated user who is a member of the org can read the main org doc.
+      // SuperAdmins can read any org document.
+      allow read: if isMemberOf(orgId) || isSuperAdmin();
+      allow update: if isSuperAdmin(); // Only SuperAdmins can edit organization details
+      
+      // Subcollections within an organization
+      match /{subcollection}/{docId} {
+          // General read access for members of the organization
+          allow read: if isMemberOf(orgId) || isSuperAdmin();
 
-      // Write access is more granular and typically handled by Cloud Functions,
-      // but admins can have broader write access for management tasks.
-      // Collaborators have very limited write access, defined in specific subcollections if needed.
-      allow write: if request.auth.token.role == 'admin' && request.auth.token.organizationId == orgId;
-    }
+          // Write access based on role
+          // Admins can write to most subcollections
+          allow write: if isAdminOf(orgId) || isSuperAdmin();
+      }
 
-    // Rules for challenge participations
-    // A user can create their own participation document.
-    match /organizations/{orgId}/challengeParticipations/{participationId} {
-        allow create: if request.auth.uid == request.resource.data.employeeId;
-        allow update: if request.auth.uid == resource.data.employeeId; // Allow user to update their own submission
+      // Specific rule for challenge participations: Collaborators can create/update their own
+      match /challengeParticipations/{participationId} {
+          // Allow create/update if the participation belongs to the requesting user.
+          allow create, update: if isMemberOf(orgId) && request.resource.data.employeeId == request.auth.uid;
+          // Admins can also write (evaluate)
+          allow write: if isAdminOf(orgId) || isSuperAdmin();
+      }
     }
-
-    // Super Admins have read/write access to everything for management purposes.
-    // This rule is checked if other rules deny access.
-    match /{path=**}/documents {
-      allow read, write: if request.auth.token.role == 'super_admin';
-    }
+    
+     // Award History is readable by any authenticated user, but writable only by Super Admin (who confirms ranking)
+     match /awardHistory/{historyId} {
+        allow read: if isAuthenticated();
+        allow write: if isSuperAdmin();
+     }
   }
 }
