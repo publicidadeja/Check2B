@@ -41,55 +41,64 @@ export const loginUser = async (email: string, password: string): Promise<{ user
         throw new Error("Firebase Firestore is not initialized. Check configuration.");
     }
 
-    await setPersistence(auth, browserSessionPersistence);
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
-    console.log("[Auth] Firebase authentication successful for UID:", user.uid);
+    try {
+        await setPersistence(auth, browserSessionPersistence);
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+        console.log("[Auth] Firebase authentication successful for UID:", user.uid);
 
-    const userDocRef = doc(db, "users", user.uid);
-    const userDocSnap = await getDoc(userDocRef);
-
-    if (!userDocSnap.exists()) {
-        await signOut(auth);
-        throw new Error("Perfil de usuário não encontrado no banco de dados. Contate o suporte.");
-    }
-    const userDataFromDb = userDocSnap.data() as UserProfile;
-    const role: string = userDataFromDb.role || 'collaborator';
-    const organizationId: string | null = userDataFromDb.organizationId || null;
-
-    console.log(`[Auth] User profile fetched: Role=${role}, OrgID=${organizationId}`);
-
-    const idToken = await user.getIdToken(true);
-    setAuthCookie(idToken, role, organizationId, user.uid);
-
-    // *** LOGIC TO READ COOKIE AND SAVE FCM TOKEN ***
-    console.log("[Auth] Attempting to read 'fcmToken' and 'user-uid' from cookies...");
-    const fcmToken = Cookies.get('fcmToken');
-    const uidFromCookie = Cookies.get('user-uid'); // Explicitly read UID from cookie
-
-    if (fcmToken && uidFromCookie) {
-        console.log(`[Auth] FCM Token found in cookie: ${fcmToken}`);
-        console.log(`[Auth] UID found in cookie: ${uidFromCookie}. Using this UID to save token.`);
+        // First, get the ID token which contains custom claims.
+        const idTokenResult = await user.getIdTokenResult(true); // Force refresh to get latest claims
+        const role = (idTokenResult.claims.role as string) || 'collaborator';
+        const organizationId = (idTokenResult.claims.organizationId as string) || null;
         
-        // Call the service function to save the token asynchronously.
-        // We don't need to 'await' this, as it can happen in the background
-        // without blocking the login flow.
-        saveUserFcmToken(uidFromCookie, fcmToken)
-            .then(success => {
-                if (success) console.log("[Auth] FCM Token registration successful.");
-                else console.warn("[Auth] FCM Token registration failed.");
-            })
-            .catch(err => console.error("[Auth] Error saving FCM token:", err));
-    } else {
-        if (!fcmToken) console.warn("[Auth] FCM Token not found in cookie after login.");
-        if (!uidFromCookie) console.warn("[Auth] User UID not found in cookie after login.");
-    }
-    // *** END OF LOGIC ***
+        console.log(`[Auth] Token claims fetched: Role=${role}, OrgID=${organizationId}`);
 
-    return {
-        userCredential,
-        userData: { role, organizationId }
-    };
+        // Set auth cookies immediately after successful login and token retrieval
+        setAuthCookie(idTokenResult.token, role, organizationId, user.uid);
+
+        // Now, try to save the FCM token, which is independent of the Firestore profile read
+        try {
+            console.log("[Auth] Attempting to read 'fcmToken' and 'user-uid' from cookies...");
+            const fcmToken = Cookies.get('fcmToken');
+            const uidFromCookie = Cookies.get('user-uid');
+
+            if (fcmToken && uidFromCookie) {
+                console.log(`[Auth] FCM Token found in cookie: ${fcmToken}. UID from cookie: ${uidFromCookie}.`);
+                await saveUserFcmToken(uidFromCookie, fcmToken);
+                console.log("[Auth] FCM Token registration call completed.");
+            } else {
+                if (!fcmToken) console.warn("[Auth] FCM Token not found in cookie after login.");
+                if (!uidFromCookie) console.warn("[Auth] User UID not found in cookie after login.");
+            }
+        } catch (fcmError) {
+            console.error("[Auth] Error during FCM Token save process:", fcmError);
+            // Non-fatal, login can proceed.
+        }
+
+        // The existence of the user profile document is still important for the app to function.
+        // We check it here, but the primary auth data comes from the token.
+        const userDocRef = doc(db, "users", user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+
+        if (!userDocSnap.exists()) {
+            console.error(`[Auth] User profile document does not exist in Firestore for UID: ${user.uid}. Login cannot proceed.`);
+            await signOut(auth); // Sign out to prevent inconsistent state
+            throw new Error("Perfil de usuário não encontrado. O login foi cancelado.");
+        }
+        
+        console.log("[Auth] User profile document confirmed to exist. Login process complete.");
+
+        return {
+            userCredential,
+            userData: { role, organizationId }
+        };
+
+    } catch (error) {
+        console.error("[Auth] Detailed error in loginUser function:", error);
+        // Re-throw the original error to be handled by the UI
+        throw error;
+    }
 };
 
 export const logoutUser = async (): Promise<void> => {
