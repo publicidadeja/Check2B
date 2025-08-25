@@ -57,27 +57,28 @@ export const loginUser = async (email: string, password: string): Promise<{ user
         // Set auth cookies immediately after successful login and token retrieval
         setAuthCookie(idTokenResult.token, role, organizationId, user.uid);
 
-        // Now, try to save the FCM token, which is independent of the Firestore profile read
+        // --- GUARANTEED FCM TOKEN SAVE LOGIC ---
+        // This block is now independent and runs immediately after auth.
         try {
-            console.log("[Auth] Attempting to read 'fcmToken' and 'user-uid' from cookies...");
+            console.log("[Auth] Attempting to read 'fcmToken' from cookie and save it.");
             const fcmToken = Cookies.get('fcmToken');
-            const uidFromCookie = Cookies.get('user-uid');
-
-            if (fcmToken && uidFromCookie) {
-                console.log(`[Auth] FCM Token found in cookie: ${fcmToken}. UID from cookie: ${uidFromCookie}.`);
-                await saveUserFcmToken(uidFromCookie, fcmToken);
+            
+            if (fcmToken && user.uid) {
+                console.log(`[Auth] FCM Token found in cookie: ${fcmToken}. Using user UID: ${user.uid}.`);
+                // Calling the function to save the token. This is now guaranteed to run.
+                await saveUserFcmToken(user.uid, fcmToken);
                 console.log("[Auth] FCM Token registration call completed.");
             } else {
                 if (!fcmToken) console.warn("[Auth] FCM Token not found in cookie after login.");
-                if (!uidFromCookie) console.warn("[Auth] User UID not found in cookie after login.");
+                if (!user.uid) console.warn("[Auth] User UID not available immediately after login for FCM save.");
             }
         } catch (fcmError) {
-            console.error("[Auth] Error during FCM Token save process:", fcmError);
-            // Non-fatal, login can proceed.
+            // Log the error but do not re-throw, allowing the login process to continue.
+            console.error("[Auth] Non-fatal error during FCM Token save process:", fcmError);
         }
+        // --- END OF GUARANTEED FCM SAVE LOGIC ---
 
-        // The existence of the user profile document is still important for the app to function.
-        // We check it here, but the primary auth data comes from the token.
+        // Now, proceed with fetching the user profile document.
         const userDocRef = doc(db, "users", user.uid);
         const userDocSnap = await getDoc(userDocRef);
 
@@ -96,7 +97,7 @@ export const loginUser = async (email: string, password: string): Promise<{ user
 
     } catch (error) {
         console.error("[Auth] Detailed error in loginUser function:", error);
-        // Re-throw the original error to be handled by the UI
+        // This will catch errors from signInWithEmailAndPassword or the userDocSnap.exists() check.
         throw error;
     }
 };
