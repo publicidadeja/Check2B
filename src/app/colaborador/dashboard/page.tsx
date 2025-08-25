@@ -93,18 +93,14 @@
 
      React.useEffect(() => {
          const fetchEmployeeDashboardData = async () => {
-             if (authIsLoading) { 
-                 return;
-             }
-             if (!CURRENT_EMPLOYEE_ID || !organizationId) {
-                 setIsLoading(false);
-                 console.warn("[Collab Dashboard] User or Org ID missing, cannot fetch data.");
-                 setData({ 
-                    todayStatus: 'no_tasks', zerosThisMonth: 0, projectedBonus: 0, tasksToday: [], 
-                    activeChallenges: [], recentNotifications: [], employeeName: employeeDisplayName, userProfile: null,
-                    zeroLimitForBonus: 3, baseBonusValue: 100, // Default values
-                 });
-                 return;
+             // CRITICAL FIX: Wait for auth to be fully resolved AND orgId to be present.
+             if (authIsLoading || !CURRENT_EMPLOYEE_ID || !organizationId) {
+                 if (!authIsLoading) {
+                     // If auth is done but we still lack IDs, it's an error state.
+                     setIsLoading(false);
+                     console.warn("[Collab Dashboard] Auth finished, but User or Org ID still missing. Cannot fetch data.");
+                 }
+                 return; // Defer fetch until auth state is complete.
              }
              setIsLoading(true);
 
@@ -203,7 +199,7 @@
      }, [CURRENT_EMPLOYEE_ID, organizationId, authIsLoading, employeeDisplayName, toast]);
 
 
-     if (authIsLoading || isLoading || !data ) { 
+     if (authIsLoading || (isLoading && !data)) { 
          return (
              <div className="flex justify-center items-center h-full py-20">
                  <LoadingSpinner size="lg" text="Carregando dashboard..." />
@@ -224,7 +220,7 @@
         );
     }
     
-    if (!data.userProfile) { 
+    if (!data || !data.userProfile) { 
         return (
             <Card className="m-4">
                 <CardHeader><CardTitle>Erro ao Carregar Perfil</CardTitle></CardHeader>
