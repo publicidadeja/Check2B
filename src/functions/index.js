@@ -1,6 +1,5 @@
-
 // functions/index.js
-// Force re-deploy: v1.0.10
+// Force re-deploy: v1.0.16 FINAL
 const admin = require("firebase-admin");
 const util = require("util");
 const {onDocumentWritten, onDocumentCreated} = require("firebase-functions/v2/firestore");
@@ -15,6 +14,54 @@ if (admin.apps.length === 0) {
 
 // Definir opções globais para todas as funções v2 (ex: região)
 setGlobalOptions({region: "us-central1"});
+
+/**
+ * Saves a new Firebase Cloud Messaging (FCM) token for a user.
+ * This is called from the frontend when it receives the token from the mobile app.
+ */
+exports.saveFcmToken = onCall({
+    enforceAppCheck: false, // App Check is not required for this function
+}, async (request) => {
+    const data = request.data;
+    const auth = request.auth;
+
+    console.log('[saveFcmToken] Function called with data:', JSON.stringify(data));
+    console.log(`[saveFcmToken] Caller UID: ${auth?.uid || 'N/A'}`);
+
+    if (!auth) {
+        throw new HttpsError("unauthenticated", "A função só pode ser chamada por usuários autenticados.");
+    }
+
+    const { userId, token } = data;
+    if (!userId || !token) {
+        throw new HttpsError("invalid-argument", "userId e token são obrigatórios.");
+    }
+
+    // Security check: Ensure the authenticated user is the one they're trying to update,
+    // or is an admin with permission to do so. For now, we'll allow a user to update their own token.
+    if (auth.uid !== userId) {
+        console.error(`[saveFcmToken] Permission denied. Caller UID ${auth.uid} cannot save token for UID ${userId}.`);
+        throw new HttpsError("permission-denied", "Você só pode salvar um token para seu próprio usuário.");
+    }
+
+    const userDocRef = admin.firestore().collection('users').doc(userId);
+
+    try {
+        await userDocRef.update({
+            fcmTokens: admin.firestore.FieldValue.arrayUnion(token),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`[saveFcmToken] Token saved successfully for user ${userId}.`);
+        return { success: true, message: `Token salvo para o usuário ${userId}` };
+    } catch (error) {
+        const err = error;
+        // If the document doesn't exist, we might want to create it or just log the error.
+        // For now, we log it. A more robust solution might use .set({ fcmTokens: [token] }, { merge: true })
+        console.error("[saveFcmToken] CRITICAL ERROR saving token:", err);
+        throw new HttpsError("internal", `Não foi possível salvar o token de notificação. Detalhe: ${(err instanceof Error ? err.message : String(err))}`);
+    }
+});
+
 
 /**
  * Sets custom user claims (role, organizationId) for a given user UID.
@@ -52,13 +99,6 @@ exports.setCustomUserClaimsFirebase = onCall({
   if (!auth) {
     throw new HttpsError("unauthenticated", "A função só pode ser chamada por usuários autenticados.");
   }
-
-  // App Check verification: request.app will be undefined if token is missing or invalid.
-  // if (app === undefined) {
-  //   console.error("[setCustomUserClaimsFirebase] App Check token missing or invalid. Throwing unauthenticated.");
-  //   throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
-  // }
-
 
   const callerUid = auth.uid;
   let callerClaims = auth.token || {};
@@ -126,7 +166,7 @@ exports.createOrganizationAdmin = onCall({
 }, async (request) => {
   const data = request.data;
   const auth = request.auth;
-  const app = request.app; // App Check token context
+  const app = request.app;
 
   console.log('[createOrganizationAdmin] Function called with data:', JSON.stringify(data));
   console.log('[createOrganizationAdmin] Full context object keys:', Object.keys(request));
@@ -137,12 +177,6 @@ exports.createOrganizationAdmin = onCall({
     console.error('[createOrganizationAdmin] Unauthenticated. Auth object missing.');
     throw new HttpsError('unauthenticated', 'A função só pode ser chamada por usuários autenticados.');
   }
-
-  // App Check verification: request.app will be undefined if token is missing or invalid.
-  // if (app === undefined) {
-  //   console.error("[createOrganizationAdmin] App Check token missing or invalid. Throwing unauthenticated.");
-  //   throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
-  // }
 
   let hasSuperAdminRole = false;
   if (auth.token && typeof auth.token === 'object' && auth.token.role === 'super_admin') {
@@ -254,11 +288,6 @@ exports.createOrganizationUser = onCall({
         console.error('[createOrganizationUser] Unauthenticated or token missing.');
         throw new HttpsError('unauthenticated', 'A função só pode ser chamada por usuários autenticados.');
     }
-    // App Check verification: request.app will be undefined if token is missing or invalid.
-    // if (app === undefined) {
-    //     console.error("[createOrganizationUser] App Check token missing or invalid. Throwing unauthenticated.");
-    //     throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
-    // }
 
     const callerClaims = auth.token || {};
     const { name, email, password, organizationId, department, role: userRole, photoUrl, admissionDate, status = 'active' } = data;
@@ -360,11 +389,6 @@ exports.deleteOrganizationUser = onCall({
         console.error('[deleteOrganizationUser] Unauthenticated or token missing.');
         throw new HttpsError('unauthenticated', 'Autenticação é necessária.');
     }
-    // App Check verification
-    // if (app === undefined) {
-    //     console.error("[deleteOrganizationUser] App Check token missing or invalid. Throwing unauthenticated.");
-    //     throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
-    // }
     
     const callerClaims = auth.token || {};
     const { userId, organizationId: targetOrganizationId } = data;
@@ -415,11 +439,7 @@ exports.deleteOrganizationUser = onCall({
         console.log(`[deleteOrganizationUser] User document ${userId} removed from Firestore.`);
     } catch (firestoreError) {
         const err = firestoreError;
-        // Log this error but don't necessarily throw if Auth deletion was successful,
-        // or decide if this is a critical failure. For now, log and proceed.
         console.error(`[deleteOrganizationUser] ERROR deleting user document from Firestore (UID: ${userId}):`, err);
-        // Optionally re-throw if Firestore deletion is critical:
-        // throw new HttpsError('internal', `Falha ao remover documento do usuário do Firestore. Detalhe: ${(err instanceof Error ? err.message : String(err))}`);
     }
 
     return { success: true, message: `Usuário ${userId} removido com sucesso (Auth e tentativa no Firestore).` };
@@ -459,11 +479,6 @@ exports.toggleUserStatusFirebase = onCall({
     console.error('[toggleUserStatusFirebase] Unauthenticated or token missing.');
     throw new HttpsError("unauthenticated", "A função só pode ser chamada por usuários autenticados.");
   }
-  // App Check verification
-  // if (app === undefined) {
-  //     console.error("[toggleUserStatusFirebase] App Check token missing or invalid. Throwing unauthenticated.");
-  //     throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
-  // }
 
   const callerClaims = auth.token || {};
   const { userId, status } = data;
@@ -487,8 +502,8 @@ exports.toggleUserStatusFirebase = onCall({
   const isSuperAdmin = callerClaims.role === 'super_admin';
   const isAdminManagingOwnOrgUser = 
       callerClaims.role === 'admin' &&
-      callerClaims.organizationId && // Caller must have an org ID
-      callerClaims.organizationId === userToUpdateClaims.organizationId; // Caller's org ID must match user's org ID
+      callerClaims.organizationId &&
+      callerClaims.organizationId === userToUpdateClaims.organizationId;
 
   if (!isSuperAdmin && !isAdminManagingOwnOrgUser) {
     console.error(`[toggleUserStatusFirebase] Permission denied. Caller role: ${callerClaims.role}, Target user org: ${userToUpdateClaims.organizationId}, Caller org: ${callerClaims.organizationId}`);
@@ -545,11 +560,6 @@ exports.removeAdminFromOrganizationFirebase = onCall({
         console.error('[removeAdminFromOrganizationFirebase] Unauthenticated or token missing.');
         throw new HttpsError('unauthenticated', 'Ação requer autenticação.');
     }
-    // App Check verification
-    // if (app === undefined) {
-    //     console.error("[removeAdminFromOrganizationFirebase] App Check token missing or invalid. Throwing unauthenticated.");
-    //     throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
-    // }
     
     const callerClaims = auth.token || {};
     if (callerClaims.role !== 'super_admin') {
@@ -577,7 +587,6 @@ exports.removeAdminFromOrganizationFirebase = onCall({
     console.log(`[removeAdminFromOrganizationFirebase] Current claims for UID ${userId}:`, util.inspect(currentClaims, {depth: null}));
 
     if (currentClaims.role === 'admin' && currentClaims.organizationId === organizationId) {
-        // Rebaixar para 'collaborator' na mesma organização
         const newClaims = { role: 'collaborator', organizationId: organizationId }; 
         
         try {
@@ -593,15 +602,13 @@ exports.removeAdminFromOrganizationFirebase = onCall({
         try {
             console.log(`[removeAdminFromOrganizationFirebase] Attempting to update Firestore role for UID ${userId}.`);
             await admin.firestore().collection('users').doc(userId).update({
-                role: newClaims.role, // Update role in Firestore as well
+                role: newClaims.role,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
             console.log(`[removeAdminFromOrganizationFirebase] Firestore role updated successfully for UID ${userId}.`);
         } catch (firestoreError) {
             const err = firestoreError;
             console.error(`[removeAdminFromOrganizationFirebase] ERROR updating Firestore role for UID ${userId}:`, err);
-            // Log this error but don't necessarily re-throw if claims update was successful,
-            // or decide if this is critical. For now, log and proceed.
         }
             
         return { success: true, message: `Admin ${userId} removido/rebaixado na organização ${organizationId}.` };
@@ -615,8 +622,8 @@ exports.removeAdminFromOrganizationFirebase = onCall({
 exports.addAdminToMyOrg = onCall({
     enforceAppCheck: false,
 }, async (request) => {
-    const data = request.data; // { name, email, password }
-    const auth = request.auth; // { uid, token: { role, organizationId, ... } }
+    const data = request.data;
+    const auth = request.auth;
     const app = request.app;
 
     console.log('[addAdminToMyOrg] Function called with data:', JSON.stringify({name: data.name, email: data.email, password: '***'}));
@@ -627,11 +634,6 @@ exports.addAdminToMyOrg = onCall({
     if (!auth || !auth.token) {
         throw new HttpsError('unauthenticated', 'Autenticação é necessária.');
     }
-    // App Check verification
-    // if (app === undefined) {
-    //     console.error("[addAdminToMyOrg] App Check token missing or invalid. Throwing unauthenticated.");
-    //     throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
-    // }
 
     if (auth.token.role !== 'admin') {
         throw new HttpsError('permission-denied', 'Apenas administradores podem adicionar outros admins à sua organização.');
@@ -656,7 +658,7 @@ exports.addAdminToMyOrg = onCall({
             email: email,
             password: password,
             displayName: name,
-            emailVerified: false, // Ou true, se preferir
+            emailVerified: false,
         });
         console.log(`[addAdminToMyOrg] User created in Auth: ${newUserRecord.uid}`);
     } catch (error) {
@@ -686,7 +688,7 @@ exports.addAdminToMyOrg = onCall({
             role: 'admin',
             organizationId: callerOrganizationId,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            status: 'active', // Novo admin é ativo por padrão
+            status: 'active',
         };
         await admin.firestore().collection('users').doc(newUserRecord.uid).set(userProfileData);
         console.log(`[addAdminToMyOrg] User profile created in Firestore for ${newUserRecord.uid}.`);
@@ -702,8 +704,8 @@ exports.addAdminToMyOrg = onCall({
 exports.demoteAdminInMyOrg = onCall({
     enforceAppCheck: false,
 }, async (request) => {
-    const data = request.data; // { userIdToDemote }
-    const auth = request.auth; // { uid, token: { role, organizationId, ... } }
+    const data = request.data;
+    const auth = request.auth;
     const app = request.app;
 
     console.log('[demoteAdminInMyOrg] Function called with data:', JSON.stringify(data));
@@ -714,11 +716,6 @@ exports.demoteAdminInMyOrg = onCall({
     if (!auth || !auth.token) {
         throw new HttpsError('unauthenticated', 'Autenticação é necessária.');
     }
-    // App Check verification
-    // if (app === undefined) {
-    //     console.error("[demoteAdminInMyOrg] App Check token missing or invalid. Throwing unauthenticated.");
-    //     throw new HttpsError("unauthenticated", "App Check token missing or invalid.");
-    // }
 
     if (auth.token.role !== 'admin') {
         throw new HttpsError('permission-denied', 'Apenas administradores podem rebaixar outros admins da sua organização.');
@@ -752,7 +749,6 @@ exports.demoteAdminInMyOrg = onCall({
         throw new HttpsError('failed-precondition', 'O usuário especificado não é um administrador desta organização.');
     }
 
-    // Rebaixar para 'collaborator' na mesma organização
     const newClaims = { role: 'collaborator', organizationId: callerOrganizationId };
     try {
         await admin.auth().setCustomUserClaims(userIdToDemote, newClaims);
@@ -765,85 +761,91 @@ exports.demoteAdminInMyOrg = onCall({
 
     try {
         await admin.firestore().collection('users').doc(userIdToDemote).update({
-            role: 'collaborator', // Atualiza o papel no Firestore
+            role: 'collaborator',
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
         console.log(`[demoteAdminInMyOrg] Firestore role updated for ${userIdToDemote}.`);
     } catch (error) {
         const err = error;
         console.error(`[demoteAdminInMyOrg] Error updating Firestore role for ${userIdToDemote}:`, err);
-        // Não re-lançar, pois a alteração de claims é a principal.
     }
 
     return { success: true, message: `Administrador ${userToDemoteRecord.displayName || userIdToDemote} foi rebaixado para colaborador.` };
 });
+
 // --- Funções de Notificação ---
 
 /**
- * Helper: Send Push Notification via FCM
+ * Helper: Send Push Notification via FCM.
+ * This version fetches the user's FCM tokens from their Firestore document and sends a multicast message.
  */
 async function sendPushNotification(employeeId, title, body, link, organizationId) {
-  if (!employeeId) {
-    console.warn('[sendPushNotification] employeeId is missing. Skipping.');
-    return;
-  }
-
-  const userDoc = await admin.firestore().collection('users').doc(employeeId).get();
-  if (!userDoc.exists) {
-    console.warn(`[sendPushNotification] User document for ${employeeId} not found. Skipping.`);
-    return;
-  }
-
-  const userData = userDoc.data();
-  const tokens = userData.fcmTokens; 
-
-  if (!tokens || !Array.isArray(tokens) || tokens.length === 0) {
-    console.log(`[sendPushNotification] No FCM tokens found for user ${employeeId}. Skipping.`);
-    return;
-  }
-
-  // CORREÇÃO: A estrutura da mensagem para sendEachForMulticast
-  // deve ter `tokens` como uma propriedade do objeto principal.
-  const messagePayload = {
-    notification: {
-      title: title,
-      body: body,
-    },
-    data: {
-      userIdTarget: employeeId,
-      link: link || '/colaborador/dashboard',
-      organizationId: organizationId || '',
-    },
-    android: {
-      priority: 'high',
-    },
-    apns: {
-      payload: {
-        aps: {
-          'content-available': 1,
-        },
-      },
-    },
-    tokens: tokens, // 'tokens' está no nível correto agora
-  };
-
-  try {
-    console.log(`[sendPushNotification] Sending FCM message to ${tokens.length} tokens for user ${employeeId}.`);
-    // A função sendEachForMulticast recebe um único objeto MulticastMessage
-    const response = await admin.messaging().sendEachForMulticast(messagePayload);
-    console.log(`[sendPushNotification] FCM response: ${response.successCount} messages sent successfully.`);
-    if (response.failureCount > 0) {
-        response.responses.forEach((resp, idx) => {
-            if (!resp.success) {
-                console.error(`[sendPushNotification] FCM send failure for token ${tokens[idx]}:`, resp.error);
-                // TODO: Add logic to clean up invalid tokens from user's profile
-            }
-        });
+    if (!employeeId) {
+        console.warn('[sendPushNotification] employeeId is missing. Cannot send notification.');
+        return;
     }
-  } catch (error) {
-    console.error(`[sendPushNotification] Error sending FCM message to user ${employeeId}:`, error);
-  }
+
+    let tokens;
+    try {
+        const userDoc = await admin.firestore().collection('users').doc(employeeId).get();
+        if (!userDoc.exists) {
+            console.warn(`[sendPushNotification] User document for ${employeeId} not found. Cannot send notification.`);
+            return;
+        }
+        const userData = userDoc.data();
+        tokens = userData.fcmTokens; 
+        console.log(`[sendPushNotification] Found user data for ${employeeId}. Tokens:`, tokens);
+    } catch (error) {
+        console.error(`[sendPushNotification] Error fetching user document for ${employeeId}:`, error);
+        return;
+    }
+
+    if (!tokens || !Array.isArray(tokens) || tokens.length === 0) {
+        console.log(`[sendPushNotification] No FCM tokens found for user ${employeeId}. Skipping.`);
+        return;
+    }
+
+    const messagePayload = {
+        notification: {
+            title: title,
+            body: body,
+        },
+        data: {
+            userIdTarget: employeeId,
+            link: link || '/colaborador/dashboard',
+            organizationId: organizationId || '',
+            click_action: "FLUTTER_NOTIFICATION_CLICK", // Standard action for Flutter
+        },
+        android: {
+            priority: 'high',
+        },
+        apns: {
+            payload: {
+                aps: {
+                    'content-available': 1,
+                     sound: 'default' // Garante som no iOS
+                },
+            },
+        },
+        tokens: tokens, 
+    };
+
+    try {
+        console.log(`[sendPushNotification] Sending FCM multicast message to ${tokens.length} tokens for user ${employeeId}.`);
+        const response = await admin.messaging().sendEachForMulticast(messagePayload);
+        console.log(`[sendPushNotification] FCM response: ${response.successCount} messages sent successfully for user ${employeeId}.`);
+        if (response.failureCount > 0) {
+            response.responses.forEach((resp, idx) => {
+                if (!resp.success) {
+                    console.error(`[sendPushNotification] FCM send failure for token ${tokens[idx]}:`, resp.error);
+                }
+            });
+        }
+    } catch (error) {
+        console.error(`[sendPushNotification] CRITICAL Error sending FCM multicast message to user ${employeeId}:`, error);
+    }
 }
+
 
 /**
  * Helper function to add a notification to Realtime Database for a specific user.
@@ -856,13 +858,12 @@ async function addNotificationToRTDB(employeeId, notificationData) {
     const rtdb = admin.database();
     const notificationsRef = rtdb.ref(`userNotifications/${employeeId}`);
     
-    // Always generate a new unique ID using push()
     const newNotificationRef = notificationsRef.push();
     const notificationId = newNotificationRef.key;
   
     const payload = {
       ...notificationData,
-      id: notificationId, // Ensure the new unique ID is in the payload
+      id: notificationId,
       timestamp: new Date().toISOString(),
       read: false,
     };
@@ -1106,7 +1107,7 @@ exports.onChallengeParticipationEvaluated = onDocumentWritten(
         console.log(`[onChallengePublished] Challenge ${challengeId} deleted. No notification.`);
         return null;
       }
-  
+      
       const statusAfter = challengeDataAfter.status;
       const statusBefore = challengeDataBefore ? challengeDataBefore.status : null;
   
@@ -1194,7 +1195,5 @@ exports.onChallengeParticipationEvaluated = onDocumentWritten(
       return null;
     }
   );
-
-
 
     

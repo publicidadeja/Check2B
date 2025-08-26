@@ -1,3 +1,4 @@
+
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import { getFirestore, Firestore } from "firebase/firestore";
@@ -50,25 +51,27 @@ if (typeof window !== 'undefined') {
 
                 const debugToken = debugTokenFromUrl || debugTokenFromEnv;
                 
-                if (debugToken) {
-                    console.log("[Firebase Lib V9 DEBUG] ==> USING App Check DEBUG TOKEN. Source:", debugTokenFromUrl ? "URL Param" : "ENV Var");
-                    (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken;
+                // Prioritize Debug Token for non-production environments or if explicitly provided
+                if (debugToken && process.env.NODE_ENV !== 'production') {
+                    console.log("[Firebase Lib V9 DEBUG] ==> USING App Check DEBUG TOKEN logic. Source:", debugTokenFromUrl ? "URL Param" : "ENV Var");
+                    // Assign to window for Firebase SDK to automatically pick up
+                    (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+                    appCheckInstance = initializeAppCheck(app, {
+                        provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey!), // Recaptcha is still the provider, but debug token overrides it
+                        isTokenAutoRefreshEnabled: true
+                    });
+                    console.log("[Firebase Lib V9 DEBUG] Firebase App Check initialized with DEBUG token enabled.");
                 } else {
-                    console.log("[Firebase Lib V9 DEBUG] No debug token found. Will use ReCaptcha.");
-                }
-
-                try {
-                     if (recaptchaSiteKey || debugToken) {
+                     console.log("[Firebase Lib V9 DEBUG] No debug token found or in production. Will use ReCaptcha.");
+                     if (recaptchaSiteKey) {
                         appCheckInstance = initializeAppCheck(app, {
-                            provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey || "dummy-key-for-debug"),
+                            provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
                             isTokenAutoRefreshEnabled: true
                         });
-                        console.log("[Firebase Lib V9 DEBUG] Firebase App Check initialized.");
+                        console.log("[Firebase Lib V9 DEBUG] Firebase App Check initialized with ReCaptcha provider.");
                      } else {
-                        console.warn("[Firebase Lib V9 DEBUG] App Check NOT INITIALIZED. Required keys (recaptcha or debug) are missing.");
+                        console.warn("[Firebase Lib V9 DEBUG] App Check NOT INITIALIZED. ReCaptcha key is missing and not in debug mode.");
                      }
-                } catch (appCheckError: any) {
-                     console.error("[Firebase Lib V9 DEBUG] CRITICAL ERROR initializing Firebase App Check:", appCheckError);
                 }
             }
             // --- END APP CHECK ---

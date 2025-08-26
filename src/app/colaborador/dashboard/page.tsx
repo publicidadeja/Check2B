@@ -95,12 +95,11 @@ export default function EmployeeDashboardPage() {
     const employeeDisplayName = user?.displayName || "Colaborador";
 
      // Effect to save FCM token from cookie
-     console.log("Passou aqui fcmToekn1")
    React.useEffect(() => {
        if (!fcmTokenProcessed && !authIsLoading && CURRENT_EMPLOYEE_ID) {
            const fcmToken = Cookies.get('fcmToken');
            const uidFromCookie = Cookies.get('user-uid');
-           console.log("Passou aqui fcmToekn2")
+           
            console.log(`[DashboardPage] Attempting to save FCM token. Processed: ${fcmTokenProcessed}, AuthLoading: ${authIsLoading}, UID: ${CURRENT_EMPLOYEE_ID}`);
            console.log(`[DashboardPage] FCM from cookie: ${fcmToken}, UID from cookie: ${uidFromCookie}`);
 
