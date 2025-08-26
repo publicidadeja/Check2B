@@ -1,4 +1,3 @@
-
 // functions/index.js
 // Force re-deploy: v1.0.16 FINAL
 const admin = require("firebase-admin");

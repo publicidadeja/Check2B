@@ -1,4 +1,3 @@
-
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import { getFirestore, Firestore } from "firebase/firestore";
@@ -45,37 +44,28 @@ if (typeof window !== 'undefined') {
             // --- APP CHECK INITIALIZATION ---
             if (app && !appCheckInstance) {
                 const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
-                // **CORRECTION**: Use the same debug token variable as the native app for consistency.
-                const debugToken = process.env.NEXT_PUBLIC_APPCHECK_DEBUG_TOKEN;
+                const urlParams = new URLSearchParams(window.location.search);
+                const debugTokenFromUrl = urlParams.get('appCheckDebugToken');
+                const debugTokenFromEnv = process.env.NEXT_PUBLIC_APPCHECK_DEBUG_TOKEN;
 
-                // For development, set the debug token on the window object.
-                // This is the standard way to activate the debug provider.
-                if (process.env.NODE_ENV !== 'production' && debugToken) {
-                    console.log("[Firebase Lib V9 DEBUG] ==> USING App Check DEBUG TOKEN from process.env:", debugToken);
+                const debugToken = debugTokenFromUrl || debugTokenFromEnv;
+                
+                if (debugToken) {
+                    console.log("[Firebase Lib V9 DEBUG] ==> USING App Check DEBUG TOKEN. Source:", debugTokenFromUrl ? "URL Param" : "ENV Var");
                     (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken;
                 } else {
-                    console.log("[Firebase Lib V9 DEBUG] No debug token found or in production. Will use ReCaptcha.");
+                    console.log("[Firebase Lib V9 DEBUG] No debug token found. Will use ReCaptcha.");
                 }
 
-                // Initialize App Check. It will automatically use the debug token if available on the window object.
-                // Otherwise, it will use the ReCaptcha provider.
                 try {
-                     if (recaptchaSiteKey) {
+                     if (recaptchaSiteKey || debugToken) {
                         appCheckInstance = initializeAppCheck(app, {
-                            // Pass the ReCaptcha provider. It will be ignored if the debug token is set on `window`.
-                            provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
+                            provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey || "dummy-key-for-debug"),
                             isTokenAutoRefreshEnabled: true
                         });
                         console.log("[Firebase Lib V9 DEBUG] Firebase App Check initialized.");
-                     } else if (process.env.NODE_ENV !== 'production' && debugToken) {
-                         // If only debug token is provided, still initialize to get an instance
-                         appCheckInstance = initializeAppCheck(app, {
-                            provider: new ReCaptchaEnterpriseProvider("dummy-key-for-debug"),
-                            isTokenAutoRefreshEnabled: true
-                         });
-                         console.log("[Firebase Lib V9 DEBUG] Firebase App Check initialized in DEBUG ONLY mode.");
                      } else {
-                        console.warn("[Firebase Lib V9 DEBUG] App Check NOT INITIALIZED. NEXT_PUBLIC_RECAPTCHA_SITE_KEY is missing for production.");
+                        console.warn("[Firebase Lib V9 DEBUG] App Check NOT INITIALIZED. Required keys (recaptcha or debug) are missing.");
                      }
                 } catch (appCheckError: any) {
                      console.error("[Firebase Lib V9 DEBUG] CRITICAL ERROR initializing Firebase App Check:", appCheckError);
