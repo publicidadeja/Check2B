@@ -98,7 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
 
             const idToken = await firebaseUser.getIdToken(true);
-            setAuthCookiesLib(idToken, profileData.role, profileData.organizationId);
+            setAuthCookiesLib(idToken, profileData.role, profileData.organizationId, firebaseUser.uid);
 
            // console.log("[AuthProvider V10 DEBUG] Setting AUTHENTICATED state: isLoading: false, role:", profileData.role, "orgId:", profileData.organizationId);
             setAuthState({
@@ -138,6 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           Cookies.remove('auth-token');
           Cookies.remove('user-role');
           Cookies.remove('organization-id');
+          Cookies.remove('user-uid');
           // Cookies.remove('guest-mode'); // Don't remove guest-mode here if on /login and it exists
 
           // Only update if it's not already in this logged-out state or if it was loading

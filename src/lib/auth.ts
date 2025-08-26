@@ -29,7 +29,7 @@ const db = getDb();
  * @param password User's password
  * @returns Promise resolving to UserCredential & user data on success
  */
-export const loginUser = async (email: string, password: string): Promise<{ userCredential: UserCredential, userData: { role: string, organizationId: string | null } }> => {
+export const loginUser = async (email: string, password: string): Promise<{ userCredential: UserCredential, userData: { role: string, organizationId: string | null, uid: string } }> => {
     if (!auth) {
         throw new Error("Firebase Auth is not initialized. Check configuration.");
     }
@@ -55,11 +55,11 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     console.log(`[Auth] User profile fetched: Role=${role}, OrgID=${organizationId}`);
 
     const idToken = await user.getIdToken(true);
-    setAuthCookie(idToken, role, organizationId);
+    setAuthCookie(idToken, role, organizationId, user.uid);
 
     return {
         userCredential,
-        userData: { role, organizationId }
+        userData: { role, organizationId, uid: user.uid }
     };
 };
 
@@ -73,10 +73,11 @@ export const logoutUser = async (): Promise<void> => {
     Cookies.remove('user-role');
     Cookies.remove('organization-id');
     Cookies.remove('guest-mode');
+    Cookies.remove('user-uid'); // Remove the new cookie
     console.log("[Auth] User signed out and cookies cleared.");
 };
 
-export const setAuthCookie = (idToken: string, role: string | null, organizationId: string | null): void => {
+export const setAuthCookie = (idToken: string, role: string | null, organizationId: string | null, uid: string | null): void => {
     const cookieOptions: Cookies.CookieAttributes = {
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
@@ -85,11 +86,19 @@ export const setAuthCookie = (idToken: string, role: string | null, organization
     };
 
     Cookies.set('auth-token', idToken, cookieOptions);
+    
+    if (uid) {
+        Cookies.set('user-uid', uid, cookieOptions);
+    } else {
+        Cookies.remove('user-uid');
+    }
+    
     if (role) {
         Cookies.set('user-role', role, cookieOptions);
     } else {
         Cookies.remove('user-role');
     }
+
     if (organizationId) {
         Cookies.set('organization-id', organizationId, cookieOptions);
     } else {
@@ -257,4 +266,3 @@ export const onAuthChange = (callback: (user: User | null) => void) => {
 };
 
 export { auth, db };
-
