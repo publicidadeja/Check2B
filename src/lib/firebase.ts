@@ -51,27 +51,30 @@ if (typeof window !== 'undefined') {
 
                 const debugToken = debugTokenFromUrl || debugTokenFromEnv;
                 
-                // Prioritize Debug Token for non-production environments or if explicitly provided
-                if (debugToken && process.env.NODE_ENV !== 'production') {
-                    console.log("[Firebase Lib V9 DEBUG] ==> USING App Check DEBUG TOKEN logic. Source:", debugTokenFromUrl ? "URL Param" : "ENV Var");
-                    // Assign to window for Firebase SDK to automatically pick up
+                // Assign to window for Firebase SDK to automatically pick up if present
+                if (debugToken) {
                     (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+                    console.log("[Firebase Lib V9 DEBUG] ==> App Check DEBUG TOKEN is set on window. Source:", debugTokenFromUrl ? "URL Param" : "ENV Var");
+                }
+                
+                // Now, initialize App Check. It will automatically use the debug token if the window variable is set.
+                // We only need to provide a ReCaptcha provider as a fallback for when the debug token is NOT present.
+                if (recaptchaSiteKey) {
                     appCheckInstance = initializeAppCheck(app, {
-                        provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey!), // Recaptcha is still the provider, but debug token overrides it
+                        provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
                         isTokenAutoRefreshEnabled: true
                     });
-                    console.log("[Firebase Lib V9 DEBUG] Firebase App Check initialized with DEBUG token enabled.");
+                    console.log("[Firebase Lib V9 DEBUG] Firebase App Check initialized. It will use the debug token if available, otherwise ReCaptcha.");
+                } else if (debugToken) {
+                    // This case is for when you're in a debug environment but don't even have a dummy recaptcha key.
+                    // This is less ideal as App Check for production would fail silently.
+                    console.warn("[Firebase Lib V9 DEBUG] Initializing App Check without a ReCaptcha key, relying SOLELY on debug token.");
+                    appCheckInstance = initializeAppCheck(app, {
+                        provider: new ReCaptchaEnterpriseProvider("6Ld...dummy"), // Provide a dummy key to satisfy the constructor, as debug token will override it.
+                        isTokenAutoRefreshEnabled: true
+                    });
                 } else {
-                     console.log("[Firebase Lib V9 DEBUG] No debug token found or in production. Will use ReCaptcha.");
-                     if (recaptchaSiteKey) {
-                        appCheckInstance = initializeAppCheck(app, {
-                            provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
-                            isTokenAutoRefreshEnabled: true
-                        });
-                        console.log("[Firebase Lib V9 DEBUG] Firebase App Check initialized with ReCaptcha provider.");
-                     } else {
-                        console.warn("[Firebase Lib V9 DEBUG] App Check NOT INITIALIZED. ReCaptcha key is missing and not in debug mode.");
-                     }
+                    console.error("[Firebase Lib V9 CRITICAL] App Check NOT INITIALIZED. ReCaptcha key is missing AND no debug token is provided.");
                 }
             }
             // --- END APP CHECK ---
