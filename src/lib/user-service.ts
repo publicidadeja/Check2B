@@ -310,40 +310,37 @@ export const countActiveUsersByOrganization = async (organizationId: string, rol
 };
     
 /**
- * Saves a new Firebase Cloud Messaging (FCM) token for a user.
- * This function is intended to be called from the frontend (e.g., via the WebView bridge).
- * It will then make a secure call to a Cloud Function to perform the actual database write.
+ * Saves a new Firebase Cloud Messaging (FCM) token for a user by calling a Cloud Function.
  * @param userId The ID of the user.
  * @param fcmToken The new FCM token from the device.
- * @returns Promise resolving on successful save.
+ * @returns Promise resolving to true if the call was successful, false otherwise.
  */
-export const saveUserFcmToken = async (userId: string, fcmToken: string): Promise<void> => {
-  const db = getDb();
-  if (!db) {
-    throw new Error('[UserService] Firestore not initialized. Cannot save FCM token.');
-  }
-  // This is a frontend service function. Instead of calling a Cloud Function (which would add complexity here),
-  // we will directly and safely update the Firestore document from the client.
-  // Firestore security rules should be in place to ensure a user can only update their own `fcmTokens` array.
-  if (!userId || !fcmToken) {
-    throw new Error('[UserService] User ID and FCM Token are required.');
-  }
+export const saveUserFcmToken = async (userId: string, fcmToken: string): Promise<boolean> => {
+    const app = getFirebaseApp();
+    if (!app) {
+        throw new Error('[UserService] Firebase App not initialized. Cannot call Cloud Function.');
+    }
+    if (!userId || !fcmToken) {
+        console.warn('[UserService] User ID or FCM Token is missing. Cannot save token.');
+        return false;
+    }
 
-  console.log(`[UserService] Attempting to save FCM token for user UID: ${userId}`);
-  const userDocRef = doc(db, 'users', userId);
-  
-  try {
-    // Use arrayUnion to atomically add the new token to the array.
-    // This prevents race conditions and ensures no duplicate tokens are added.
-    await updateDoc(userDocRef, {
-        fcmTokens: arrayUnion(fcmToken),
-        updatedAt: serverTimestamp(),
-    });
-    console.log(`[UserService] Successfully updated FCM token for user ${userId}`);
-  } catch (error) {
-    console.error(`[UserService] Error saving FCM token for user ${userId}:`, error);
-    // This could fail due to permissions. Ensure Firestore rules allow this write.
-    // Example Rule: `allow update: if request.auth.uid == resource.id && request.resource.data.keys().hasOnly(['fcmTokens', 'updatedAt']);`
-    throw new Error('Failed to save notification token. Check permissions and network.');
-  }
+    try {
+        const functions = getFunctions(app);
+        const saveTokenFunction = httpsCallable(functions, 'saveFcmToken');
+        console.log(`[UserService] Calling 'saveFcmToken' Cloud Function for user ${userId}.`);
+        const result = await saveTokenFunction({ userId: userId, token: fcmToken });
+        
+        const data = result.data as { success?: boolean; message?: string };
+        if (data.success) {
+             console.log(`[UserService] Cloud Function returned success: ${data.message}`);
+             return true;
+        } else {
+             console.error(`[UserService] Cloud Function returned failure: ${data.message}`);
+             return false;
+        }
+    } catch (error) {
+        console.error(`[UserService] Error calling 'saveFcmToken' Cloud Function:`, error);
+        return false;
+    }
 };
