@@ -85,7 +85,6 @@
      const { user, organizationId, isLoading: authIsLoading } = useAuth();
      const [data, setData] = React.useState<EmployeeDashboardData | null>(null);
      const [isLoading, setIsLoading] = React.useState(true);
-     const [fcmTokenProcessed, setFcmTokenProcessed] = React.useState(false);
      const { toast } = useToast();
      const [selectedTask, setSelectedTask] = React.useState<Task | null>(null);
      const [isInfoModalOpen, setIsInfoModalOpen] = React.useState(false);
@@ -95,38 +94,16 @@
 
       // Effect to save FCM token from cookie
     React.useEffect(() => {
-        if (fcmTokenProcessed || authIsLoading || !CURRENT_EMPLOYEE_ID) {
-            // Se já foi processado, ou se a autenticação está em andamento, ou se não há ID, não faz nada.
-            return;
-        }
-
         const fcmToken = Cookies.get('fcmToken');
         const uidFromCookie = Cookies.get('user-uid');
         
-        console.log(`[DashboardPage] Attempting to save FCM token. Processed: ${fcmTokenProcessed}, AuthLoading: ${authIsLoading}, UID: ${CURRENT_EMPLOYEE_ID}`);
-        console.log(`[DashboardPage] FCM from cookie: ${fcmToken}, UID from cookie: ${uidFromCookie}`);
-
+        console.log("Passou aqui fcmToekn1");
         // A condição principal é que o usuário esteja carregado (CURRENT_EMPLOYEE_ID existe)
         if (fcmToken && uidFromCookie && uidFromCookie === CURRENT_EMPLOYEE_ID) {
-            setFcmTokenProcessed(true); // Previne múltiplas execuções
-            
-            console.log("[DashboardPage] Conditions met. Saving FCM token...");
-            saveUserFcmToken(uidFromCookie, fcmToken)
-                .then(success => {
-                    if (success) {
-                        console.log("[DashboardPage] FCM Token successfully registered via Cloud Function.");
-                        // Não é necessário remover o cookie, pode ser útil se o usuário recarregar.
-                    } else {
-                        console.warn("[DashboardPage] Cloud Function indicated failure in saving FCM token. Will retry on next load.");
-                        setFcmTokenProcessed(false); // Permite uma nova tentativa no próximo recarregamento
-                    }
-                })
-                .catch(error => {
-                    console.error("[DashboardPage] Error calling saveUserFcmToken:", error);
-                    setFcmTokenProcessed(false); // Permite uma nova tentativa no próximo recarregamento
-                });
+            console.log("Passou aqui fcmToekn2");
+            saveUserFcmToken(uidFromCookie, fcmToken);
         }
-    }, [authIsLoading, CURRENT_EMPLOYEE_ID, fcmTokenProcessed]);
+    }, [CURRENT_EMPLOYEE_ID]);
 
 
      React.useEffect(() => {
