@@ -1,9 +1,98 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+    
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isSuperAdmin() {
+      return isSignedIn() && request.auth.token.role == 'super_admin';
+    }
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.role == 'admin';
+    }
+    function isMemberOfOrg(orgId) {
+      return isSignedIn() && request.auth.token.organizationId == orgId;
+    }
+    function isOrgAdmin(orgId) {
+      return isAdmin() && isMemberOfOrg(orgId);
+    }
+    function isSelf(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // --- Top Level Collections ---
+    
+    // Users: Can be read by users in the same org. Can only be updated by self, an admin of the org, or a super admin.
+    match /users/{userId} {
+      allow read: if isSuperAdmin() || (isMemberOfOrg(resource.data.organizationId));
+      allow update: if isSelf(userId) || isOrgAdmin(resource.data.organizationId) || isSuperAdmin();
+      // Create/Delete should be handled by Cloud Functions which have admin privileges.
+      allow create, delete: if isSuperAdmin() || isAdmin(); 
+    }
+
+    // Organizations: Can be read by its members, but only written by super admins
+    match /organizations/{orgId} {
+      allow read: if isSuperAdmin() || isMemberOfOrg(orgId);
+      allow write: if isSuperAdmin();
+    }
+    
+    // Awards: Readable by any authenticated user, writable only by admins/superAdmins.
+    match /awards/{awardId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin() || isAdmin();
+    }
+    
+    // Award History: Readable by members of the specific organization, writable by admins of that org.
+    match /awardHistory/{historyId} {
+        allow read: if isSuperAdmin() || isMemberOfOrg(resource.data.organizationId);
+        allow write: if isSuperAdmin() || isOrgAdmin(resource.data.organizationId);
+    }
+    
+    // Plans: Readable by any authenticated user, writable by super admins.
+    match /plans/{planId} {
+       allow read: if isSignedIn();
+       allow write: if isSuperAdmin();
+    }
+
+    // --- Organization Subcollections ---
+    
+    // Generic rule for most subcollections that only admins can write to.
+    // e.g., tasks, departments, roles, rankingManagement, challengeManagement
+    match /organizations/{orgId}/{collection}/{docId} 
+        // This rule applies to collections NOT explicitly defined below.
+        where collection in ['tasks', 'departments', 'roles', 'rankingManagement', 'challengeManagement'] {
+       allow read: if isMemberOfOrg(orgId) || isSuperAdmin();
+       allow write: if isOrgAdmin(orgId) || isSuperAdmin();
+    }
+
+    // Evaluations: Any member can read, but only admins can write.
+    match /organizations/{orgId}/evaluations/{evalId} {
+        allow read: if isMemberOfOrg(orgId) || isSuperAdmin();
+        allow write: if isOrgAdmin(orgId) || isSuperAdmin();
+    }
+
+    // Challenges: Any member can read, but only admins can write.
+    match /organizations/{orgId}/challenges/{challengeId} {
+       allow read: if isMemberOfOrg(orgId) || isSuperAdmin();
+       allow write: if isOrgAdmin(orgId) || isSuperAdmin();
+    }
+
+    // ChallengeParticipations: Collaborators can create/update their own entries. Admins can manage all.
+    match /organizations/{orgId}/challengeParticipations/{partId} {
+        allow read: if isMemberOfOrg(orgId) || isSuperAdmin();
+        // Allow create if the user is creating their own participation doc.
+        allow create: if isMemberOfOrg(orgId) && request.resource.data.employeeId == request.auth.uid;
+        // Allow update if user is updating their own, or is an admin.
+        allow update: if (isMemberOfOrg(orgId) && resource.data.employeeId == request.auth.uid) || isOrgAdmin(orgId) || isSuperAdmin();
+        // Delete only for admins.
+        allow delete: if isOrgAdmin(orgId) || isSuperAdmin();
+    }
+    
+    // AppSettings: Only readable/writable by admins of that org or super admins.
+    match /organizations/{orgId}/appSettings/{settingId} {
+        allow read, write: if isOrgAdmin(orgId) || isSuperAdmin();
     }
   }
 }
