@@ -1,4 +1,3 @@
-
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import { getFirestore, Firestore } from "firebase/firestore";
@@ -27,24 +26,23 @@ const requiredConfigKeysForInit: (keyof typeof firebaseConfig)[] = [
 ];
 
 if (typeof window !== 'undefined') {
-    console.log("[Firebase Lib V9 DEBUG] Running in browser environment.");
-    console.log("[Firebase Lib V9 DEBUG] NODE_ENV:", process.env.NODE_ENV);
+    console.log("[Firebase Lib V10 FINAL] Running in browser environment.");
+    console.log("[Firebase Lib V10 FINAL] NODE_ENV:", process.env.NODE_ENV);
 
     const allRequiredPresent = requiredConfigKeysForInit.every(key => firebaseConfig[key]);
 
     if (allRequiredPresent) {
         try {
             if (!getApps().length) {
-                console.log("[Firebase Lib V9 DEBUG] Initializing Firebase app with config for project:", firebaseConfig.projectId);
+                console.log("[Firebase Lib V10 FINAL] Initializing Firebase app with config for project:", firebaseConfig.projectId);
                 app = initializeApp(firebaseConfig);
             } else {
                 app = getApp();
-                console.log("[Firebase Lib V9 DEBUG] Firebase app already initialized for project:", app.options.projectId);
+                console.log("[Firebase Lib V10 FINAL] Firebase app already initialized for project:", app.options.projectId);
             }
 
             // --- APP CHECK INITIALIZATION ---
             if (app && !appCheckInstance) {
-                const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
                 const urlParams = new URLSearchParams(window.location.search);
                 const debugTokenFromUrl = urlParams.get('appCheckDebugToken');
                 const debugTokenFromEnv = process.env.NEXT_PUBLIC_APPCHECK_DEBUG_TOKEN;
@@ -53,28 +51,29 @@ if (typeof window !== 'undefined') {
                 
                 // Assign to window for Firebase SDK to automatically pick up if present
                 if (debugToken) {
-                    (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
-                    console.log("[Firebase Lib V9 DEBUG] ==> App Check DEBUG TOKEN is set on window. Source:", debugTokenFromUrl ? "URL Param" : "ENV Var");
+                    console.log("[Firebase Lib V10 FINAL] ==> App Check DEBUG TOKEN found. Forcing debug provider.");
+                    (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken;
                 }
                 
-                // Now, initialize App Check. It will automatically use the debug token if the window variable is set.
-                // We only need to provide a ReCaptcha provider as a fallback for when the debug token is NOT present.
+                const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
                 if (recaptchaSiteKey) {
                     appCheckInstance = initializeAppCheck(app, {
                         provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
                         isTokenAutoRefreshEnabled: true
                     });
-                    console.log("[Firebase Lib V9 DEBUG] Firebase App Check initialized. It will use the debug token if available, otherwise ReCaptcha.");
+                    console.log("[Firebase Lib V10 FINAL] Firebase App Check initialized. It will use the debug token if present on window, otherwise ReCaptcha.");
                 } else if (debugToken) {
                     // This case is for when you're in a debug environment but don't even have a dummy recaptcha key.
                     // This is less ideal as App Check for production would fail silently.
-                    console.warn("[Firebase Lib V9 DEBUG] Initializing App Check without a ReCaptcha key, relying SOLELY on debug token.");
+                    console.warn("[Firebase Lib V10 FINAL] Initializing App Check without a ReCaptcha key, relying SOLELY on debug token.");
+                    // Provide a dummy key to satisfy the constructor, as debug token will override it.
+                    const dummyProvider = new ReCaptchaEnterpriseProvider("6Le-dummy-key-for-provider-init-xxxxxxxx");
                     appCheckInstance = initializeAppCheck(app, {
-                        provider: new ReCaptchaEnterpriseProvider("6Ld...dummy"), // Provide a dummy key to satisfy the constructor, as debug token will override it.
+                        provider: dummyProvider,
                         isTokenAutoRefreshEnabled: true
                     });
                 } else {
-                    console.error("[Firebase Lib V9 CRITICAL] App Check NOT INITIALIZED. ReCaptcha key is missing AND no debug token is provided.");
+                    console.error("[Firebase Lib V10 CRITICAL] App Check NOT INITIALIZED. ReCaptcha key is missing AND no debug token is provided.");
                 }
             }
             // --- END APP CHECK ---
@@ -82,20 +81,20 @@ if (typeof window !== 'undefined') {
             if (app) {
                 db = getFirestore(app);
                 authInstance = getAuth(app);
-                console.log("[Firebase Lib V9 DEBUG] Firebase App, Firestore, and Auth setup completed.");
+                console.log("[Firebase Lib V10 FINAL] Firebase App, Firestore, and Auth setup completed.");
             }
 
         } catch (error) {
-            console.error("[Firebase Lib V9 DEBUG] Firebase initialization failed:", error);
+            console.error("[Firebase Lib V10 FINAL] Firebase initialization failed:", error);
             alert("Falha ao inicializar a conexão com o servidor. Verifique a configuração do Firebase e o console (F12).");
         }
     } else {
         const missingCriticalKeys = requiredConfigKeysForInit.filter(key => !firebaseConfig[key]);
-        console.error("[Firebase Lib V9 DEBUG] Firebase Web App initialization SKIPPED due to missing CRITICAL configuration keys:", missingCriticalKeys.join(', '));
+        console.error("[Firebase Lib V10 FINAL] Firebase Web App initialization SKIPPED due to missing CRITICAL configuration keys:", missingCriticalKeys.join(', '));
         alert(`Erro de configuração do Firebase: Chaves CRÍTICAS ausentes: ${missingCriticalKeys.join(', ')}. Verifique suas variáveis de ambiente e recarregue a página.`);
     }
 } else {
-    console.log("[Firebase Lib V9 DEBUG] Skipping client-side Firebase initialization (not in browser).");
+    console.log("[Firebase Lib V10 FINAL] Skipping client-side Firebase initialization (not in browser).");
 }
 
 export const getFirebaseApp = (): FirebaseApp | null => {
@@ -125,7 +124,7 @@ export const getAppCheckInstance = (): AppCheck | null => {
     if (!appCheckInstance) {
         const currentApp = getFirebaseApp();
         if (currentApp) {
-             console.warn("[Firebase Lib V9 DEBUG] getAppCheckInstance called, but instance was null. This might indicate an initialization issue.");
+             console.warn("[Firebase Lib V10 FINAL] getAppCheckInstance called, but instance was null. This might indicate an initialization issue.");
         }
     }
     return appCheckInstance;
