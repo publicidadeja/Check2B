@@ -95,41 +95,36 @@
 
       // Effect to save FCM token from cookie
     React.useEffect(() => {
-        if (!fcmTokenProcessed && !authIsLoading && CURRENT_EMPLOYEE_ID) {
-            const fcmToken = Cookies.get('fcmToken');
-            const uidFromCookie = Cookies.get('user-uid');
+        if (fcmTokenProcessed || authIsLoading || !CURRENT_EMPLOYEE_ID) {
+            // Se já foi processado, ou se a autenticação está em andamento, ou se não há ID, não faz nada.
+            return;
+        }
+
+        const fcmToken = Cookies.get('fcmToken');
+        const uidFromCookie = Cookies.get('user-uid');
+        
+        console.log(`[DashboardPage] Attempting to save FCM token. Processed: ${fcmTokenProcessed}, AuthLoading: ${authIsLoading}, UID: ${CURRENT_EMPLOYEE_ID}`);
+        console.log(`[DashboardPage] FCM from cookie: ${fcmToken}, UID from cookie: ${uidFromCookie}`);
+
+        // A condição principal é que o usuário esteja carregado (CURRENT_EMPLOYEE_ID existe)
+        if (fcmToken && uidFromCookie && uidFromCookie === CURRENT_EMPLOYEE_ID) {
+            setFcmTokenProcessed(true); // Previne múltiplas execuções
             
-            console.log(`[DashboardPage] Attempting to save FCM token. Processed: ${fcmTokenProcessed}, AuthLoading: ${authIsLoading}, UID: ${CURRENT_EMPLOYEE_ID}`);
-            console.log(`[DashboardPage] FCM from cookie: ${fcmToken}, UID from cookie: ${uidFromCookie}`);
-
-            if (fcmToken && uidFromCookie && uidFromCookie === CURRENT_EMPLOYEE_ID) {
-                setFcmTokenProcessed(true); // Mark as processed immediately to prevent re-runs
-                
-                // Add a 3-second delay before saving the token
-                const timer = setTimeout(() => {
-                    console.log("[DashboardPage] 3-second delay finished. Saving FCM token...");
-                    saveUserFcmToken(uidFromCookie, fcmToken)
-                        .then(success => {
-                            if (success) {
-                                console.log("[DashboardPage] FCM Token successfully registered via Cloud Function.");
-                            } else {
-                                console.warn("[DashboardPage] Cloud Function indicated failure in saving FCM token.");
-                            }
-                        })
-                        .catch(error => {
-                            console.error("[DashboardPage] Error calling saveUserFcmToken:", error);
-                            // Optionally reset fcmTokenProcessed to allow a retry on next render/reload
-                            // setFcmTokenProcessed(false); 
-                        });
-                }, 3000); // 3000 milliseconds = 3 seconds
-
-                // Cleanup function to clear the timer if the component unmounts
-                return () => clearTimeout(timer);
-            } else if (!authIsLoading) {
-                // If conditions aren't met but auth is loaded, mark as processed to stop trying
-                setFcmTokenProcessed(true);
-                console.log("[DashboardPage] Conditions not met for saving FCM token this time.");
-            }
+            console.log("[DashboardPage] Conditions met. Saving FCM token...");
+            saveUserFcmToken(uidFromCookie, fcmToken)
+                .then(success => {
+                    if (success) {
+                        console.log("[DashboardPage] FCM Token successfully registered via Cloud Function.");
+                        // Não é necessário remover o cookie, pode ser útil se o usuário recarregar.
+                    } else {
+                        console.warn("[DashboardPage] Cloud Function indicated failure in saving FCM token. Will retry on next load.");
+                        setFcmTokenProcessed(false); // Permite uma nova tentativa no próximo recarregamento
+                    }
+                })
+                .catch(error => {
+                    console.error("[DashboardPage] Error calling saveUserFcmToken:", error);
+                    setFcmTokenProcessed(false); // Permite uma nova tentativa no próximo recarregamento
+                });
         }
     }, [authIsLoading, CURRENT_EMPLOYEE_ID, fcmTokenProcessed]);
 

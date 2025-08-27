@@ -20,7 +20,7 @@ setGlobalOptions({region: "us-central1"});
  * This is called from the frontend when it receives the token from the mobile app.
  */
 exports.saveFcmToken = onCall({
-    enforceAppCheck: false, // App Check is not required for this function
+    enforceAppCheck: false, // App Check is explicitly disabled for this function
 }, async (request) => {
     const data = request.data;
     const auth = request.auth;
