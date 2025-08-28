@@ -318,7 +318,8 @@ export const countActiveUsersByOrganization = async (organizationId: string, rol
 export const saveUserFcmToken = async (userId: string, fcmToken: string): Promise<boolean> => {
     const app = getFirebaseApp();
     if (!app) {
-        throw new Error('[UserService] Firebase App not initialized. Cannot call Cloud Function.');
+        console.error('[UserService] Firebase App not initialized. Cannot call Cloud Function.');
+        return false;
     }
     if (!userId || !fcmToken) {
         console.warn('[UserService] User ID or FCM Token is missing. Cannot save token.');
@@ -336,7 +337,7 @@ export const saveUserFcmToken = async (userId: string, fcmToken: string): Promis
              console.log(`[UserService] Cloud Function returned success: ${data.message}`);
              return true;
         } else {
-             console.error(`[UserService] Cloud Function returned failure: ${data.message}`);
+             console.error(`[UserService] Cloud Function returned failure: ${data.message || 'Unknown error from function.'}`);
              return false;
         }
     } catch (error) {

@@ -88,22 +88,38 @@
      const { toast } = useToast();
      const [selectedTask, setSelectedTask] = React.useState<Task | null>(null);
      const [isInfoModalOpen, setIsInfoModalOpen] = React.useState(false);
+     const [fcmTokenProcessed, setFcmTokenProcessed] = React.useState(false);
      
      const CURRENT_EMPLOYEE_ID = user?.uid;
      const employeeDisplayName = user?.displayName || "Colaborador";
 
       // Effect to save FCM token from cookie
     React.useEffect(() => {
-        const fcmToken = Cookies.get('fcmToken');
-        const uidFromCookie = Cookies.get('user-uid');
-        
-        console.log("Passou aqui fcmToekn1");
-        // A condição principal é que o usuário esteja carregado (CURRENT_EMPLOYEE_ID existe)
-        if (fcmToken && uidFromCookie && uidFromCookie === CURRENT_EMPLOYEE_ID) {
-            console.log("Passou aqui fcmToekn2");
-            saveUserFcmToken(uidFromCookie, fcmToken);
+        if (authIsLoading || fcmTokenProcessed || !CURRENT_EMPLOYEE_ID) {
+            return;
         }
-    }, [CURRENT_EMPLOYEE_ID]);
+
+        const fcmToken = Cookies.get('fcmToken');
+        console.log(`[DashboardPage] Attempting to save FCM token. Processed: ${fcmTokenProcessed}, AuthLoading: ${authIsLoading}, UID: ${CURRENT_EMPLOYEE_ID}`);
+
+        if (fcmToken) {
+            console.log(`[DashboardPage] FCM from cookie: ${fcmToken}, UID from cookie: ${CURRENT_EMPLOYEE_ID}`);
+            saveUserFcmToken(CURRENT_EMPLOYEE_ID, fcmToken)
+                .then(success => {
+                    if (success) {
+                        console.log("[DashboardPage] FCM Token save call successful.");
+                        // Optionally remove the cookie after successful processing
+                        // Cookies.remove('fcmToken');
+                    } else {
+                        console.log("[DashboardPage] FCM Token save call failed.");
+                    }
+                })
+                .catch(error => {
+                    console.error("[DashboardPage] Error in saveUserFcmToken call:", error);
+                });
+            setFcmTokenProcessed(true); // Mark as processed to avoid re-running
+        }
+    }, [authIsLoading, CURRENT_EMPLOYEE_ID, fcmTokenProcessed]);
 
 
      React.useEffect(() => {
