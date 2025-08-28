@@ -1,3 +1,4 @@
+
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import { getFirestore, Firestore } from "firebase/firestore";
@@ -25,18 +26,18 @@ const requiredConfigKeysForInit: (keyof typeof firebaseConfig)[] = [
 ];
 
 if (typeof window !== 'undefined') {
-    console.log("[Firebase Lib V12 FINAL] Running in browser environment.");
+    console.log("[Firebase Lib V13 FINAL] Running in browser environment.");
 
     const allRequiredPresent = requiredConfigKeysForInit.every(key => firebaseConfig[key]);
 
     if (allRequiredPresent) {
         try {
             if (!getApps().length) {
-                console.log("[Firebase Lib V12 FINAL] Initializing Firebase app for project:", firebaseConfig.projectId);
+                console.log("[Firebase Lib V13 FINAL] Initializing Firebase app for project:", firebaseConfig.projectId);
                 app = initializeApp(firebaseConfig);
             } else {
                 app = getApp();
-                console.log("[Firebase Lib V12 FINAL] Firebase app already initialized for project:", app.options.projectId);
+                console.log("[Firebase Lib V13 FINAL] Firebase app already initialized for project:", app.options.projectId);
             }
 
             // --- APP CHECK INITIALIZATION V13 (URL Token Fix) ---
