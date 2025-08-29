@@ -24,6 +24,48 @@ const auth = getAuthInstance();
 const db = getDb();
 
 /**
+ * Sets essential authentication cookies after a successful login or token refresh.
+ * @param idToken The Firebase ID token.
+ * @param role The user's role (e.g., 'admin', 'collaborator').
+ * @param organizationId The user's organization ID (if applicable).
+ * @param uid The user's unique Firebase ID.
+ */
+export const setAuthCookie = (idToken: string, role: string | null, organizationId: string | null, uid: string | null): void => {
+    const cookieOptions: Cookies.CookieAttributes = {
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        expires: 1 // Expires in 1 day
+    };
+
+    if (idToken) {
+        Cookies.set('auth-token', idToken, cookieOptions);
+    } else {
+        Cookies.remove('auth-token');
+    }
+    
+    if (uid) {
+        Cookies.set('user-uid', uid, cookieOptions);
+    } else {
+        Cookies.remove('user-uid');
+    }
+    
+    if (role) {
+        Cookies.set('user-role', role, cookieOptions);
+    } else {
+        Cookies.remove('user-role');
+    }
+
+    if (organizationId) {
+        Cookies.set('organization-id', organizationId, cookieOptions);
+    } else {
+        Cookies.remove('organization-id');
+    }
+    // Always remove guest mode when setting auth cookies
+    Cookies.remove('guest-mode');
+};
+
+/**
  * Logs in a user with email and password. Retrieves role and orgId from Firestore.
  * @param email User's email
  * @param password User's password
@@ -45,7 +87,7 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     const userDocSnap = await getDoc(userDocRef);
 
     if (!userDocSnap.exists()) {
-        await signOut(auth);
+        await signOut(auth); // Sign out the user if their profile doesn't exist in DB
         throw new Error("Perfil de usuário não encontrado no banco de dados. Contate o suporte.");
     }
     const userDataFromDb = userDocSnap.data() as UserProfile;
@@ -63,49 +105,24 @@ export const loginUser = async (email: string, password: string): Promise<{ user
     };
 };
 
+/**
+ * Logs out the current user and clears all related cookies.
+ */
 export const logoutUser = async (): Promise<void> => {
     if (!auth) {
         console.warn("Firebase Auth not initialized, cannot log out.");
-        return;
+    } else {
+      await signOut(auth);
     }
-    await signOut(auth);
+    // Clear all authentication-related cookies
     Cookies.remove('auth-token');
     Cookies.remove('user-role');
     Cookies.remove('organization-id');
     Cookies.remove('guest-mode');
-    Cookies.remove('user-uid'); // Remove the new cookie
-    console.log("[Auth] User signed out and cookies cleared.");
+    Cookies.remove('user-uid');
+    console.log("[Auth] User signed out and all auth cookies cleared.");
 };
 
-export const setAuthCookie = (idToken: string, role: string | null, organizationId: string | null, uid: string | null): void => {
-    const cookieOptions: Cookies.CookieAttributes = {
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        expires: 1 // Expires in 1 day
-    };
-
-    Cookies.set('auth-token', idToken, cookieOptions);
-    
-    if (uid) {
-        Cookies.set('user-uid', uid, cookieOptions);
-    } else {
-        Cookies.remove('user-uid');
-    }
-    
-    if (role) {
-        Cookies.set('user-role', role, cookieOptions);
-    } else {
-        Cookies.remove('user-role');
-    }
-
-    if (organizationId) {
-        Cookies.set('organization-id', organizationId, cookieOptions);
-    } else {
-        Cookies.remove('organization-id');
-    }
-    Cookies.remove('guest-mode');
-};
 
 export const getCurrentUser = (): Promise<User | null> => {
     if (!auth) {
@@ -140,10 +157,9 @@ export const getUserProfileData = async (userId: string): Promise<UserProfile | 
                 return isNaN(parsedDate.getTime()) ? undefined : parsedDate;
             }
             if (fieldValue && typeof fieldValue === 'object' && fieldValue.seconds !== undefined && fieldValue.nanoseconds !== undefined) {
-                // Handle Firestore Timestamp-like objects if not direct instance (e.g., from SSR or client cache)
                 return new Timestamp(fieldValue.seconds, fieldValue.nanoseconds).toDate();
             }
-            return undefined; // Return undefined if not a valid format
+            return undefined;
         };
 
         return {
@@ -152,7 +168,7 @@ export const getUserProfileData = async (userId: string): Promise<UserProfile | 
             email: data.email,
             role: data.role || 'collaborator',
             organizationId: data.organizationId || null,
-            createdAt: toDate(data.createdAt) || new Date(), // Fallback to new Date() if conversion fails
+            createdAt: toDate(data.createdAt) || new Date(),
             updatedAt: toDate(data.updatedAt),
             status: data.status || 'pending',
             photoUrl: data.photoUrl || undefined,
